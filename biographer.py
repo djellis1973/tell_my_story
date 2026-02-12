@@ -456,6 +456,38 @@ def auto_correct_text(text):
         return text
 
 # ============================================================================
+# SEARCH FUNCTIONALITY
+# ============================================================================
+
+def search_all_answers(search_query):
+    """Search through all answers across all sessions"""
+    if not search_query or len(search_query) < 2:
+        return []
+    
+    results = []
+    search_query = search_query.lower()
+    
+    for session in SESSIONS:
+        session_id = session["id"]
+        session_title = session["title"]
+        session_data = st.session_state.responses.get(session_id, {})
+        
+        for question_text, answer_data in session_data.get("questions", {}).items():
+            answer = answer_data.get("answer", "")
+            if search_query in answer.lower() or search_query in question_text.lower():
+                results.append({
+                    "session_id": session_id,
+                    "session_title": session_title,
+                    "question": question_text,
+                    "answer": answer[:300] + "..." if len(answer) > 300 else answer,
+                    "timestamp": answer_data.get("timestamp", ""),
+                    "word_count": len(answer.split())
+                })
+    
+    results.sort(key=lambda x: x["timestamp"], reverse=True)
+    return results
+
+# ============================================================================
 # QUESTION BANK LOADING
 # ============================================================================
 
@@ -1481,6 +1513,48 @@ with st.sidebar:
         if st.button("🔥 Clear All", type="secondary", use_container_width=True, key="clear_all_btn"):
             st.session_state.confirming_clear = "all"
             st.rerun()
+    
+    st.divider()
+    
+    # ============================================================================
+    # SEARCH YOUR STORIES
+    # ============================================================================
+    st.subheader("🔍 Search Your Stories")
+    search_query = st.text_input("Search answers...", placeholder="e.g., childhood, travel, mother", key="global_search")
+    
+    if search_query and len(search_query) >= 2:
+        results = search_all_answers(search_query)
+        
+        if results:
+            st.success(f"Found {len(results)} matches")
+            
+            with st.expander(f"📖 {len(results)} Results", expanded=True):
+                for i, r in enumerate(results[:10]):
+                    st.markdown(f"""
+                    **Session {r['session_id']}: {r['session_title']}**  
+                    *{r['question']}*  
+                    {r['answer']}  
+                    📝 {r['word_count']} words
+                    """)
+                    
+                    if st.button(f"Go to Session", key=f"search_go_{i}_{r['session_id']}"):
+                        for idx, s in enumerate(SESSIONS):
+                            if s["id"] == r['session_id']:
+                                st.session_state.current_session = idx
+                                st.session_state.current_question_override = r['question']
+                                st.rerun()
+                    
+                    st.divider()
+                
+                if len(results) > 10:
+                    st.info(f"... and {len(results) - 10} more matches")
+        else:
+            st.info("No matches found")
+    
+    st.divider()
+    # ============================================================================
+    # END SEARCH SECTION
+    # ============================================================================
 
 # ============================================================================
 # MAIN CONTENT AREA
