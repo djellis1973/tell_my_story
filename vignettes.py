@@ -1,88 +1,85 @@
-# app.py - THIS IS WHAT YOU NEED
-import streamlit as st
-from vignettes import VignetteManager
-
-# Initialize session state
-if 'vignette_manager' not in st.session_state:
-    st.session_state.vignette_manager = VignetteManager("user123")
-if 'view_mode' not in st.session_state:
-    st.session_state.view_mode = 'gallery'
-if 'filter_by' not in st.session_state:
-    st.session_state.filter_by = 'all'
-
-# Callback functions - THESE MAKE EVERYTHING WORK
-def on_select_vignette(vignette_id):
-    st.session_state.current_vignette = vignette_id
-    st.session_state.view_mode = 'read'
-
-def on_edit_vignette(vignette_id):
-    st.session_state.current_vignette = vignette_id
-    st.session_state.view_mode = 'edit'
-
-def on_delete_vignette(vignette_id):
-    st.session_state.vignette_manager.delete_vignette(vignette_id)
-    st.session_state.view_mode = 'gallery'
-    st.rerun()
-
-def on_publish_vignette(vignette):
-    st.session_state.view_mode = 'gallery'
-    st.session_state.filter_by = 'published'
-    st.rerun()
-
-def on_back_to_gallery():
-    st.session_state.view_mode = 'gallery'
-    st.rerun()
-
-# Main app layout
-st.title("📚 Your Vignettes")
-
-# Filter tabs - NO Most Popular
-tab1, tab2, tab3 = st.tabs(["All Stories", "Published", "Drafts"])
-
-with tab1:
-    st.session_state.filter_by = 'all'
-with tab2:
-    st.session_state.filter_by = 'published'
-with tab3:
-    st.session_state.filter_by = 'drafts'
-
-# Sidebar for creating new vignettes
-with st.sidebar:
-    st.header("Create New")
-    if st.button("+ New Vignette", use_container_width=True):
-        st.session_state.view_mode = 'create'
-        st.rerun()
-
-# Main content area based on view mode
-if st.session_state.view_mode == 'create':
-    st.session_state.vignette_manager.display_vignette_creator(
-        on_publish=on_publish_vignette
-    )
-    
-elif st.session_state.view_mode == 'edit':
-    vignette = st.session_state.vignette_manager.get_vignette_by_id(
-        st.session_state.current_vignette
-    )
-    if vignette:
-        st.session_state.vignette_manager.display_vignette_creator(
-            edit_vignette=vignette,
-            on_publish=on_publish_vignette
-        )
+def display_vignette_creator(self, on_publish=None, edit_vignette=None):
+    """Display vignette creation/editing interface - COMPLETELY REMOVED TAGS"""
+    if edit_vignette:
+        st.subheader("✏️ Edit Vignette")
     else:
-        st.session_state.view_mode = 'gallery'
-        st.rerun()
-        
-elif st.session_state.view_mode == 'read':
-    st.session_state.vignette_manager.display_full_vignette(
-        st.session_state.current_vignette,
-        on_back=on_back_to_gallery,
-        on_edit=on_edit_vignette
-    )
+        st.subheader("✍️ Create New Vignette")
     
-else:  # gallery view
-    st.session_state.vignette_manager.display_vignette_gallery(
-        filter_by=st.session_state.filter_by,
-        on_select=on_select_vignette,
-        on_edit=on_edit_vignette,
-        on_delete=on_delete_vignette
-    )
+    # Pre-populate form if editing
+    initial_title = edit_vignette.get("title", "") if edit_vignette else ""
+    initial_content = edit_vignette.get("content", "") if edit_vignette else ""
+    initial_theme = edit_vignette.get("theme", "") if edit_vignette else ""
+    
+    with st.form(key=f"vignette_form_{uuid.uuid4()}"):  # UNIQUE KEY to avoid duplicates
+        # Theme selection
+        theme_options = self.standard_themes + ["Custom Theme"]
+        
+        theme_index = 0
+        if initial_theme in self.standard_themes:
+            theme_index = self.standard_themes.index(initial_theme)
+        elif initial_theme:
+            theme_index = len(self.standard_themes)
+        
+        selected_theme = st.selectbox("Theme", theme_options, index=theme_index, key=f"theme_select_{uuid.uuid4()}")
+        
+        if selected_theme == "Custom Theme":
+            custom_theme = st.text_input("Custom Theme", 
+                                       value=initial_theme if initial_theme and initial_theme not in self.standard_themes else "",
+                                       key=f"custom_theme_{uuid.uuid4()}")
+            theme = custom_theme if custom_theme.strip() else "Personal Story"
+        else:
+            theme = selected_theme
+        
+        # Title
+        title = st.text_input("Title", value=initial_title, key=f"title_input_{uuid.uuid4()}")
+        
+        # Content
+        content = st.text_area("Story", value=initial_content, height=300, key=f"content_area_{uuid.uuid4()}")
+        
+        # Word count
+        if content:
+            st.caption(f"Words: {len(content.split())}")
+        
+        # NO TAGS FIELD - COMPLETELY REMOVED
+        
+        # Buttons
+        col1, col2 = st.columns(2)
+        
+        if edit_vignette:
+            with col1:
+                save_button = st.form_submit_button("💾 Save Changes", type="primary", use_container_width=True)
+            with col2:
+                cancel_button = st.form_submit_button("Cancel", use_container_width=True)
+            
+            if save_button and title.strip() and content.strip():
+                self.update_vignette(edit_vignette["id"], title, content, theme)
+                st.success("✅ Saved!")
+                st.rerun()
+                return True
+            
+            if cancel_button:
+                st.rerun()
+                return False
+        else:
+            with col1:
+                publish_button = st.form_submit_button("🚀 Publish", type="primary", use_container_width=True)
+            with col2:
+                draft_button = st.form_submit_button("💾 Draft", use_container_width=True)
+            
+            if publish_button and title.strip() and content.strip():
+                vignette = self.create_vignette(title, content, theme, is_draft=False)
+                self.publish_vignette(vignette["id"])
+                if on_publish:
+                    on_publish(vignette)
+                st.success("🎉 Published!")
+                st.rerun()
+                return True
+            
+            if draft_button and content.strip():
+                title_to_use = title if title.strip() else f"Draft"
+                vignette = self.create_vignette(title_to_use, content, theme, is_draft=True)
+                st.success("💾 Draft saved!")
+                st.rerun()
+                return True
+        
+        return False
