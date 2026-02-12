@@ -1,4 +1,4 @@
-# biographer.py – Tell My Story App (Simplified Version)
+# biographer.py – Tell My Story App (Full Version with Question Bank Manager)
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -22,7 +22,8 @@ try:
     from session_manager import SessionManager
     from vignettes import VignetteManager
     from session_loader import SessionLoader
-    from beta_reader import BetaReader  # NEW IMPORT
+    from beta_reader import BetaReader
+    from question_bank_manager import QuestionBankManager
 except ImportError as e:
     st.error(f"Error importing modules: {e}")
     st.info("Please ensure all .py files are in the same directory")
@@ -30,7 +31,8 @@ except ImportError as e:
     SessionManager = None
     VignetteManager = None
     SessionLoader = None
-    BetaReader = None  # NEW
+    BetaReader = None
+    QuestionBankManager = None
 
 DEFAULT_WORD_TARGET = 500
 
@@ -43,6 +45,9 @@ client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", os.environ.get("OPENAI_
 # Initialize BetaReader
 beta_reader = BetaReader(client) if BetaReader else None
 
+# Initialize QuestionBankManager (will be recreated after login)
+qb_manager = None
+
 # Load external CSS
 try:
     with open("styles.css", encoding="utf-8") as f:
@@ -51,17 +56,6 @@ except FileNotFoundError:
     st.warning("styles.css not found – layout may look broken")
 
 LOGO_URL = "https://menuhunterai.com/wp-content/uploads/2026/02/tms_logo.png"
-
-# ============================================================================
-# SESSIONS LOADING
-# ============================================================================
-
-if SessionLoader:
-    session_loader = SessionLoader()
-    SESSIONS = session_loader.load_sessions_from_csv()
-else:
-    SESSIONS = []
-    st.error("SessionLoader module not available")
 
 # ============================================================================
 # EMAIL CONFIG
@@ -76,7 +70,7 @@ EMAIL_CONFIG = {
 }
 
 # ============================================================================
-# AUTHENTICATION FUNCTIONS (unchanged - keep all auth code)
+# AUTHENTICATION FUNCTIONS
 # ============================================================================
 
 def generate_password(length=12):
@@ -241,7 +235,10 @@ def logout_user():
         'show_session_manager', 'show_session_creator', 'editing_custom_session',
         'show_vignette_detail', 'selected_vignette_id', 'editing_vignette_id',
         'selected_vignette_for_session', 'published_vignette',
-        'show_beta_reader', 'current_beta_feedback'  # Added beta reader keys
+        'show_beta_reader', 'current_beta_feedback',
+        'current_question_bank', 'current_bank_name', 'current_bank_type',
+        'current_bank_id', 'show_bank_manager', 'show_bank_editor',
+        'editing_bank_id', 'editing_bank_name'
     ]
     for key in keys:
         st.session_state.pop(key, None)
@@ -249,7 +246,7 @@ def logout_user():
     st.rerun()
 
 # ============================================================================
-# STORAGE FUNCTIONS (unchanged)
+# STORAGE FUNCTIONS
 # ============================================================================
 
 def get_user_filename(user_id):
@@ -276,7 +273,7 @@ def save_user_data(user_id, responses_data):
             "user_id": user_id,
             "responses": responses_data,
             "vignettes": existing_data.get("vignettes", []),
-            "beta_feedback": existing_data.get("beta_feedback", {}),  # Preserve beta feedback
+            "beta_feedback": existing_data.get("beta_feedback", {}),
             "last_saved": datetime.now().isoformat()
         }
         with open(filename, 'w') as f:
@@ -287,7 +284,7 @@ def save_user_data(user_id, responses_data):
         return False
 
 # ============================================================================
-# CORE RESPONSE FUNCTIONS (unchanged)
+# CORE RESPONSE FUNCTIONS
 # ============================================================================
 
 def save_response(session_id, question, answer):
@@ -313,7 +310,7 @@ def save_response(session_id, question, answer):
     
     if session_id not in st.session_state.responses:
         session_data = None
-        for s in SESSIONS:
+        for s in st.session_state.current_question_bank:
             if s["id"] == session_id:
                 session_data = s
                 break
@@ -417,7 +414,35 @@ def auto_correct_text(text):
         return text
 
 # ============================================================================
-# BETA READER FUNCTIONS - REPLACED WITH MODULE CALLS
+# QUESTION BANK FUNCTIONS
+# ============================================================================
+
+def load_question_bank(sessions, bank_name, bank_type, bank_id=None):
+    """Load a question bank into the app"""
+    st.session_state.current_question_bank = sessions
+    st.session_state.current_bank_name = bank_name
+    st.session_state.current_bank_type = bank_type
+    st.session_state.current_bank_id = bank_id
+    
+    # Reset session state for new bank
+    st.session_state.current_session = 0
+    st.session_state.current_question = 0
+    st.session_state.current_question_override = None
+    
+    # Initialize responses for new sessions
+    for session in sessions:
+        session_id = session["id"]
+        if session_id not in st.session_state.responses:
+            st.session_state.responses[session_id] = {
+                "title": session["title"],
+                "questions": {},
+                "summary": "",
+                "completed": False,
+                "word_target": session.get("word_target", DEFAULT_WORD_TARGET)
+            }
+
+# ============================================================================
+# BETA READER FUNCTIONS
 # ============================================================================
 
 def generate_beta_reader_feedback(session_title, session_text, feedback_type="comprehensive"):
@@ -443,7 +468,7 @@ def show_beta_reader_modal():
     if not beta_reader or not st.session_state.get('current_beta_feedback'):
         return
     
-    current_session = SESSIONS[st.session_state.current_session]
+    current_session = st.session_state.current_question_bank[st.session_state.current_session]
     
     def on_close():
         st.session_state.show_beta_reader = False
@@ -458,13 +483,13 @@ def show_beta_reader_modal():
     )
 
 # ============================================================================
-# MODULE INTEGRATION FUNCTIONS (unchanged)
+# MODULE INTEGRATION FUNCTIONS
 # ============================================================================
 
 def switch_to_vignette(vignette_topic, content=""):
     st.session_state.current_question_override = f"Vignette: {vignette_topic}"
     if content:
-        current_session = SESSIONS[st.session_state.current_session]
+        current_session = st.session_state.current_question_bank[st.session_state.current_session]
         current_session_id = current_session["id"]
         save_response(current_session_id, f"Vignette: {vignette_topic}", content)
     st.rerun()
@@ -700,18 +725,9 @@ def show_session_manager():
     
     def on_session_select(session_id):
         all_sessions = session_manager.get_all_sessions()
-        for i, session in enumerate(all_sessions):
+        for i, session in enumerate(st.session_state.current_question_bank):
             if session["id"] == session_id:
-                for j, standard_session in enumerate(SESSIONS):
-                    if standard_session["id"] == session_id:
-                        st.session_state.current_session = j
-                        break
-                else:
-                    custom_sessions = all_sessions[len(SESSIONS):]
-                    if session in custom_sessions:
-                        custom_index = custom_sessions.index(session)
-                        st.session_state.current_session = len(SESSIONS) + custom_index
-                
+                st.session_state.current_session = i
                 st.session_state.current_question = 0
                 st.session_state.current_question_override = None
                 st.rerun()
@@ -725,6 +741,61 @@ def show_session_manager():
     st.divider()
     
     session_manager.display_session_grid(cols=2, on_session_select=on_session_select)
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+# ============================================================================
+# QUESTION BANK UI FUNCTIONS
+# ============================================================================
+
+def show_bank_manager():
+    """Display the question bank manager interface"""
+    global qb_manager
+    
+    if not QuestionBankManager:
+        st.error("Question Bank Manager not available")
+        st.session_state.show_bank_manager = False
+        return
+    
+    if not qb_manager and st.session_state.get('user_id'):
+        qb_manager = QuestionBankManager(st.session_state.user_id)
+    
+    if not qb_manager:
+        st.error("Please log in to manage question banks")
+        st.session_state.show_bank_manager = False
+        return
+    
+    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([1, 5])
+    with col1:
+        if st.button("← Back", key="bank_manager_back"):
+            st.session_state.show_bank_manager = False
+            st.rerun()
+    
+    qb_manager.display_bank_selector()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+
+def show_bank_editor():
+    """Display the bank editor interface"""
+    global qb_manager
+    
+    if not QuestionBankManager or not st.session_state.get('editing_bank_id'):
+        st.session_state.show_bank_editor = False
+        return
+    
+    if not qb_manager and st.session_state.get('user_id'):
+        qb_manager = QuestionBankManager(st.session_state.user_id)
+    
+    if not qb_manager:
+        st.error("Please log in to edit banks")
+        st.session_state.show_bank_editor = False
+        return
+    
+    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
+    
+    qb_manager.display_bank_editor(st.session_state.editing_bank_id)
     
     st.markdown('</div>', unsafe_allow_html=True)
 
@@ -772,24 +843,47 @@ default_state = {
     "published_vignette": None,
     "show_beta_reader": False,
     "current_beta_feedback": None,
+    "current_question_bank": None,
+    "current_bank_name": None,
+    "current_bank_type": None,
+    "current_bank_id": None,
+    "show_bank_manager": False,
+    "show_bank_editor": False,
+    "editing_bank_id": None,
+    "editing_bank_name": None,
 }
 
 for key, value in default_state.items():
     if key not in st.session_state:
         st.session_state[key] = value
 
-if SESSIONS:
-    for session in SESSIONS:
-        session_id = session["id"]
-        if session_id not in st.session_state.responses:
-            st.session_state.responses[session_id] = {
-                "title": session["title"],
-                "questions": {},
-                "summary": "",
-                "completed": False,
-                "word_target": session.get("word_target", DEFAULT_WORD_TARGET)
-            }
+# ============================================================================
+# INITIALIZE QUESTION BANK
+# ============================================================================
 
+if st.session_state.logged_in and st.session_state.user_id:
+    # Initialize QB Manager with user_id
+    if QuestionBankManager and not qb_manager:
+        qb_manager = QuestionBankManager(st.session_state.user_id)
+    
+    # Load default bank if none is loaded
+    if st.session_state.current_question_bank is None:
+        if qb_manager:
+            # Try to load the user's last used bank from preferences
+            default_sessions = qb_manager.load_default_bank("life_story_comprehensive")
+            if default_sessions:
+                load_question_bank(default_sessions, "📖 Life Story - Comprehensive", "default", "life_story_comprehensive")
+        else:
+            # Fallback to original SessionLoader
+            session_loader = SessionLoader()
+            legacy_sessions = session_loader.load_sessions_from_csv()
+            if legacy_sessions:
+                load_question_bank(legacy_sessions, "Legacy Bank", "legacy")
+
+# Set SESSIONS reference for compatibility
+SESSIONS = st.session_state.get('current_question_bank', [])
+
+# Load user data
 if st.session_state.logged_in and st.session_state.user_id and not st.session_state.data_loaded:
     user_data = load_user_data(st.session_state.user_id)
     if "responses" in user_data:
@@ -809,21 +903,18 @@ if st.session_state.logged_in and st.session_state.user_id and not st.session_st
 # ============================================================================
 
 if not SESSIONS:
-    st.error("❌ No sessions loaded. Please create a sessions/sessions.csv file.")
+    st.error("❌ No question bank loaded. Please use the Bank Manager to load a bank.")
     st.info("""
-    Create a CSV file with this format:
-    
-    session_id,title,guidance,question,word_target
-    1,Childhood,"Welcome to Session 1...","What is your earliest memory?",500
-    1,Childhood,,"Can you describe your family home?",500
-    2,Family,"Welcome to Session 2...","How would you describe your relationship?",500
-    
-    Save it as: sessions/sessions.csv
+    Go to the sidebar and click **Bank Manager** to load a default question bank or create your own.
     """)
+    
+    if st.button("📋 Open Bank Manager", type="primary"):
+        st.session_state.show_bank_manager = True
+        st.rerun()
     st.stop()
 
 # ============================================================================
-# PROFILE SETUP MODAL (unchanged)
+# PROFILE SETUP MODAL
 # ============================================================================
 
 if st.session_state.get('show_profile_setup', False):
@@ -896,7 +987,7 @@ if st.session_state.get('show_profile_setup', False):
     st.stop()
 
 # ============================================================================
-# AUTHENTICATION COMPONENTS (unchanged)
+# AUTHENTICATION COMPONENTS
 # ============================================================================
 
 if not st.session_state.logged_in:
@@ -1021,6 +1112,14 @@ if not st.session_state.logged_in:
 # MODAL HANDLING (PRIORITY ORDER)
 # ============================================================================
 
+if st.session_state.show_bank_manager:
+    show_bank_manager()
+    st.stop()
+
+if st.session_state.show_bank_editor:
+    show_bank_editor()
+    st.stop()
+
 if st.session_state.show_beta_reader and st.session_state.current_beta_feedback:
     show_beta_reader_modal()
     st.stop()
@@ -1060,7 +1159,7 @@ st.markdown(f"""
 """, unsafe_allow_html=True)
 
 # ============================================================================
-# SIDEBAR (unchanged)
+# SIDEBAR
 # ============================================================================
 
 with st.sidebar:
@@ -1085,6 +1184,24 @@ with st.sidebar:
     
     st.divider()
     
+    st.header("📚 Question Banks")
+    
+    if st.button("📋 Bank Manager", use_container_width=True, type="primary"):
+        st.session_state.show_bank_manager = True
+        st.rerun()
+    
+    if st.session_state.get('current_bank_name'):
+        st.info(f"**Current Bank:**\n{st.session_state.current_bank_name}")
+        
+        if st.session_state.current_bank_type == "custom":
+            if st.button("✏️ Edit This Bank", use_container_width=True):
+                st.session_state.editing_bank_id = st.session_state.current_bank_id
+                st.session_state.editing_bank_name = st.session_state.current_bank_name
+                st.session_state.show_bank_editor = True
+                st.rerun()
+    
+    st.divider()
+    
     st.header("📖 Sessions")
     for i, session in enumerate(SESSIONS):
         session_id = session["id"]
@@ -1094,11 +1211,11 @@ with st.sidebar:
         total_questions = len(session["questions"])
         
         if responses_count == total_questions:
-            status = "🔴"
+            status = "🟢"
         elif responses_count > 0:
             status = "🟡"
         else:
-            status = "🟢"
+            status = "🔴"
         
         if i == st.session_state.current_session:
             status = "▶️"
@@ -1259,7 +1376,7 @@ with st.sidebar:
             st.rerun()
 
 # ============================================================================
-# MAIN CONTENT AREA (unchanged)
+# MAIN CONTENT AREA
 # ============================================================================
 
 if st.session_state.current_session >= len(SESSIONS):
@@ -1397,7 +1514,7 @@ with col3:
 st.divider()
 
 # ============================================================================
-# BETA READER SECTION - MODIFIED TO USE MODULE
+# BETA READER SECTION
 # ============================================================================
 
 st.subheader("🦋 Beta Reader Feedback")
@@ -1429,7 +1546,6 @@ if responses_count == total_questions and total_questions > 0:
     with col2:
         if st.button("🦋 Get Beta Reader Feedback", use_container_width=True, type="primary"):
             with st.spinner("Analyzing your session with professional editor eyes..."):
-                # Get all session text using beta_reader
                 if beta_reader:
                     session_text = beta_reader.get_session_full_text(current_session_id, st.session_state.responses)
                 else:
@@ -1438,7 +1554,6 @@ if responses_count == total_questions and total_questions > 0:
                 if not session_text.strip():
                     st.error("Session has no content to analyze")
                 else:
-                    # Generate feedback
                     feedback = generate_beta_reader_feedback(
                         current_session["title"], 
                         session_text, 
@@ -1452,7 +1567,6 @@ if responses_count == total_questions and total_questions > 0:
                     else:
                         st.error(f"Failed to generate feedback: {feedback['error']}")
     
-    # Show previous feedback button
     if previous_feedback:
         if st.button("📖 View Previous Feedback", use_container_width=True):
             st.session_state.current_beta_feedback = previous_feedback
@@ -1464,7 +1578,7 @@ else:
 st.divider()
 
 # ============================================================================
-# SESSION PROGRESS (unchanged)
+# SESSION PROGRESS
 # ============================================================================
 
 progress_info = get_progress_info(current_session_id)
@@ -1537,7 +1651,7 @@ with col4:
     st.metric("Total Answers", f"{total_answers_all}")
 
 # ============================================================================
-# FOOTER (unchanged)
+# FOOTER
 # ============================================================================
 
 st.markdown("---")
@@ -1546,7 +1660,7 @@ if st.session_state.user_account:
     account_age = (datetime.now() - datetime.fromisoformat(st.session_state.user_account['created_at'])).days
     
     footer_info = f"""
-Tell My Story Timeline • 👤 {profile['first_name']} {profile['last_name']} • 📅 Account Age: {account_age} days
+Tell My Story Timeline • 👤 {profile['first_name']} {profile['last_name']} • 📅 Account Age: {account_age} days • 📚 Bank: {st.session_state.get('current_bank_name', 'None')}
 """
     st.caption(footer_info)
 else:
