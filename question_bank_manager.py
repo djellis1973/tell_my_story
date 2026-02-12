@@ -1,4 +1,4 @@
-# question_bank_manager.py - CSV-ONLY VERSION (NO HARDCODED QUESTIONS)
+# question_bank_manager.py - COMPLETE CONTROL VERSION
 import streamlit as st
 import pandas as pd
 import json
@@ -14,27 +14,13 @@ class QuestionBankManager:
         self.default_banks_path = f"{self.base_path}/default"
         self.user_banks_path = f"{self.base_path}/users"
         
-        # Create directories
+        # ONLY create directories - NEVER create files
         os.makedirs(self.default_banks_path, exist_ok=True)
         os.makedirs(self.user_banks_path, exist_ok=True)
         if self.user_id:
             os.makedirs(f"{self.user_banks_path}/{self.user_id}", exist_ok=True)
         
-        self._init_default_banks()
-    
-    def _init_default_banks(self):
-        """Initialize default banks - CSV ONLY. NO HARDCODED QUESTIONS."""
-        # Create directories
-        os.makedirs(self.default_banks_path, exist_ok=True)
-        
-        # ONLY copy legacy sessions.csv if it exists
-        if os.path.exists("sessions/sessions.csv"):
-            dest = f"{self.default_banks_path}/life_story_comprehensive.csv"
-            if not os.path.exists(dest):
-                shutil.copy("sessions/sessions.csv", dest)
-        
-        # NO HARDCODED CSV CREATION
-        # ALL OTHER BANKS MUST BE UPLOADED DIRECTLY AS CSV FILES
+        # NO FILE CREATION - DELETED _init_default_banks completely
     
     def load_sessions_from_csv(self, csv_path):
         """Load sessions from a CSV file"""
@@ -65,10 +51,10 @@ class QuestionBankManager:
             return []
     
     def get_default_banks(self):
-        """Get list of default banks - AUTO-DETECT from CSV files"""
+        """Get list of default banks - READ ONLY from CSV files"""
         banks = []
         
-        # Auto-detect all CSV files in default folder
+        # Read existing CSV files - NEVER create them
         if os.path.exists(self.default_banks_path):
             for filename in os.listdir(self.default_banks_path):
                 if filename.endswith('.csv'):
@@ -88,7 +74,8 @@ class QuestionBankManager:
                             "name": f"📖 {name_parts}",
                             "description": f"Loaded from {filename}",
                             "sessions": sessions,
-                            "topics": topics
+                            "topics": topics,
+                            "filename": filename
                         })
                     except Exception as e:
                         st.error(f"Error reading {filename}: {e}")
@@ -96,12 +83,23 @@ class QuestionBankManager:
         return banks
     
     def load_default_bank(self, bank_id):
-        """Load a default bank by ID - AUTO from CSV"""
+        """Load a default bank by ID - READ ONLY from CSV"""
         filename = f"{self.default_banks_path}/{bank_id}.csv"
         
         if os.path.exists(filename):
             return self.load_sessions_from_csv(filename)
         return []
+    
+    def delete_default_bank(self, bank_id, filename):
+        """DELETE a default bank CSV file from the cloud"""
+        try:
+            filepath = f"{self.default_banks_path}/{filename}"
+            if os.path.exists(filepath):
+                os.remove(filepath)
+                return True
+        except Exception as e:
+            st.error(f"Error deleting file: {e}")
+        return False
     
     # ============ CUSTOM BANK METHODS ============
     
@@ -221,29 +219,69 @@ class QuestionBankManager:
                 st.info("🔐 Please log in to create custom question banks")
     
     def _display_default_banks(self):
-        """Display default banks with load buttons - AUTO-DETECTED FROM CSV"""
-        # DEBUG - SEE WHAT FILES ACTUALLY EXIST
-        import os
-        st.write("🔍 **DEBUG - Checking question_banks/default/:**")
+        """Display default banks with load buttons - READ ONLY + DOWNLOAD + DELETE"""
+        
+        # Show what files exist in the cloud
+        st.subheader("📁 Files in Cloud Storage")
+        
         if os.path.exists(self.default_banks_path):
             files = os.listdir(self.default_banks_path)
-            st.write("📁 Files found:", files)
+            csv_files = [f for f in files if f.endswith('.csv')]
+            
+            if csv_files:
+                st.warning("⚠️ These files exist ONLY in Streamlit Cloud, NOT in your GitHub repo!")
+                
+                for file in csv_files:
+                    col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
+                    with col1:
+                        st.code(f"📄 {file}")
+                    with col2:
+                        # Download button
+                        try:
+                            df = pd.read_csv(f"{self.default_banks_path}/{file}")
+                            csv = df.to_csv(index=False)
+                            st.download_button(
+                                label="📥 Download",
+                                data=csv,
+                                file_name=file,
+                                mime="text/csv",
+                                key=f"download_{file}",
+                                use_container_width=True
+                            )
+                        except:
+                            st.button("📥 Error", disabled=True, use_container_width=True)
+                    with col3:
+                        # Delete button
+                        if st.button("🗑️ Delete", key=f"delete_{file}", use_container_width=True):
+                            filepath = f"{self.default_banks_path}/{file}"
+                            os.remove(filepath)
+                            st.success(f"Deleted {file}")
+                            st.rerun()
+                    with col4:
+                        # Info
+                        st.caption("☁️ Cloud only")
+                st.divider()
+            else:
+                st.info("✅ No CSV files in cloud storage. All banks are from GitHub.")
         else:
-            st.write("❌ Directory does not exist:", self.default_banks_path)
+            st.info("📁 No default banks directory found.")
         
+        # Now show available banks to load
+        st.subheader("📚 Available Question Banks")
         banks = self.get_default_banks()
         
         if not banks:
-            st.info("📁 No CSV files found in question_banks/default/")
+            st.info("📁 No CSV files found. Please upload CSV files to `question_banks/default/` in your GitHub repo.")
             st.markdown("""
             **To add default banks:**
-            1. Upload CSV files to `question_banks/default/` folder
-            2. Format must match: session_id, title, guidance, question, word_target
-            3. Refresh this page
+            1. Create CSV files locally with correct format
+            2. Add them to `question_banks/default/` in your GitHub repo
+            3. Commit and push
+            4. Refresh this page
             """)
             return
         
-        # 2-COLUMN GRID
+        # 2-COLUMN GRID for loading banks
         cols = st.columns(2)
         for i, bank in enumerate(banks):
             with cols[i % 2]:
@@ -271,7 +309,6 @@ class QuestionBankManager:
                                 st.session_state.current_bank_type = "default"
                                 st.session_state.current_bank_id = bank['id']
                                 
-                                # Success message
                                 st.success(f"✅ Question Bank Loaded: '{bank['name']}'")
                                 
                                 # Initialize responses
