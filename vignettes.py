@@ -1,4 +1,3 @@
-# vignettes.py
 import streamlit as st
 import json
 from datetime import datetime
@@ -7,7 +6,7 @@ import os
 import uuid
 
 class VignetteManager:
-    """Manages vignettes (short stories)"""
+    """Manages vignettes (short stories) - Authoring Tool"""
     
     def __init__(self, user_id: str):
         self.user_id = user_id
@@ -103,14 +102,50 @@ class VignetteManager:
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
             "is_draft": is_draft,
-            "is_published": False,
-            "views": 0,
-            "likes": 0
+            "is_published": False
         }
         
         self.vignettes.append(new_vignette)
         self._save_vignettes()
         return new_vignette
+    
+    def update_vignette(self, vignette_id: str, title: str, content: str, 
+                       theme: str, tags: List[str] = None) -> bool:
+        """Update an existing vignette"""
+        if tags is None:
+            tags = []
+            
+        for vignette in self.vignettes:
+            if vignette["id"] == vignette_id:
+                vignette["title"] = title
+                vignette["content"] = content
+                vignette["theme"] = theme
+                vignette["tags"] = tags
+                vignette["word_count"] = len(content.split())
+                vignette["updated_at"] = datetime.now().isoformat()
+                
+                self._save_vignettes()
+                
+                # Also update in published if it exists there
+                for pub in self.published:
+                    if pub["id"] == vignette_id:
+                        pub.update(vignette)
+                        self._save_published()
+                        break
+                return True
+        return False
+    
+    def delete_vignette(self, vignette_id: str) -> bool:
+        """Delete a vignette"""
+        # Remove from vignettes
+        self.vignettes = [v for v in self.vignettes if v["id"] != vignette_id]
+        
+        # Remove from published if exists
+        self.published = [v for v in self.published if v["id"] != vignette_id]
+        
+        self._save_vignettes()
+        self._save_published()
+        return True
     
     def publish_vignette(self, vignette_id: str) -> bool:
         """Publish a vignette"""
@@ -120,9 +155,16 @@ class VignetteManager:
                 vignette["is_draft"] = False
                 vignette["published_at"] = datetime.now().isoformat()
                 
-                # Add to published list
-                published_copy = vignette.copy()
-                self.published.append(published_copy)
+                # Check if already in published list
+                found = False
+                for i, pub in enumerate(self.published):
+                    if pub["id"] == vignette_id:
+                        self.published[i] = vignette.copy()
+                        found = True
+                        break
+                
+                if not found:
+                    self.published.append(vignette.copy())
                 
                 self._save_vignettes()
                 self._save_published()
@@ -164,32 +206,50 @@ class VignetteManager:
         
         return results
     
-    def display_vignette_creator(self, on_publish=None):
-        """Display vignette creation interface"""
-        st.subheader("✨ Write a Short Story")
+    def display_vignette_creator(self, on_publish=None, on_save_draft=None, edit_vignette=None):
+        """Display vignette creation/editing interface"""
+        st.subheader("✍️ " + ("Edit Story" if edit_vignette else "Write a Short Story"))
+        
+        # Pre-populate form if editing
+        initial_title = edit_vignette.get("title", "") if edit_vignette else ""
+        initial_content = edit_vignette.get("content", "") if edit_vignette else ""
+        initial_theme = edit_vignette.get("theme", "") if edit_vignette else ""
+        initial_tags = ", ".join(edit_vignette.get("tags", [])) if edit_vignette else ""
         
         with st.form("create_vignette_form"):
             # Theme selection
             theme_options = self.standard_themes + ["Custom Theme"]
-            selected_theme = st.selectbox("Choose a Theme", theme_options)
+            
+            # Set initial theme index
+            theme_index = 0
+            if initial_theme in self.standard_themes:
+                theme_index = self.standard_themes.index(initial_theme)
+            elif initial_theme:
+                theme_index = len(self.standard_themes)  # Custom Theme
+            
+            selected_theme = st.selectbox("Choose a Theme", theme_options, index=theme_index)
             
             if selected_theme == "Custom Theme":
-                custom_theme = st.text_input("Your Custom Theme")
+                custom_theme = st.text_input("Your Custom Theme", 
+                                           value=initial_theme if initial_theme and initial_theme not in self.standard_themes else "")
                 theme = custom_theme if custom_theme.strip() else "Personal Story"
             else:
                 theme = selected_theme
             
             # Title
             title = st.text_input("Title", 
+                                value=initial_title,
                                 placeholder="Give your story a compelling title")
             
             # Content
             content = st.text_area("Your Story", 
+                                 value=initial_content,
                                  height=300,
                                  placeholder="Write your short story here...\n\nTip: Focus on a single moment or experience. Be descriptive and emotional.")
             
             # Tags
             tags_input = st.text_input("Tags (comma-separated)",
+                                     value=initial_tags,
                                      placeholder="e.g., family, travel, achievement")
             
             # Word count display
@@ -199,78 +259,105 @@ class VignetteManager:
             
             col1, col2, col3 = st.columns(3)
             with col1:
-                publish_button = st.form_submit_button("🚀 Publish Now", 
-                                                     type="primary",
-                                                     use_container_width=True)
+                if edit_vignette:
+                    save_button = st.form_submit_button("💾 Save Changes", 
+                                                       type="primary",
+                                                       use_container_width=True)
+                else:
+                    publish_button = st.form_submit_button("🚀 Publish Now", 
+                                                         type="primary",
+                                                         use_container_width=True)
             with col2:
-                draft_button = st.form_submit_button("💾 Save as Draft",
-                                                   use_container_width=True)
+                if edit_vignette:
+                    cancel_button = st.form_submit_button("Cancel",
+                                                        type="secondary",
+                                                        use_container_width=True)
+                else:
+                    draft_button = st.form_submit_button("💾 Save as Draft",
+                                                       use_container_width=True)
             with col3:
                 cancel_button = st.form_submit_button("Cancel",
                                                     type="secondary",
                                                     use_container_width=True)
             
-            if publish_button and content.strip() and title.strip():
-                tags = [tag.strip() for tag in tags_input.split(',') if tag.strip()]
-                vignette = self.create_vignette(title, content, theme, tags, is_draft=False)
-                self.publish_vignette(vignette["id"])
+            # Handle form submission
+            if not edit_vignette:
+                if publish_button and content.strip() and title.strip():
+                    tags = [tag.strip() for tag in tags_input.split(',') if tag.strip()]
+                    vignette = self.create_vignette(title, content, theme, tags, is_draft=False)
+                    self.publish_vignette(vignette["id"])
+                    
+                    if on_publish:
+                        on_publish(vignette)
+                    
+                    st.success("🎉 Published! Your story is now live.")
+                    st.balloons()
+                    return True
                 
-                if on_publish:
-                    on_publish(vignette)
+                elif draft_button and content.strip():
+                    title_to_use = title if title.strip() else f"Draft: {theme}"
+                    tags = [tag.strip() for tag in tags_input.split(',') if tag.strip()]
+                    vignette = self.create_vignette(title_to_use, content, theme, tags, is_draft=True)
+                    
+                    if on_save_draft:
+                        on_save_draft(vignette)
+                    
+                    st.success("💾 Saved as draft!")
+                    return True
                 
-                st.success("🎉 Published! Your story is now live.")
-                st.balloons()
-                return True
+                elif cancel_button:
+                    st.rerun()
             
-            elif draft_button and content.strip():
-                title_to_use = title if title.strip() else f"Draft: {theme}"
-                tags = [tag.strip() for tag in tags_input.split(',') if tag.strip()]
-                self.create_vignette(title_to_use, content, theme, tags, is_draft=True)
-                st.success("💾 Saved as draft!")
-                return True
-            
-            elif cancel_button:
-                st.rerun()
+            else:  # Editing mode
+                if save_button and content.strip() and title.strip():
+                    tags = [tag.strip() for tag in tags_input.split(',') if tag.strip()]
+                    self.update_vignette(edit_vignette["id"], title, content, theme, tags)
+                    
+                    # Auto-publish if it was published before
+                    if edit_vignette.get("is_published", False):
+                        self.publish_vignette(edit_vignette["id"])
+                    
+                    st.success("✅ Changes saved successfully!")
+                    return True
+                
+                elif cancel_button:
+                    st.rerun()
             
             return False
     
-    def display_vignette_gallery(self, filter_by: str = "all", on_select=None):
-        """Display vignettes in a gallery"""
+    def display_vignette_gallery(self, filter_by: str = "all", on_select=None, on_edit=None, on_delete=None):
+        """Display vignettes in a gallery - NO social features, NO Most Popular"""
         
-        # Filter options
+        # Filter options - NO "Most Popular"
         filter_options = {
             "all": "All Stories",
             "published": "Published",
-            "drafts": "Drafts",
-            "popular": "Most Popular"
+            "drafts": "Drafts"
         }
         
         # Filter vignettes
         if filter_by == "published":
-            vignettes_to_show = [v for v in self.vignettes if v["is_published"]]
+            vignettes_to_show = [v for v in self.vignettes if v.get("is_published", False)]
         elif filter_by == "drafts":
-            vignettes_to_show = [v for v in self.vignettes if v["is_draft"]]
-        elif filter_by == "popular":
-            vignettes_to_show = sorted(self.vignettes, 
-                                      key=lambda x: x.get("views", 0), 
-                                      reverse=True)
+            vignettes_to_show = [v for v in self.vignettes if v.get("is_draft", False)]
         else:
             vignettes_to_show = self.vignettes
         
         if not vignettes_to_show:
-            st.info(f"No {filter_options[filter_by].lower()} yet.")
+            filter_name = filter_options.get(filter_by, "stories")
+            st.info(f"No {filter_name.lower()} yet. Create your first story!")
             return
         
         # Display in grid
         cols = st.columns(2)
         
-        for i, vignette in enumerate(vignettes_to_show[:6]):  # Show first 6
+        for i, vignette in enumerate(vignettes_to_show):
             col_idx = i % 2
             with cols[col_idx]:
-                self._display_vignette_card(vignette, on_select)
+                self._display_vignette_card(vignette, on_select, on_edit, on_delete)
     
-    def _display_vignette_card(self, vignette: Dict, on_select=None):
-        """Display a single vignette card"""
+    def _display_vignette_card(self, vignette: Dict, on_select=None, on_edit=None, on_delete=None):
+        """Display a single vignette card - NO views, NO likes"""
         with st.container():
             # Card container
             st.markdown(f"""
@@ -307,22 +394,33 @@ class VignetteManager:
             preview = vignette['content'][:100] + "..." if len(vignette['content']) > 100 else vignette['content']
             st.write(preview)
             
-            # Stats
-            col1, col2, col3 = st.columns(3)
-            with col1:
-                st.caption(f"📝 {vignette['word_count']} words")
-            with col2:
-                if vignette.get('views', 0) > 0:
-                    st.caption(f"👁️ {vignette['views']}")
-            with col3:
-                if vignette.get('likes', 0) > 0:
-                    st.caption(f"❤️ {vignette['likes']}")
+            # Stats - ONLY word count (NO views, NO likes)
+            st.caption(f"📝 {vignette['word_count']} words")
             
-            # Action buttons
-            if on_select:
-                if st.button("Read", key=f"read_{vignette['id']}", 
+            # Last updated
+            updated_date = datetime.fromisoformat(vignette.get('updated_at', vignette['created_at']))
+            st.caption(f"🕒 Updated: {updated_date.strftime('%b %d, %Y')}")
+            
+            # Action buttons - ONLY authoring tools (NO Like button)
+            button_cols = st.columns(3)
+            
+            with button_cols[0]:
+                if st.button("📖 Read", key=f"read_{vignette['id']}", 
                            use_container_width=True):
-                    on_select(vignette['id'])
+                    if on_select:
+                        on_select(vignette['id'])
+            
+            with button_cols[1]:
+                if st.button("✏️ Edit", key=f"edit_{vignette['id']}", 
+                           use_container_width=True):
+                    if on_edit:
+                        on_edit(vignette['id'])
+            
+            with button_cols[2]:
+                if st.button("🗑️ Delete", key=f"delete_{vignette['id']}", 
+                           use_container_width=True, type="secondary"):
+                    if on_delete:
+                        on_delete(vignette['id'])
             
             st.markdown("</div>", unsafe_allow_html=True)
     
@@ -353,3 +451,56 @@ class VignetteManager:
             </span>
             """
         return ""
+    
+    def display_full_vignette(self, vignette_id: str, on_back=None, on_edit=None):
+        """Display a full vignette for reading - NO social features"""
+        vignette = self.get_vignette_by_id(vignette_id)
+        
+        if not vignette:
+            st.error("Vignette not found")
+            return
+        
+        # Back button
+        col1, col2 = st.columns([1, 11])
+        with col1:
+            if st.button("←"):
+                if on_back:
+                    on_back()
+        
+        with col2:
+            st.title(vignette["title"])
+        
+        # Metadata
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.caption(f"Theme: {vignette['theme']}")
+        with col2:
+            if vignette.get("is_published"):
+                published_date = datetime.fromisoformat(vignette.get('published_at', vignette['created_at']))
+                st.caption(f"Published: {published_date.strftime('%b %d, %Y')}")
+            else:
+                created_date = datetime.fromisoformat(vignette['created_at'])
+                st.caption(f"Created: {created_date.strftime('%b %d, %Y')}")
+        with col3:
+            st.caption(f"Words: {vignette['word_count']}")
+        
+        # Tags
+        if vignette.get("tags"):
+            tags_html = " ".join([f'<span style="background-color: #f0f2f6; padding: 0.2rem 0.5rem; border-radius: 10px; margin-right: 0.5rem;">{tag}</span>' for tag in vignette["tags"]])
+            st.markdown(f"<div style='margin-bottom: 1rem;'>{tags_html}</div>", unsafe_allow_html=True)
+        
+        # Content
+        st.markdown("---")
+        st.markdown(vignette["content"])
+        st.markdown("---")
+        
+        # Authoring actions
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✏️ Edit this story", use_container_width=True):
+                if on_edit:
+                    on_edit(vignette_id)
+        with col2:
+            if st.button("📋 Back to Gallery", use_container_width=True):
+                if on_back:
+                    on_back()
