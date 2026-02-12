@@ -1,4 +1,4 @@
-# question_bank_manager.py - COMPLETE FIXED VERSION
+# question_bank_manager.py - CSV-ONLY VERSION (NO HARDCODED QUESTIONS)
 import streamlit as st
 import pandas as pd
 import json
@@ -14,7 +14,7 @@ class QuestionBankManager:
         self.default_banks_path = f"{self.base_path}/default"
         self.user_banks_path = f"{self.base_path}/users"
         
-        # FIX 1: Create ALL directories immediately
+        # Create directories
         os.makedirs(self.default_banks_path, exist_ok=True)
         os.makedirs(self.user_banks_path, exist_ok=True)
         if self.user_id:
@@ -23,48 +23,18 @@ class QuestionBankManager:
         self._init_default_banks()
     
     def _init_default_banks(self):
-        """Initialize default banks"""
-        # Copy sessions.csv if it exists
+        """Initialize default banks - CSV ONLY. NO HARDCODED QUESTIONS."""
+        # Create directories
+        os.makedirs(self.default_banks_path, exist_ok=True)
+        
+        # ONLY copy legacy sessions.csv if it exists
         if os.path.exists("sessions/sessions.csv"):
             dest = f"{self.default_banks_path}/life_story_comprehensive.csv"
             if not os.path.exists(dest):
                 shutil.copy("sessions/sessions.csv", dest)
         
-        # Create quick_memories.csv
-        quick_path = f"{self.default_banks_path}/quick_memories.csv"
-        if not os.path.exists(quick_path):
-            data = [
-                [1, "Childhood Memories", "Share your earliest memories", "What is your happiest childhood memory?", 600],
-                [1, "Childhood Memories", "", "Who was your childhood hero?", 600],
-                [2, "Family Traditions", "Tell us about your family", "What family tradition means most to you?", 600],
-                [2, "Family Traditions", "", "What lesson did your parents teach you?", 600],
-                [3, "Career Journey", "Your professional journey", "What was your dream job as a child?", 600],
-                [3, "Career Journey", "", "What's your proudest work achievement?", 600],
-                [4, "Love & Relationships", "Share your story of connection", "How did you meet your partner?", 600],
-                [4, "Love & Relationships", "", "What advice would you give about love?", 600],
-                [5, "Life Wisdom", "What life has taught you", "What's the best advice you ever received?", 600],
-                [5, "Life Wisdom", "", "What do you hope your legacy will be?", 600]
-            ]
-            df = pd.DataFrame(data, columns=["session_id", "title", "guidance", "question", "word_target"])
-            df.to_csv(quick_path, index=False)
-        
-        # Create family_heritage.csv
-        family_path = f"{self.default_banks_path}/family_heritage.csv"
-        if not os.path.exists(family_path):
-            data = [
-                [1, "Family Origins", "Explore your roots", "What do you know about your grandparents?", 700],
-                [1, "Family Origins", "", "Are there any family legends or stories passed down?", 700],
-                [2, "Family Traditions", "Celebrations and rituals", "What holiday traditions did your family observe?", 700],
-                [2, "Family Traditions", "", "How did your family celebrate special occasions?", 700],
-                [3, "Family Values", "The principles that shaped you", "What values did your family instill in you?", 700],
-                [3, "Family Values", "", "How have you passed these values to the next generation?", 700],
-                [4, "Family Challenges", "Overcoming together", "What challenges did your family face together?", 700],
-                [4, "Family Challenges", "", "How did your family support each other during difficult times?", 700],
-                [5, "Family Legacy", "What you carry forward", "What family heirlooms or stories are important to you?", 700],
-                [5, "Family Legacy", "", "How do you want your family to remember you?", 700]
-            ]
-            df = pd.DataFrame(data, columns=["session_id", "title", "guidance", "question", "word_target"])
-            df.to_csv(family_path, index=False)
+        # NO HARDCODED CSV CREATION
+        # ALL OTHER BANKS MUST BE UPLOADED DIRECTLY AS CSV FILES
     
     def load_sessions_from_csv(self, csv_path):
         """Load sessions from a CSV file"""
@@ -95,40 +65,39 @@ class QuestionBankManager:
             return []
     
     def get_default_banks(self):
-        """Get list of default banks"""
-        return [
-            {
-                "id": "life_story_comprehensive",
-                "name": "📖 Life Story - Comprehensive",
-                "description": "Complete life story journey through 13 sessions",
-                "sessions": 13,
-                "topics": 71
-            },
-            {
-                "id": "quick_memories",
-                "name": "✨ Quick Memories - 5 Sessions",
-                "description": "Shorter version focusing on key life moments",
-                "sessions": 5,
-                "topics": 25
-            },
-            {
-                "id": "family_heritage",
-                "name": "🏠 Family Heritage Focus",
-                "description": "Deep dive into family history and traditions",
-                "sessions": 8,
-                "topics": 40
-            }
-        ]
+        """Get list of default banks - AUTO-DETECT from CSV files"""
+        banks = []
+        
+        # Auto-detect all CSV files in default folder
+        if os.path.exists(self.default_banks_path):
+            for filename in os.listdir(self.default_banks_path):
+                if filename.endswith('.csv'):
+                    bank_id = filename.replace('.csv', '')
+                    
+                    # Create display name from filename
+                    name_parts = bank_id.replace('_', ' ').title()
+                    
+                    try:
+                        # Count sessions and topics
+                        df = pd.read_csv(f"{self.default_banks_path}/{filename}")
+                        sessions = df['session_id'].nunique()
+                        topics = len(df)
+                        
+                        banks.append({
+                            "id": bank_id,
+                            "name": f"📖 {name_parts}",
+                            "description": f"Loaded from {filename}",
+                            "sessions": sessions,
+                            "topics": topics
+                        })
+                    except Exception as e:
+                        st.error(f"Error reading {filename}: {e}")
+        
+        return banks
     
     def load_default_bank(self, bank_id):
-        """Load a default bank by ID"""
+        """Load a default bank by ID - AUTO from CSV"""
         filename = f"{self.default_banks_path}/{bank_id}.csv"
-        if bank_id == "life_story_comprehensive":
-            filename = f"{self.default_banks_path}/life_story_comprehensive.csv"
-        elif bank_id == "quick_memories":
-            filename = f"{self.default_banks_path}/quick_memories.csv"
-        elif bank_id == "family_heritage":
-            filename = f"{self.default_banks_path}/family_heritage.csv"
         
         if os.path.exists(filename):
             return self.load_sessions_from_csv(filename)
@@ -157,12 +126,11 @@ class QuestionBankManager:
             json.dump(banks, f, indent=2)
     
     def create_custom_bank(self, name, description="", copy_from=None):
-        """Create a new custom bank - FIXED VERSION"""
+        """Create a new custom bank"""
         if not self.user_id:
             st.error("You must be logged in")
             return None
         
-        # FIX: Ensure user directory exists before saving
         user_dir = f"{self.user_banks_path}/{self.user_id}"
         os.makedirs(user_dir, exist_ok=True)
         
@@ -253,10 +221,20 @@ class QuestionBankManager:
                 st.info("🔐 Please log in to create custom question banks")
     
     def _display_default_banks(self):
-        """Display default banks with load buttons - ORIGINAL GRID LAYOUT"""
+        """Display default banks with load buttons - AUTO-DETECTED FROM CSV"""
         banks = self.get_default_banks()
         
-        # 2-COLUMN GRID - EXACTLY AS ORIGINAL
+        if not banks:
+            st.info("📁 No CSV files found in question_banks/default/")
+            st.markdown("""
+            **To add default banks:**
+            1. Upload CSV files to `question_banks/default/` folder
+            2. Format must match: session_id, title, guidance, question, word_target
+            3. Refresh this page
+            """)
+            return
+        
+        # 2-COLUMN GRID
         cols = st.columns(2)
         for i, bank in enumerate(banks):
             with cols[i % 2]:
@@ -269,30 +247,36 @@ class QuestionBankManager:
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    if st.button(f"📂 Load Bank", key=f"load_default_{bank['id']}", 
-                               use_container_width=True, type="primary"):
-                        sessions = self.load_default_bank(bank['id'])
-                        if sessions:
-                            st.session_state.current_question_bank = sessions
-                            st.session_state.current_bank_name = bank['name']
-                            st.session_state.current_bank_type = "default"
-                            st.session_state.current_bank_id = bank['id']
-                            
-                            # FIX: ADD SUCCESS MESSAGE HERE
-                            st.success(f"✅ Loaded '{bank['name']}'")
-                            
-                            # Initialize responses
-                            for session in sessions:
-                                session_id = session["id"]
-                                if session_id not in st.session_state.responses:
-                                    st.session_state.responses[session_id] = {
-                                        "title": session["title"],
-                                        "questions": {},
-                                        "summary": "",
-                                        "completed": False,
-                                        "word_target": session.get("word_target", 500)
-                                    }
-                            st.rerun()
+                    # Show loaded status if this bank is currently loaded
+                    is_loaded = st.session_state.get('current_bank_id') == bank['id']
+                    button_label = "✅ Loaded" if is_loaded else "📂 Load Question Bank"
+                    button_type = "secondary" if is_loaded else "primary"
+                    
+                    if st.button(button_label, key=f"load_default_{bank['id']}", 
+                               use_container_width=True, type=button_type):
+                        if not is_loaded:  # Only load if not already loaded
+                            sessions = self.load_default_bank(bank['id'])
+                            if sessions:
+                                st.session_state.current_question_bank = sessions
+                                st.session_state.current_bank_name = bank['name']
+                                st.session_state.current_bank_type = "default"
+                                st.session_state.current_bank_id = bank['id']
+                                
+                                # Success message
+                                st.success(f"✅ Question Bank Loaded: '{bank['name']}'")
+                                
+                                # Initialize responses
+                                for session in sessions:
+                                    session_id = session["id"]
+                                    if session_id not in st.session_state.responses:
+                                        st.session_state.responses[session_id] = {
+                                            "title": session["title"],
+                                            "questions": {},
+                                            "summary": "",
+                                            "completed": False,
+                                            "word_target": session.get("word_target", 500)
+                                        }
+                                st.rerun()
     
     def _display_my_banks(self):
         """Display user's custom banks"""
@@ -316,30 +300,33 @@ class QuestionBankManager:
                 
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
-                    if st.button("📂 Load", key=f"load_user_{bank['id']}", 
-                               use_container_width=True, type="primary"):
-                        sessions = self.load_user_bank(bank['id'])
-                        if sessions:
-                            st.session_state.current_question_bank = sessions
-                            st.session_state.current_bank_name = bank['name']
-                            st.session_state.current_bank_type = "custom"
-                            st.session_state.current_bank_id = bank['id']
-                            
-                            # FIX: ADD SUCCESS MESSAGE HERE
-                            st.success(f"✅ Loaded '{bank['name']}'")
-                            
-                            # Initialize responses
-                            for session in sessions:
-                                session_id = session["id"]
-                                if session_id not in st.session_state.responses:
-                                    st.session_state.responses[session_id] = {
-                                        "title": session["title"],
-                                        "questions": {},
-                                        "summary": "",
-                                        "completed": False,
-                                        "word_target": session.get("word_target", 500)
-                                    }
-                            st.rerun()
+                    is_loaded = st.session_state.get('current_bank_id') == bank['id']
+                    button_label = "✅ Loaded" if is_loaded else "📂 Load Question Bank"
+                    button_type = "secondary" if is_loaded else "primary"
+                    
+                    if st.button(button_label, key=f"load_user_{bank['id']}", 
+                               use_container_width=True, type=button_type):
+                        if not is_loaded:
+                            sessions = self.load_user_bank(bank['id'])
+                            if sessions:
+                                st.session_state.current_question_bank = sessions
+                                st.session_state.current_bank_name = bank['name']
+                                st.session_state.current_bank_type = "custom"
+                                st.session_state.current_bank_id = bank['id']
+                                
+                                st.success(f"✅ Question Bank Loaded: '{bank['name']}'")
+                                
+                                for session in sessions:
+                                    session_id = session["id"]
+                                    if session_id not in st.session_state.responses:
+                                        st.session_state.responses[session_id] = {
+                                            "title": session["title"],
+                                            "questions": {},
+                                            "summary": "",
+                                            "completed": False,
+                                            "word_target": session.get("word_target", 500)
+                                        }
+                                st.rerun()
                 
                 with col2:
                     if st.button("✏️ Edit", key=f"edit_user_{bank['id']}", 
@@ -362,7 +349,7 @@ class QuestionBankManager:
                             st.rerun()
     
     def _display_create_bank_form(self):
-        """Display form to create new bank - FIXED VERSION"""
+        """Display form to create new bank"""
         st.markdown("### Create New Question Bank")
         
         with st.form("create_bank_form"):
