@@ -1,4 +1,4 @@
-# biographer.py – Tell My Story App (FULLY FIXED VERSION)
+# biographer.py – Tell My Story App (FULLY FIXED WITH WORKING BANK MANAGER)
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -870,7 +870,7 @@ def show_session_manager():
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================================
-# QUESTION BANK UI FUNCTIONS
+# QUESTION BANK UI FUNCTIONS - FIXED VERSIONS
 # ============================================================================
 
 def show_bank_manager():
@@ -881,7 +881,7 @@ def show_bank_manager():
         st.session_state.show_bank_manager = False
         return
     
-    # Get user_id - this should now be set if logged in
+    # Get user_id
     user_id = st.session_state.get('user_id', None)
     
     # Create QB Manager with user_id
@@ -896,7 +896,7 @@ def show_bank_manager():
             st.session_state.show_bank_manager = False
             st.rerun()
     
-    # Display the bank selector - it will handle login status internally
+    # Display the bank selector
     st.session_state.qb_manager.display_bank_selector()
     
     st.markdown('</div>', unsafe_allow_html=True)
@@ -917,6 +917,7 @@ def show_bank_editor():
     
     st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
     
+    # Display the bank editor
     st.session_state.qb_manager.display_bank_editor(st.session_state.editing_bank_id)
     
     st.markdown('</div>', unsafe_allow_html=True)
