@@ -1357,34 +1357,51 @@ except Exception as e:
 st.markdown("---")
 
 # ============================================================================
-# QUILL RICH TEXT EDITOR - DOCUMENTATION VERSION
+# QUILL RICH TEXT EDITOR - DEBUG VERSION
 # ============================================================================
 
+st.write("Debug: Importing st_quill")
 from streamlit_quill import st_quill
+st.write("Debug: Import successful")
 
 # Create a unique key for this editor
 editor_key = f"quill_{current_session_id}_{current_question_text[:20]}"
+st.write(f"Debug: Editor key = {editor_key}")
 
 # Initialize session state for this editor's content
 if f"{editor_key}_content" not in st.session_state:
+    st.write("Debug: Initializing session state")
     if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
         st.session_state[f"{editor_key}_content"] = existing_answer
     else:
         st.session_state[f"{editor_key}_content"] = ""
 
-# Display the editor - EXACT DOCUMENTATION SYNTAX
-content = st_quill(
-    value=st.session_state[f"{editor_key}_content"],
-    key=editor_key,
-    height=500,
-    placeholder="Write your story here..."
-)
+st.write("Debug: About to call st_quill")
 
-# Update session state when editor changes
-if content != st.session_state[f"{editor_key}_content"]:
-    st.session_state[f"{editor_key}_content"] = content
+try:
+    # Try without any parameters first
+    content = st_quill()
+    st.write("Debug: st_quill called successfully with no params")
+except Exception as e:
+    st.error(f"Debug - Error with no params: {type(e).__name__}: {str(e)}")
     
-user_input = content
+    try:
+        # Try with just value
+        content = st_quill(st.session_state[f"{editor_key}_content"])
+        st.write("Debug: st_quill called successfully with value only")
+    except Exception as e2:
+        st.error(f"Debug - Error with value only: {type(e2).__name__}: {str(e2)}")
+        
+        try:
+            # Try with value and key
+            content = st_quill(st.session_state[f"{editor_key}_content"], editor_key)
+            st.write("Debug: st_quill called successfully with value and key")
+        except Exception as e3:
+            st.error(f"Debug - Error with value and key: {type(e3).__name__}: {str(e3)}")
+            st.stop()
+
+st.write("Debug: st_quill succeeded")
+user_input = content if content else ""
 
 # ============================================================================
 # IMAGE UPLOAD SECTION - WITH INSERT BUTTON
