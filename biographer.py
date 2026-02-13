@@ -1322,40 +1322,30 @@ if st.session_state.logged_in:
     existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
 
 # ============================================================================
-# SINGLE QUILL EDITOR - POSITIONAL ARGUMENTS VERSION (WORKS)
+# QUILL EDITOR - MINIMAL VERSION
 # ============================================================================
 
-# Create a unique key for this editor
 editor_key = f"quill_{current_session_id}_{current_question_text[:20]}"
-content_key = f"{editor_key}_content"
 
-# Initialize session state for this editor's content
-if content_key not in st.session_state:
-    if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
-        st.session_state[content_key] = existing_answer
+if f"{editor_key}_content" not in st.session_state:
+    if existing_answer:
+        st.session_state[f"{editor_key}_content"] = existing_answer
     else:
-        st.session_state[content_key] = ""
+        st.session_state[f"{editor_key}_content"] = ""
 
 st.markdown("### ✍️ Your Story")
-st.markdown("""
-<div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #36cfc9;">
-    📸 <strong>Drag & drop images</strong> directly into the editor. They will appear exactly where you place them.
-</div>
-""", unsafe_allow_html=True)
+st.markdown("Drag & drop images directly into the editor.")
 
-# ONE Quill editor - POSITIONAL ARGUMENTS ONLY - THIS WORKS
+# MINIMAL - just value and key
 content = st_quill(
-    st.session_state[content_key],
-    editor_key,
-    height=500
+    st.session_state[f"{editor_key}_content"],
+    editor_key
 )
 
-# Update session state when editor changes
-if content != st.session_state[content_key]:
-    st.session_state[content_key] = content
+if content:
+    st.session_state[f"{editor_key}_content"] = content
 
-# This is your ONE source of truth for editor content
-user_input = st.session_state[content_key]
+user_input = st.session_state[f"{editor_key}_content"]
 
 st.markdown("---")
 
