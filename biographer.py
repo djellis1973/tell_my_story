@@ -104,7 +104,7 @@ EMAIL_CONFIG = {
 }
 
 # ============================================================================
-# IMAGE HANDLER (YOUR ORIGINAL WORKING VERSION)
+# IMAGE HANDLER - COMPLETE WORKING VERSION
 # ============================================================================
 class ImageHandler:
     def __init__(self, user_id=None):
@@ -128,9 +128,11 @@ class ImageHandler:
             if img.mode == 'RGBA': 
                 img = img.convert('RGB')
             
+            # Save full image
             main_buffer = io.BytesIO()
             img.save(main_buffer, format="JPEG", quality=85, optimize=True)
             
+            # Save thumbnail
             img.thumbnail((200, 200))
             thumb_buffer = io.BytesIO()
             img.save(thumb_buffer, format="JPEG", quality=70, optimize=True)
@@ -141,6 +143,7 @@ class ImageHandler:
             with open(f"{user_path}/thumbnails/{image_id}.jpg", 'wb') as f: 
                 f.write(thumb_buffer.getvalue())
             
+            # Save metadata
             metadata = {
                 "id": image_id, 
                 "session_id": session_id, 
@@ -183,6 +186,31 @@ class ImageHandler:
             }
         except:
             return None
+    
+    def get_image_base64(self, image_id):
+        """Get base64 string of an image (for export)"""
+        try:
+            user_path = self.get_user_path()
+            path = f"{user_path}/{image_id}.jpg"
+            if not os.path.exists(path): 
+                return None
+            with open(path, 'rb') as f: 
+                image_data = f.read()
+            return base64.b64encode(image_data).decode()
+        except:
+            return None
+    
+    def get_image_caption(self, image_id):
+        """Get caption for an image"""
+        meta_path = f"{self.base_path}/metadata/{image_id}.json"
+        if os.path.exists(meta_path):
+            try:
+                with open(meta_path, 'r') as f:
+                    metadata = json.load(f)
+                    return metadata.get("caption", "")
+            except:
+                pass
+        return ""
     
     def get_images_for_answer(self, session_id, question_text):
         images = []
@@ -251,7 +279,6 @@ def init_image_handler():
     if not st.session_state.image_handler or st.session_state.image_handler.user_id != st.session_state.get('user_id'):
         st.session_state.image_handler = ImageHandler(st.session_state.get('user_id'))
     return st.session_state.image_handler
-
 # ============================================================================
 # AUTHENTICATION FUNCTIONS (YOUR ORIGINAL)
 # ============================================================================
