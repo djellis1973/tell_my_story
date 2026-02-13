@@ -21,8 +21,7 @@ import io
 # IMPORT QUILL RICH TEXT EDITOR
 # ============================================================================
 try:
-    from streamlit_quill import streamlit_quill
-    st_quill = streamlit_quill
+    from streamlit_quill import st_quill
     QUILL_AVAILABLE = True
 except ImportError as e:
     st.error(f"❌ Import error: {str(e)}")
