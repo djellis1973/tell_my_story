@@ -1,4 +1,4 @@
-# biographer.py – Tell My Story App (COMPLETE WORKING VERSION WITH QUILL)
+# biographer.py – Tell My Story App (COMPLETE WITH CKEDITOR)
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -18,13 +18,13 @@ from PIL import Image
 import io
 
 # ============================================================================
-# IMPORT QUILL RICH TEXT EDITOR
+# IMPORT CKEDITOR RICH TEXT EDITOR
 # ============================================================================
 try:
-    from streamlit_quill import st_quill
-    QUILL_AVAILABLE = True
+    from streamlit_ckeditor import st_ckeditor
+    CKEDITOR_AVAILABLE = True
 except ImportError:
-    st.error("❌ Please install streamlit-quill: add 'streamlit-quill' to requirements.txt")
+    st.error("❌ Please install streamlit-ckeditor: add 'streamlit-ckeditor' to requirements.txt")
     st.stop()
 
 # ============================================================================
@@ -60,7 +60,7 @@ DEFAULT_WORD_TARGET = 500
 client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY")))
 beta_reader = BetaReader(client) if BetaReader else None
 
-# Initialize session state
+# Initialize session state (SAME AS YOUR ORIGINAL)
 default_state = {
     "qb_manager": None, "qb_manager_initialized": False, "user_id": None, "logged_in": False,
     "current_session": 0, "current_question": 0, "responses": {}, "editing": False,
@@ -104,7 +104,7 @@ EMAIL_CONFIG = {
 }
 
 # ============================================================================
-# IMAGE HANDLER (FULL VERSION - UNCHANGED)
+# IMAGE HANDLER (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 class ImageHandler:
@@ -254,7 +254,7 @@ def init_image_handler():
     return st.session_state.image_handler
 
 # ============================================================================
-# AUTHENTICATION FUNCTIONS (UNCHANGED)
+# AUTHENTICATION FUNCTIONS (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 def generate_password(length=12):
@@ -446,7 +446,7 @@ def save_user_data(user_id, responses_data):
         return False
 
 # ============================================================================
-# CORE RESPONSE FUNCTIONS - MODIFIED TO HANDLE HTML FROM QUILL
+# CORE RESPONSE FUNCTIONS - MODIFIED TO HANDLE HTML
 # ============================================================================
 
 def save_response(session_id, question, answer):
@@ -480,7 +480,7 @@ def save_response(session_id, question, answer):
         images = st.session_state.image_handler.get_images_for_answer(session_id, question)
     
     st.session_state.responses[session_id]["questions"][question] = {
-        "answer": answer,  # Store HTML directly from Quill
+        "answer": answer,  # Store HTML directly
         "question": question, 
         "timestamp": datetime.now().isoformat(),
         "answer_index": 1, 
@@ -600,7 +600,7 @@ def search_all_answers(search_query):
     return results
 
 # ============================================================================
-# QUESTION BANK LOADING (UNCHANGED)
+# QUESTION BANK LOADING (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 def initialize_question_bank():
@@ -680,7 +680,7 @@ def load_question_bank(sessions, bank_name, bank_type, bank_id=None):
             }
 
 # ============================================================================
-# BETA READER FUNCTIONS (UNCHANGED)
+# BETA READER FUNCTIONS (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 def generate_beta_reader_feedback(session_title, session_text, feedback_type="comprehensive"):
@@ -699,7 +699,7 @@ def get_previous_beta_feedback(user_id, session_id):
     return beta_reader.get_previous_feedback(user_id, session_id, get_user_filename, load_user_data)
 
 # ============================================================================
-# VIGNETTE FUNCTIONS (UNCHANGED)
+# VIGNETTE FUNCTIONS (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 def on_vignette_select(vignette_id):
@@ -808,7 +808,7 @@ def switch_to_custom_topic(topic_text):
     st.rerun()
 
 # ============================================================================
-# TOPIC BROWSER & SESSION MANAGER (UNCHANGED)
+# TOPIC BROWSER & SESSION MANAGER (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 def show_topic_browser():
@@ -861,7 +861,7 @@ def show_session_manager():
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================================
-# QUESTION BANK UI FUNCTIONS (UNCHANGED)
+# QUESTION BANK UI FUNCTIONS (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 def show_bank_manager():
@@ -927,7 +927,7 @@ if not SESSIONS:
     st.stop()
 
 # ============================================================================
-# PROFILE SETUP MODAL (UNCHANGED)
+# PROFILE SETUP MODAL (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 if st.session_state.get('show_profile_setup', False):
@@ -960,7 +960,7 @@ if st.session_state.get('show_profile_setup', False):
     st.stop()
 
 # ============================================================================
-# AUTHENTICATION UI (UNCHANGED)
+# AUTHENTICATION UI (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 if not st.session_state.logged_in:
@@ -1044,7 +1044,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ============================================================================
-# MODAL HANDLING (UNCHANGED)
+# MODAL HANDLING (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 if st.session_state.show_bank_manager: 
@@ -1088,7 +1088,7 @@ if st.session_state.show_session_creator:
 st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
 
 # ============================================================================
-# SIDEBAR (UNCHANGED)
+# SIDEBAR (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 with st.sidebar:
@@ -1262,7 +1262,7 @@ with st.sidebar:
             st.info("No matches found")
 
 # ============================================================================
-# MAIN CONTENT AREA - QUILL RICH TEXT EDITOR (DRAG & DROP IMAGES)
+# MAIN CONTENT AREA - CKEDITOR RICH TEXT EDITOR (DRAG & DROP IMAGES)
 # ============================================================================
 
 if st.session_state.current_session >= len(SESSIONS): 
@@ -1322,13 +1322,13 @@ if st.session_state.logged_in:
     existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
 
 # ============================================================================
-# QUILL RICH TEXT EDITOR - DRAG & DROP IMAGES DIRECTLY INTO EDITOR
+# CKEDITOR RICH TEXT EDITOR - PROFESSIONAL WYSIWYG
 # ============================================================================
 
 st.markdown("### ✍️ Your Story")
 st.markdown("""
 <div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #36cfc9;">
-    📸 <strong>Drag & drop images</strong> directly into the editor. They will appear exactly where you place them.
+    📸 <strong>Drag & drop images</strong> directly into the editor. You can also use the image button in the toolbar.
 </div>
 """, unsafe_allow_html=True)
 
@@ -1336,18 +1336,42 @@ st.markdown("""
 if not existing_answer:
     existing_answer = "<p>Start writing your story here...</p>"
 
-user_input = st_quill(
+# CKEditor configuration
+ckeditor_config = {
+    "toolbar": [
+        {"name": "basicstyles", "items": ["Bold", "Italic", "Underline", "Strike", "-", "RemoveFormat"]},
+        {"name": "paragraph", "items": ["NumberedList", "BulletedList", "-", "Outdent", "Indent", "-", "Blockquote"]},
+        {"name": "links", "items": ["Link", "Unlink"]},
+        {"name": "insert", "items": ["Image", "Table", "HorizontalRule"]},
+        {"name": "styles", "items": ["Format", "FontSize"]},
+        {"name": "colors", "items": ["TextColor", "BGColor"]},
+        {"name": "tools", "items": ["Maximize"]},
+        {"name": "document", "items": ["Source"]}
+    ],
+    "height": 500,
+    "width": "100%",
+    "removePlugins": "exportpdf",
+    "extraPlugins": "uploadimage,image2",
+    "uploadUrl": "/",  # This enables drag & drop
+    "image2_alignClasses": ["image-left", "image-center", "image-right"],
+    "image2_captionsEnabled": True,
+    "contentsCss": "https://cdn.ckeditor.com/ckeditor5/34.0.0/classic/ckeditor.css",
+    "bodyClass": "document-editor",
+    "startupFocus": False
+}
+
+user_input = st_ckeditor(
+    label="Story Editor",
     value=existing_answer,
-    key=f"quill_{current_session_id}_{hash(current_question_text)}",
-    height=500,
-    placeholder="Write your story... Drag and drop images here!",
-    html=True
+    key=f"ckeditor_{current_session_id}_{hash(current_question_text)}",
+    config=ckeditor_config,
+    height=500
 )
 
 st.markdown("---")
 
 # ============================================================================
-# IMAGE UPLOAD SECTION - Legacy uploader (still works with Quill)
+# IMAGE UPLOAD SECTION - Legacy uploader (still works with CKEditor)
 # ============================================================================
 if st.session_state.logged_in and st.session_state.image_handler:
     
@@ -1411,7 +1435,7 @@ if st.session_state.logged_in and st.session_state.image_handler:
 col1, col2, col3 = st.columns([1, 1, 2])
 with col1:
     if st.button("💾 Save Story", key="save_ans", type="primary", use_container_width=True):
-        if user_input and user_input.strip() and user_input != "<p><br></p>" and user_input != "<p>Start writing your story here...</p>":
+        if user_input and user_input.strip() and user_input != "<p>Start writing your story here...</p>":
             with st.spinner("Saving your story..."):
                 if save_response(current_session_id, current_question_text, user_input):
                     st.success("✅ Story saved!")
@@ -1449,14 +1473,14 @@ st.divider()
 # ============================================================================
 # PREVIEW SECTION - Show rendered HTML
 # ============================================================================
-if user_input and user_input != "<p><br></p>" and user_input != "<p>Start writing your story here...</p>":
+if user_input and user_input != "<p>Start writing your story here...</p>":
     with st.expander("👁️ Preview your story", expanded=False):
         st.markdown("### 📖 Preview")
         st.markdown(user_input, unsafe_allow_html=True)
         st.markdown("---")
 
 # ============================================================================
-# BETA READER SECTION (UNCHANGED)
+# BETA READER SECTION (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 st.subheader("🦋 Beta Reader Feedback")
@@ -1503,7 +1527,7 @@ else:
 st.divider()
 
 # ============================================================================
-# SESSION PROGRESS (UNCHANGED)
+# SESSION PROGRESS (YOUR ORIGINAL CODE - UNCHANGED)
 # ============================================================================
 
 progress_info = get_progress_info(current_session_id)
