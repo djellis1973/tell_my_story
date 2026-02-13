@@ -1,4 +1,4 @@
-# biographer.py – Tell My Story App (COMPLETE WORKING VERSION WITH FIXED IMAGES)
+# biographer.py – Tell My Story App (COMPLETE WORKING VERSION)
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -73,7 +73,7 @@ default_state = {
     "current_bank_id": None, "show_bank_manager": False, "show_bank_editor": False,
     "editing_bank_id": None, "editing_bank_name": None, "qb_manager": None, "qb_manager_initialized": False,
     "confirm_delete": None, "user_account": None, "show_profile_setup": False,
-    "image_handler": None, "show_image_manager": False
+    "image_handler": None, "show_image_manager": False, "publisher_data": None
 }
 for key, value in default_state.items():
     if key not in st.session_state:
@@ -435,7 +435,7 @@ def logout_user():
             'selected_vignette_for_session', 'published_vignette', 'show_beta_reader',
             'current_beta_feedback', 'current_question_bank', 'current_bank_name',
             'current_bank_type', 'current_bank_id', 'show_bank_manager', 'show_bank_editor',
-            'editing_bank_id', 'editing_bank_name', 'show_image_manager']
+            'editing_bank_id', 'editing_bank_name', 'show_image_manager', 'publisher_data']
     for key in keys:
         if key in st.session_state: 
             del st.session_state[key]
@@ -1231,13 +1231,28 @@ with st.sidebar:
                               mime="application/json", 
                               use_container_width=True)
             
-            # Add a button to open the publisher
+            # FIXED: Simple download button for the publisher
             st.divider()
-            if st.button("📚 Open Biography Publisher", use_container_width=True, type="primary"):
-                # Encode data for URL
-                encoded = base64.b64encode(json_data.encode()).decode()
-                publisher_url = f"https://your-publisher-url.com?data={encoded}"  # Replace with actual URL
-                st.markdown(f'<a href="{publisher_url}" target="_blank">Click here to open Publisher</a>', unsafe_allow_html=True)
+            st.markdown("### 📚 Biography Publisher")
+            st.info("Download your data and upload it to the Biography Publisher app")
+            
+            # Store in session state for potential use
+            st.session_state.publisher_data = complete_data
+            
+            # Create a downloadable file for the publisher
+            publisher_filename = f"for_publisher_{st.session_state.user_id}.json"
+            st.download_button(
+                label="📥 Download for Publisher",
+                data=json_data,
+                file_name=publisher_filename,
+                mime="application/json",
+                use_container_width=True,
+                key="publisher_download",
+                type="primary"
+            )
+            
+            # Add link to publisher app (user needs to deploy it separately)
+            st.caption("Once downloaded, open the Biography Publisher app and upload this file")
         else: 
             st.warning("No data to export yet!")
     else: 
