@@ -1322,7 +1322,7 @@ if st.session_state.logged_in:
     existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
 
 # ============================================================================
-# QUILL RICH TEXT EDITOR - DRAG & DROP IMAGES DIRECTLY INTO EDITOR
+# QUILL RICH TEXT EDITOR - DRAG & DROP IMAGES
 # ============================================================================
 
 st.markdown("### ✍️ Your Story")
@@ -1336,12 +1336,11 @@ st.markdown("""
 if not existing_answer:
     existing_answer = "<p>Start writing your story here...</p>"
 
+# SIMPLE VERSION - no extra parameters
 user_input = st_quill(
-    value=existing_answer if existing_answer else "<p>Start writing...</p>",
+    existing_answer,
     key=f"quill_{current_session_id}_{hash(current_question_text)}",
-    height=400,
-    placeholder="Write your story... Drag images here!"
-    # Remove html=True - it doesn't take this parameter
+    height=400
 )
 
 st.markdown("---")
