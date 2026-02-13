@@ -1322,7 +1322,7 @@ if st.session_state.logged_in:
     existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
 
 # ============================================================================
-# SINGLE QUILL EDITOR - WITH PROPER SESSION STATE MANAGEMENT
+# SINGLE QUILL EDITOR - POSITIONAL ARGUMENTS VERSION (WORKS)
 # ============================================================================
 
 # Create a unique key for this editor
@@ -1334,7 +1334,7 @@ if content_key not in st.session_state:
     if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
         st.session_state[content_key] = existing_answer
     else:
-        st.session_state[content_key] = "<p>Start writing your story here...</p>"
+        st.session_state[content_key] = ""
 
 st.markdown("### ✍️ Your Story")
 st.markdown("""
@@ -1343,12 +1343,11 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ONE Quill editor - with proper parameters
+# ONE Quill editor - POSITIONAL ARGUMENTS ONLY - THIS WORKS
 content = st_quill(
-    value=st.session_state[content_key],
-    key=editor_key,
-    height=500,
-    placeholder="Write your story here..."
+    st.session_state[content_key],
+    editor_key,
+    height=500
 )
 
 # Update session state when editor changes
