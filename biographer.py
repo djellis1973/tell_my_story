@@ -1325,24 +1325,35 @@ if st.session_state.logged_in:
 # QUILL RICH TEXT EDITOR - DRAG & DROP IMAGES
 # ============================================================================
 
-st.markdown("### ✍️ Your Story")
-st.markdown("""
-<div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #36cfc9;">
-    📸 <strong>Drag & drop images</strong> directly into the editor. They will appear exactly where you place them.
-</div>
-""", unsafe_allow_html=True)
-
-# Set default value
-if not existing_answer:
-    existing_answer = "<p>Start writing your story here...</p>"
-
-# SIMPLE VERSION - no extra parameters
-user_input = st_quill(
-    existing_answer,
-    key=f"quill_{current_session_id}_{hash(current_question_text)}",
-    height=400
-)
-
+try:
+    from streamlit_quill import st_quill
+    
+    st.markdown("### ✍️ Your Story")
+    st.markdown("""
+    <div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #36cfc9;">
+        📸 <strong>Drag & drop images</strong> directly into the editor. They will appear exactly where you place them.
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Set default value
+    if not existing_answer:
+        existing_answer = "<p>Start writing your story here...</p>"
+    
+    # Show the editor
+    user_input = st_quill(
+        existing_answer, 
+        key=f"quill_{current_session_id}_{current_question_text[:20]}"
+    )
+    QUILL_WORKING = True
+    
+except Exception as e:
+    st.error(f"Quill editor error: {str(e)}")
+    # Fallback to text area
+    user_input = st.text_area(
+        "Write your story here:",
+        value=existing_answer,
+        height=400
+    )
 st.markdown("---")
 
 # ============================================================================
