@@ -1262,7 +1262,7 @@ with st.sidebar:
             st.info("No matches found")
 
 # ============================================================================
-# MAIN CONTENT AREA - QUILL RICH TEXT EDITOR (DRAG & DROP IMAGES)
+# MAIN CONTENT AREA - SINGLE QUILL EDITOR WITH INSERT BUTTON
 # ============================================================================
 
 if st.session_state.current_session >= len(SESSIONS): 
@@ -1322,69 +1322,43 @@ if st.session_state.logged_in:
     existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
 
 # ============================================================================
-# QUILL RICH TEXT EDITOR - DRAG & DROP IMAGES
+# SINGLE QUILL EDITOR - WITH PROPER SESSION STATE MANAGEMENT
 # ============================================================================
-
-try:
-    from streamlit_quill import st_quill
-    
-    st.markdown("### ✍️ Your Story")
-    st.markdown("""
-    <div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #36cfc9;">
-        📸 <strong>Drag & drop images</strong> directly into the editor. They will appear exactly where you place them.
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Set default value
-    if not existing_answer:
-        existing_answer = "<p>Start writing your story here...</p>"
-    
-    # Show the editor
-    user_input = st_quill(
-        existing_answer, 
-        key=f"quill_{current_session_id}_{current_question_text[:20]}"
-    )
-    QUILL_WORKING = True
-    
-except Exception as e:
-    st.error(f"Quill editor error: {str(e)}")
-    # Fallback to text area
-    user_input = st.text_area(
-        "Write your story here:",
-        value=existing_answer,
-        height=400
-    )
-st.markdown("---")
-
-# ============================================================================
-# QUILL RICH TEXT EDITOR - WORKING VERSION
-# ============================================================================
-
-from streamlit_quill import st_quill
 
 # Create a unique key for this editor
 editor_key = f"quill_{current_session_id}_{current_question_text[:20]}"
+content_key = f"{editor_key}_content"
 
 # Initialize session state for this editor's content
-if f"{editor_key}_content" not in st.session_state:
+if content_key not in st.session_state:
     if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
-        st.session_state[f"{editor_key}_content"] = existing_answer
+        st.session_state[content_key] = existing_answer
     else:
-        st.session_state[f"{editor_key}_content"] = ""
+        st.session_state[content_key] = "<p>Start writing your story here...</p>"
 
-# Display the editor - NO PARAMETERS
-content = st_quill()
+st.markdown("### ✍️ Your Story")
+st.markdown("""
+<div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #36cfc9;">
+    📸 <strong>Drag & drop images</strong> directly into the editor. They will appear exactly where you place them.
+</div>
+""", unsafe_allow_html=True)
 
-# The widget returns HTML content - store it in session state
-if content:
-    st.session_state[f"{editor_key}_content"] = content
+# ONE Quill editor - with proper parameters
+content = st_quill(
+    value=st.session_state[content_key],
+    key=editor_key,
+    height=500,
+    placeholder="Write your story here..."
+)
 
-# For display/use elsewhere, use the session state value
-user_input = st.session_state[f"{editor_key}_content"]
+# Update session state when editor changes
+if content != st.session_state[content_key]:
+    st.session_state[content_key] = content
 
-# Optional: Show a message if editor is empty
-if not user_input:
-    st.info("Start writing your story above...")
+# This is your ONE source of truth for editor content
+user_input = st.session_state[content_key]
+
+st.markdown("---")
 
 # ============================================================================
 # IMAGE UPLOAD SECTION - WITH INSERT BUTTON
@@ -1415,19 +1389,60 @@ if st.session_state.logged_in and st.session_state.image_handler:
                     caption_html = f"<p style='font-style: italic; color: #555; margin-top: 5px; margin-bottom: 15px;'>📝 {caption_text}</p>" if caption_text else ""
                     
                     # Get current content from session state
-                    current_content = st.session_state.get(f"{editor_key}_content", "")
+                    current_content = st.session_state.get(content_key, "")
+                    
+                    # Remove default placeholder if present
+                    if current_content == "<p>Start writing your story here...</p>":
+                        current_content = ""
                     
                     # Append image + caption to editor
-                    if current_content and current_content != "<p>Start writing your story here...</p>":
+                    if current_content:
                         new_content = current_content + "<br><br>" + img_html + caption_html
                     else:
                         new_content = img_html + caption_html
                     
                     # Update session state
-                    st.session_state[f"{editor_key}_content"] = new_content
+                    st.session_state[content_key] = new_content
                     st.rerun()
         
         st.markdown("---")
+    
+    # Upload new images
+    with st.expander("📤 Upload New Photos", expanded=len(existing_images) == 0):
+        st.markdown("**Add new photos to your story:**")
+        
+        uploaded_file = st.file_uploader(
+            "Choose an image...", 
+            type=['jpg', 'jpeg', 'png'], 
+            key=f"up_{current_session_id}_{hash(current_question_text)}",
+            label_visibility="collapsed"
+        )
+        
+        if uploaded_file:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                caption = st.text_input(
+                    "Caption / Description:",
+                    placeholder="What does this photo show? When was it taken?",
+                    key=f"cap_{current_session_id}_{hash(current_question_text)}"
+                )
+            with col2:
+                if st.button("📤 Upload", key=f"btn_{current_session_id}_{hash(current_question_text)}", type="primary", use_container_width=True):
+                    with st.spinner("Uploading..."):
+                        result = st.session_state.image_handler.save_image(
+                            uploaded_file, 
+                            current_session_id, 
+                            current_question_text, 
+                            caption
+                        )
+                        if result:
+                            st.success("✅ Photo uploaded!")
+                            time.sleep(1.5)
+                            st.rerun()
+                        else:
+                            st.error("Upload failed")
+    
+    st.markdown("---")
 
 # ============================================================================
 # SAVE BUTTONS
