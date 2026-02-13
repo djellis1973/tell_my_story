@@ -1337,11 +1337,11 @@ if not existing_answer:
     existing_answer = "<p>Start writing your story here...</p>"
 
 user_input = st_quill(
-    value=existing_answer,
+    value=existing_answer if existing_answer else "<p>Start writing...</p>",
     key=f"quill_{current_session_id}_{hash(current_question_text)}",
-    height=500,
-    placeholder="Write your story... Drag and drop images here!",
-    html=True
+    height=400,
+    placeholder="Write your story... Drag images here!"
+    # Remove html=True - it doesn't take this parameter
 )
 
 st.markdown("---")
