@@ -1365,15 +1365,15 @@ editor_key = f"quill_{current_session_id}_{current_question_text[:20]}"
 
 # Initialize session state for this editor's content
 if f"{editor_key}_content" not in st.session_state:
-    if existing_answer:
+    if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
         st.session_state[f"{editor_key}_content"] = existing_answer
     else:
         st.session_state[f"{editor_key}_content"] = "<p>Start writing your story here...</p>"
 
-# Display the editor with current content
+# Display the editor - FIXED PARAMETERS
 user_input = st_quill(
     st.session_state[f"{editor_key}_content"],
-    key=editor_key,
+    key=editor_key,  # key is a named parameter, not positional
     height=500
 )
 
