@@ -1,7 +1,7 @@
-# biographer.py – Tell My Story App (PROFESSIONAL WYSIWYG WITH IMAGE EMBEDDING)
+# biographer.py – Tell My Story App (COMPLETE WORKING VERSION WITH QUILL)
 import streamlit as st
 import json
-from datetime import datetime
+from datetime import datetime, date
 from openai import OpenAI
 import os
 import re
@@ -32,7 +32,7 @@ except ImportError:
 # ============================================================================
 
 for dir_path in ["question_banks/default", "question_banks/users", "question_banks", 
-                 "uploads", "accounts", "sessions"]:
+                 "uploads", "uploads/thumbnails", "uploads/metadata", "accounts", "sessions"]:
     os.makedirs(dir_path, exist_ok=True)
 
 # ============================================================================
@@ -76,6 +76,7 @@ default_state = {
     "current_bank_id": None, "show_bank_manager": False, "show_bank_editor": False,
     "editing_bank_id": None, "editing_bank_name": None, "qb_manager": None, "qb_manager_initialized": False,
     "confirm_delete": None, "user_account": None, "show_profile_setup": False,
+    "image_handler": None, "show_image_manager": False
 }
 for key, value in default_state.items():
     if key not in st.session_state:
@@ -103,7 +104,7 @@ EMAIL_CONFIG = {
 }
 
 # ============================================================================
-# IMAGE HANDLER - SIMPLIFIED (Quill handles embedding)
+# IMAGE HANDLER (FULL VERSION - UNCHANGED)
 # ============================================================================
 
 class ImageHandler:
@@ -115,55 +116,145 @@ class ImageHandler:
         if self.user_id:
             user_hash = hashlib.md5(self.user_id.encode()).hexdigest()[:8]
             path = f"{self.base_path}/user_{user_hash}"
-            os.makedirs(path, exist_ok=True)
+            os.makedirs(f"{path}/thumbnails", exist_ok=True)
             return path
         return self.base_path
     
-    def save_base64_image(self, base64_string, session_id, question_text):
-        """Save base64 image from Quill editor"""
+    def save_image(self, uploaded_file, session_id, question_text, caption=""):
         try:
-            # Extract the base64 data
-            match = re.match(r'data:image/(?P<ext>.*?);base64,(?P<data>.*)', base64_string)
-            if not match:
-                return None
-            
-            ext = match.group('ext')
-            data = match.group('data')
-            
-            # Generate ID
+            image_data = uploaded_file.read()
             image_id = hashlib.md5(f"{self.user_id}{session_id}{question_text}{datetime.now()}".encode()).hexdigest()[:16]
             
-            # Decode and save
-            image_data = base64.b64decode(data)
-            
-            # Optimize
             img = Image.open(io.BytesIO(image_data))
-            if img.mode == 'RGBA':
+            if img.mode == 'RGBA': 
                 img = img.convert('RGB')
             
-            buffer = io.BytesIO()
-            img.save(buffer, format="JPEG", quality=85, optimize=True)
+            main_buffer = io.BytesIO()
+            img.save(main_buffer, format="JPEG", quality=85, optimize=True)
             
-            # Save file
+            img.thumbnail((200, 200))
+            thumb_buffer = io.BytesIO()
+            img.save(thumb_buffer, format="JPEG", quality=70, optimize=True)
+            
             user_path = self.get_user_path()
-            filename = f"{user_path}/{image_id}.jpg"
-            with open(filename, 'wb') as f:
-                f.write(buffer.getvalue())
+            with open(f"{user_path}/{image_id}.jpg", 'wb') as f: 
+                f.write(main_buffer.getvalue())
+            with open(f"{user_path}/thumbnails/{image_id}.jpg", 'wb') as f: 
+                f.write(thumb_buffer.getvalue())
             
-            # Return URL for Quill
-            return f"/app/uploads/user_{hashlib.md5(self.user_id.encode()).hexdigest()[:8]}/{image_id}.jpg"
+            metadata = {
+                "id": image_id, 
+                "session_id": session_id, 
+                "question": question_text,
+                "caption": caption, 
+                "alt_text": caption[:100] if caption else "",
+                "timestamp": datetime.now().isoformat(),
+                "user_id": self.user_id
+            }
+            with open(f"{self.base_path}/metadata/{image_id}.json", 'w') as f: 
+                json.dump(metadata, f)
             
+            return {"has_images": True, "images": [{"id": image_id, "caption": caption}]}
         except Exception as e:
             print(f"Error saving image: {e}")
             return None
+    
+    def get_image_html(self, image_id, thumbnail=False):
+        try:
+            user_path = self.get_user_path()
+            path = f"{user_path}/thumbnails/{image_id}.jpg" if thumbnail else f"{user_path}/{image_id}.jpg"
+            if not os.path.exists(path): 
+                return None
+            
+            with open(path, 'rb') as f: 
+                image_data = f.read()
+            b64 = base64.b64encode(image_data).decode()
+            
+            meta_path = f"{self.base_path}/metadata/{image_id}.json"
+            caption = ""
+            if os.path.exists(meta_path):
+                with open(meta_path, 'r') as f:
+                    metadata = json.load(f)
+                    caption = metadata.get("caption", "")
+            
+            return {
+                "html": f'<img src="data:image/jpeg;base64,{b64}" style="max-width:100%; border-radius:8px; margin:5px 0;" alt="{caption}">',
+                "caption": caption, 
+                "base64": b64
+            }
+        except:
+            return None
+    
+    def get_images_for_answer(self, session_id, question_text):
+        images = []
+        metadata_dir = f"{self.base_path}/metadata"
+        if not os.path.exists(metadata_dir): 
+            return images
+        
+        for fname in os.listdir(metadata_dir):
+            if fname.endswith('.json'):
+                try:
+                    with open(f"{metadata_dir}/{fname}") as f: 
+                        meta = json.load(f)
+                    if (meta.get("session_id") == session_id and 
+                        meta.get("question") == question_text and 
+                        meta.get("user_id") == self.user_id):
+                        thumb = self.get_image_html(meta["id"], thumbnail=True)
+                        full = self.get_image_html(meta["id"])
+                        if thumb and full:
+                            images.append({
+                                **meta, 
+                                "thumb_html": thumb["html"], 
+                                "full_html": full["html"]
+                            })
+                except:
+                    continue
+        return sorted(images, key=lambda x: x.get("timestamp", ""), reverse=True)
+    
+    def delete_image(self, image_id):
+        try:
+            user_path = self.get_user_path()
+            for p in [f"{user_path}/{image_id}.jpg", 
+                     f"{user_path}/thumbnails/{image_id}.jpg", 
+                     f"{self.base_path}/metadata/{image_id}.json"]:
+                if os.path.exists(p): 
+                    os.remove(p)
+            return True
+        except:
+            return False
+    
+    def render_image_uploader(self, session_id, question_text, existing_images=None):
+        st.markdown("### 📸 Add Photos")
+        st.caption("Upload photos that illustrate this memory (JPG, PNG)")
+        
+        if existing_images:
+            st.markdown("**Your Photos:**")
+            cols = st.columns(min(len(existing_images), 3))
+            for idx, img in enumerate(existing_images):
+                with cols[idx % 3]:
+                    st.markdown(img.get("thumb_html", ""), unsafe_allow_html=True)
+                    if img.get("caption"): 
+                        st.caption(f"📝 {img['caption']}")
+                    if st.button(f"🗑️", key=f"del_{img['id']}"):
+                        self.delete_image(img['id']); st.rerun()
+        
+        uploaded = st.file_uploader("Choose image...", type=['jpg','jpeg','png'], 
+                                   key=f"up_{session_id}_{hash(question_text)}", label_visibility="collapsed")
+        if uploaded:
+            cap = st.text_input("Caption:", key=f"cap_{session_id}_{hash(question_text)}")
+            if st.button("📤 Upload", key=f"btn_{session_id}_{hash(question_text)}"):
+                with st.spinner("Uploading..."):
+                    if self.save_image(uploaded, session_id, question_text, cap):
+                        st.success("Uploaded!"); st.rerun()
+        return existing_images or []
 
 def init_image_handler():
-    if not st.session_state.get('image_handler') or st.session_state.image_handler.user_id != st.session_state.get('user_id'):
+    if not st.session_state.image_handler or st.session_state.image_handler.user_id != st.session_state.get('user_id'):
         st.session_state.image_handler = ImageHandler(st.session_state.get('user_id'))
     return st.session_state.image_handler
 
 # ============================================================================
-# AUTHENTICATION FUNCTIONS
+# AUTHENTICATION FUNCTIONS (UNCHANGED)
 # ============================================================================
 
 def generate_password(length=12):
@@ -355,16 +446,17 @@ def save_user_data(user_id, responses_data):
         return False
 
 # ============================================================================
-# CORE RESPONSE FUNCTIONS - SAVES HTML FROM QUILL
+# CORE RESPONSE FUNCTIONS - MODIFIED TO HANDLE HTML FROM QUILL
 # ============================================================================
 
-def save_response(session_id, question, html_content):
+def save_response(session_id, question, answer):
     user_id = st.session_state.user_id
     if not user_id: 
         return False
     
-    # Count words (strip HTML tags)
-    text_only = re.sub(r'<[^>]+>', '', html_content)
+    # Strip HTML tags for word count
+    text_only = re.sub(r'<[^>]+>', '', answer) if answer else ""
+    
     if st.session_state.user_account:
         word_count = len(re.findall(r'\w+', text_only))
         st.session_state.user_account["stats"]["total_words"] = st.session_state.user_account["stats"].get("total_words", 0) + word_count
@@ -382,11 +474,19 @@ def save_response(session_id, question, html_content):
             "word_target": session_data.get("word_target", DEFAULT_WORD_TARGET)
         }
     
+    # Get images for this answer (for backward compatibility)
+    images = []
+    if st.session_state.image_handler:
+        images = st.session_state.image_handler.get_images_for_answer(session_id, question)
+    
     st.session_state.responses[session_id]["questions"][question] = {
-        "answer": html_content,  # Store HTML directly
+        "answer": answer,  # Store HTML directly from Quill
         "question": question, 
         "timestamp": datetime.now().isoformat(),
-        "answer_index": 1
+        "answer_index": 1, 
+        "has_images": len(images) > 0 or ('<img' in answer),
+        "image_count": len(images),
+        "images": [{"id": img["id"], "caption": img.get("caption", "")} for img in images]
     }
     
     success = save_user_data(user_id, st.session_state.responses)
@@ -444,8 +544,27 @@ def get_progress_info(session_id):
         "status_text": "Target achieved!" if current >= target else f"{max(0, target - current)} words remaining"
     }
 
+def auto_correct_text(text):
+    if not text: 
+        return text
+    # Strip HTML for spell check
+    text_only = re.sub(r'<[^>]+>', '', text)
+    try:
+        resp = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Fix spelling and grammar. Return only corrected text."},
+                {"role": "user", "content": text_only}
+            ],
+            max_tokens=len(text_only) + 100, 
+            temperature=0.1
+        )
+        return resp.choices[0].message.content
+    except: 
+        return text
+
 # ============================================================================
-# SEARCH FUNCTIONALITY
+# SEARCH FUNCTIONALITY - MODIFIED TO HANDLE HTML
 # ============================================================================
 
 def search_all_answers(search_query):
@@ -462,22 +581,26 @@ def search_all_answers(search_query):
         for question_text, answer_data in session_data.get("questions", {}).items():
             html_answer = answer_data.get("answer", "")
             text_answer = re.sub(r'<[^>]+>', '', html_answer)
+            has_images = answer_data.get("has_images", False) or ('<img' in html_answer)
             
             if search_query in text_answer.lower() or search_query in question_text.lower():
+                
                 results.append({
                     "session_id": session_id, 
                     "session_title": session["title"],
                     "question": question_text, 
                     "answer": text_answer[:300] + "..." if len(text_answer) > 300 else text_answer,
                     "timestamp": answer_data.get("timestamp", ""), 
-                    "word_count": len(text_answer.split())
+                    "word_count": len(text_answer.split()),
+                    "has_images": has_images,
+                    "image_count": answer_data.get("image_count", 0)
                 })
     
     results.sort(key=lambda x: x["timestamp"], reverse=True)
     return results
 
 # ============================================================================
-# QUESTION BANK LOADING
+# QUESTION BANK LOADING (UNCHANGED)
 # ============================================================================
 
 def initialize_question_bank():
@@ -557,7 +680,7 @@ def load_question_bank(sessions, bank_name, bank_type, bank_id=None):
             }
 
 # ============================================================================
-# BETA READER FUNCTIONS
+# BETA READER FUNCTIONS (UNCHANGED)
 # ============================================================================
 
 def generate_beta_reader_feedback(session_title, session_text, feedback_type="comprehensive"):
@@ -576,7 +699,7 @@ def get_previous_beta_feedback(user_id, session_id):
     return beta_reader.get_previous_feedback(user_id, session_id, get_user_filename, load_user_data)
 
 # ============================================================================
-# VIGNETTE FUNCTIONS
+# VIGNETTE FUNCTIONS (UNCHANGED)
 # ============================================================================
 
 def on_vignette_select(vignette_id):
@@ -685,7 +808,7 @@ def switch_to_custom_topic(topic_text):
     st.rerun()
 
 # ============================================================================
-# TOPIC BROWSER & SESSION MANAGER
+# TOPIC BROWSER & SESSION MANAGER (UNCHANGED)
 # ============================================================================
 
 def show_topic_browser():
@@ -738,7 +861,7 @@ def show_session_manager():
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================================
-# QUESTION BANK UI FUNCTIONS
+# QUESTION BANK UI FUNCTIONS (UNCHANGED)
 # ============================================================================
 
 def show_bank_manager():
@@ -804,7 +927,7 @@ if not SESSIONS:
     st.stop()
 
 # ============================================================================
-# PROFILE SETUP MODAL
+# PROFILE SETUP MODAL (UNCHANGED)
 # ============================================================================
 
 if st.session_state.get('show_profile_setup', False):
@@ -837,7 +960,7 @@ if st.session_state.get('show_profile_setup', False):
     st.stop()
 
 # ============================================================================
-# AUTHENTICATION UI
+# AUTHENTICATION UI (UNCHANGED)
 # ============================================================================
 
 if not st.session_state.logged_in:
@@ -921,7 +1044,7 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ============================================================================
-# MODAL HANDLING
+# MODAL HANDLING (UNCHANGED)
 # ============================================================================
 
 if st.session_state.show_bank_manager: 
@@ -965,7 +1088,7 @@ if st.session_state.show_session_creator:
 st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
 
 # ============================================================================
-# SIDEBAR
+# SIDEBAR (UNCHANGED)
 # ============================================================================
 
 with st.sidebar:
@@ -1036,11 +1159,27 @@ with st.sidebar:
             for q, a in sdata.get("questions", {}).items():
                 export_item = {
                     "question": q, 
-                    "answer": a["answer"],  # HTML content
+                    "answer": a["answer"], 
                     "timestamp": a["timestamp"],
                     "session_id": sid, 
-                    "session_title": session["title"]
+                    "session_title": session["title"],
+                    "has_images": a.get("has_images", False) or ('<img' in a.get("answer", "")),
+                    "image_count": a.get("image_count", 0),
+                    "images": a.get("images", [])
                 }
+                # Add base64 encoded images for export
+                if a.get("has_images", False) and st.session_state.image_handler:
+                    images = st.session_state.image_handler.get_images_for_answer(sid, q)
+                    export_item["embedded_images"] = []
+                    for img in images:
+                        full_img = st.session_state.image_handler.get_image_html(img["id"])
+                        if full_img:
+                            export_item["embedded_images"].append({
+                                "id": img["id"], 
+                                "caption": img.get("caption", ""),
+                                "base64": full_img["base64"], 
+                                "html": full_img["html"]
+                            })
                 export_data.append(export_item)
         
         if export_data:
@@ -1100,7 +1239,7 @@ with st.sidebar:
     
     st.divider()
     st.subheader("🔍 Search Your Stories")
-    search_query = st.text_input("Search answers...", placeholder="e.g., childhood, wedding", key="global_search")
+    search_query = st.text_input("Search answers & captions...", placeholder="e.g., childhood, wedding, photo", key="global_search")
     if search_query and len(search_query) >= 2:
         results = search_all_answers(search_query)
         if results:
@@ -1108,6 +1247,8 @@ with st.sidebar:
             with st.expander(f"📖 {len(results)} Results", expanded=True):
                 for i, r in enumerate(results[:10]):
                     st.markdown(f"**Session {r['session_id']}: {r['session_title']}**  \n*{r['question']}*")
+                    if r.get('has_images'):
+                        st.caption(f"📸 Contains {r.get('image_count', 1)} photo(s)")
                     st.markdown(f"{r['answer'][:150]}...")
                     if st.button(f"Go to Session", key=f"srch_go_{i}_{r['session_id']}"):
                         for idx, s in enumerate(SESSIONS):
@@ -1121,7 +1262,7 @@ with st.sidebar:
             st.info("No matches found")
 
 # ============================================================================
-# MAIN CONTENT AREA - QUILL RICH TEXT EDITOR WITH IMAGE EMBEDDING
+# MAIN CONTENT AREA - QUILL RICH TEXT EDITOR (DRAG & DROP IMAGES)
 # ============================================================================
 
 if st.session_state.current_session >= len(SESSIONS): 
@@ -1178,45 +1319,101 @@ if current_session_id in st.session_state.responses:
 # Initialize image handler
 if st.session_state.logged_in:
     init_image_handler()
+    existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
 
 # ============================================================================
-# QUILL RICH TEXT EDITOR - DRAG & DROP IMAGE EMBEDDING
+# QUILL RICH TEXT EDITOR - DRAG & DROP IMAGES DIRECTLY INTO EDITOR
 # ============================================================================
 
-st.markdown("### ✍️ Write Your Story")
-
-# Instructions
+st.markdown("### ✍️ Your Story")
 st.markdown("""
-<div style="background-color: #f0f8ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #36cfc9;">
-    <span style="font-weight: bold; font-size: 1.1rem;">📸 Drag & Drop Photos</span><br>
-    • Drag images directly into the editor<br>
-    • Images appear exactly where you drop them<br>
-    • Add captions below images using the editor toolbar
+<div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #36cfc9;">
+    📸 <strong>Drag & drop images</strong> directly into the editor. They will appear exactly where you place them.
 </div>
 """, unsafe_allow_html=True)
 
-# Quill editor with image embedding
-quill_html = st_quill(
-    value=existing_answer if existing_answer else "<p>Start writing your story here...</p>",
-    key=f"quill_{current_session_id}_{current_question_text}",
+# Set default value
+if not existing_answer:
+    existing_answer = "<p>Start writing your story here...</p>"
+
+user_input = st_quill(
+    value=existing_answer,
+    key=f"quill_{current_session_id}_{hash(current_question_text)}",
     height=500,
-    placeholder="Write your story... Drag images directly into this editor!",
-    html=True,  # Return HTML
-    readonly=False
+    placeholder="Write your story... Drag and drop images here!",
+    html=True
 )
 
 st.markdown("---")
 
 # ============================================================================
+# IMAGE UPLOAD SECTION - Legacy uploader (still works with Quill)
+# ============================================================================
+if st.session_state.logged_in and st.session_state.image_handler:
+    
+    # Display existing images as thumbnails
+    if existing_images:
+        st.markdown("### 📸 Your Uploaded Photos")
+        st.markdown("*These photos are stored in your account. You can also drag them directly into the editor above.*")
+        
+        cols = st.columns(min(len(existing_images), 4))
+        for idx, img in enumerate(existing_images):
+            with cols[idx % 4]:
+                st.markdown(img.get("thumb_html", ""), unsafe_allow_html=True)
+                if img.get("caption"):
+                    st.caption(f"📝 {img['caption']}")
+                if st.button(f"🗑️ Delete", key=f"del_img_{img['id']}_{idx}"):
+                    st.session_state.image_handler.delete_image(img['id'])
+                    st.rerun()
+        
+        st.markdown("---")
+    
+    # Upload new images
+    with st.expander("📤 Upload New Photos", expanded=len(existing_images) == 0):
+        st.markdown("**Upload photos to use in your story (or just drag them into the editor):**")
+        
+        uploaded_file = st.file_uploader(
+            "Choose an image...", 
+            type=['jpg', 'jpeg', 'png'], 
+            key=f"up_{current_session_id}_{hash(current_question_text)}",
+            label_visibility="collapsed"
+        )
+        
+        if uploaded_file:
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                caption = st.text_input(
+                    "Caption / Description:",
+                    placeholder="What does this photo show?",
+                    key=f"cap_{current_session_id}_{hash(current_question_text)}"
+                )
+            with col2:
+                if st.button("📤 Upload", key=f"btn_{current_session_id}_{hash(current_question_text)}", type="primary", use_container_width=True):
+                    with st.spinner("Uploading..."):
+                        result = st.session_state.image_handler.save_image(
+                            uploaded_file, 
+                            current_session_id, 
+                            current_question_text, 
+                            caption
+                        )
+                        if result:
+                            st.success("✅ Photo uploaded! You can now drag it into the editor above.")
+                            time.sleep(1.5)
+                            st.rerun()
+                        else:
+                            st.error("Upload failed")
+    
+    st.markdown("---")
+
+# ============================================================================
 # SAVE BUTTONS
 # ============================================================================
-
 col1, col2, col3 = st.columns([1, 1, 2])
 with col1:
     if st.button("💾 Save Story", key="save_ans", type="primary", use_container_width=True):
-        if quill_html and quill_html.strip() and quill_html != "<p><br></p>" and quill_html != "<p>Start writing your story here...</p>":
+        if user_input and user_input.strip() and user_input != "<p><br></p>" and user_input != "<p>Start writing your story here...</p>":
             with st.spinner("Saving your story..."):
-                if save_response(current_session_id, current_question_text, quill_html):
+                if save_response(current_session_id, current_question_text, user_input):
                     st.success("✅ Story saved!")
                     time.sleep(0.5)
                     st.rerun()
@@ -1225,7 +1422,7 @@ with col1:
         else: 
             st.warning("Please write something!")
 with col2:
-    if existing_answer:
+    if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
         if st.button("🗑️ Delete Story", key="del_ans", use_container_width=True):
             if delete_response(current_session_id, current_question_text):
                 st.success("✅ Story deleted!")
@@ -1250,17 +1447,16 @@ with col3:
 st.divider()
 
 # ============================================================================
-# PREVIEW - Show the rendered HTML
+# PREVIEW SECTION - Show rendered HTML
 # ============================================================================
-
-if quill_html and quill_html != "<p><br></p>" and quill_html != "<p>Start writing your story here...</p>":
+if user_input and user_input != "<p><br></p>" and user_input != "<p>Start writing your story here...</p>":
     with st.expander("👁️ Preview your story", expanded=False):
         st.markdown("### 📖 Preview")
-        st.markdown(quill_html, unsafe_allow_html=True)
+        st.markdown(user_input, unsafe_allow_html=True)
         st.markdown("---")
 
 # ============================================================================
-# BETA READER SECTION
+# BETA READER SECTION (UNCHANGED)
 # ============================================================================
 
 st.subheader("🦋 Beta Reader Feedback")
@@ -1281,7 +1477,7 @@ if answered_cnt == total_q and total_q > 0:
         if st.button("🦋 Get Beta Reader Feedback", use_container_width=True, type="primary"):
             with st.spinner("Analyzing..."):
                 if beta_reader:
-                    # Get all answers for this session
+                    # Get all answers for this session, strip HTML
                     session_text = ""
                     for q, a in sdata.get("questions", {}).items():
                         text_only = re.sub(r'<[^>]+>', '', a.get("answer", ""))
@@ -1307,7 +1503,7 @@ else:
 st.divider()
 
 # ============================================================================
-# SESSION PROGRESS
+# SESSION PROGRESS (UNCHANGED)
 # ============================================================================
 
 progress_info = get_progress_info(current_session_id)
