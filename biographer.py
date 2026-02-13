@@ -1,4 +1,4 @@
-# biographer.py – Tell My Story App (COMPLETE - IMAGES INSIDE TEXT BOX)
+# biographer.py – Tell My Story App (COMPLETE - ACTUAL IMAGES DISPLAYED IN STORY)
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -171,11 +171,19 @@ class ImageHandler:
                     metadata = json.load(f)
                     caption = metadata.get("caption", "")
             
-            return {
-                "html": f'<img src="data:image/jpeg;base64,{b64}" style="max-width:100%; border-radius:8px; margin:5px 0;" alt="{caption}">',
-                "caption": caption, 
-                "base64": b64
-            }
+            # Return different sizes based on request
+            if thumbnail:
+                return {
+                    "html": f'<img src="data:image/jpeg;base64,{b64}" style="width:100%; border-radius:8px; margin:5px 0; border:1px solid #ddd;" alt="{caption}">',
+                    "caption": caption, 
+                    "base64": b64
+                }
+            else:
+                return {
+                    "html": f'<img src="data:image/jpeg;base64,{b64}" style="max-width:100%; max-height:400px; border-radius:8px; margin:10px 0; border:1px solid #ddd; display:block;" alt="{caption}">',
+                    "caption": caption, 
+                    "base64": b64
+                }
         except:
             return None
     
@@ -1036,12 +1044,13 @@ if st.session_state.show_bank_editor:
     show_bank_editor(); 
     st.stop()
 if st.session_state.show_beta_reader and st.session_state.current_beta_feedback: 
-    beta_reader.show_modal(st.session_state.current_beta_feedback, 
-                          {"id": SESSIONS[st.session_state.current_session]["id"], 
-                           "title": SESSIONS[st.session_state.current_session]["title"]},
-                          st.session_state.user_id, 
-                          save_beta_feedback, 
-                          lambda: st.session_state.update(show_beta_reader=False, current_beta_feedback=None))
+    if beta_reader:
+        beta_reader.show_modal(st.session_state.current_beta_feedback, 
+                              {"id": SESSIONS[st.session_state.current_session]["id"], 
+                               "title": SESSIONS[st.session_state.current_session]["title"]},
+                              st.session_state.user_id, 
+                              save_beta_feedback, 
+                              lambda: st.session_state.update(show_beta_reader=False, current_beta_feedback=None))
     st.stop()
 if st.session_state.show_vignette_detail: 
     show_vignette_detail(); 
@@ -1244,7 +1253,7 @@ with st.sidebar:
             st.info("No matches found")
 
 # ============================================================================
-# MAIN CONTENT AREA - IMAGES INSIDE TEXT BOX WITH [Image: caption] TAGS
+# MAIN CONTENT AREA - ACTUAL IMAGES DISPLAYED IN THE STORY
 # ============================================================================
 
 if st.session_state.current_session >= len(SESSIONS): 
@@ -1308,141 +1317,190 @@ if st.session_state.logged_in:
     existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
 
 # ============================================================================
-# BUILD THE FULL ANSWER CONTENT WITH IMAGE TAGS
+# SECTION 1: DISPLAY THE COMPLETE STORY WITH ACTUAL IMAGES RENDERED
 # ============================================================================
 
-# Start with existing answer text
-full_answer_content = existing_answer
+st.markdown("## 📖 Your Story with Photos")
+st.markdown('<div style="height: 10px;"></div>', unsafe_allow_html=True)
 
-# If no existing answer but we have images, show image tags
-if not full_answer_content and existing_images:
-    for img in existing_images:
-        if img.get("caption"):
-            full_answer_content += f"[Image: {img['caption']}]\n"
+# Create a beautiful story container
+story_html = '<div style="background-color: white; border: 1px solid #e0e0e0; border-radius: 10px; padding: 30px; box-shadow: 0 2px 10px rgba(0,0,0,0.05); font-family: Georgia, serif; line-height: 1.8; font-size: 1.1rem;">'
+
+if existing_answer:
+    # Split the text by image tags
+    parts = re.split(r'(\[Image:.*?\])', existing_answer)
+    
+    for part in parts:
+        if part.startswith('[Image:') and part.endswith(']'):
+            # Extract caption
+            caption_match = re.match(r'\[Image:\s*(.*?)\]', part)
+            if caption_match:
+                caption = caption_match.group(1).strip()
+                
+                # Find the matching image
+                matching_image = None
+                for img in existing_images:
+                    if img.get("caption", "").strip() == caption:
+                        matching_image = img
+                        break
+                
+                if matching_image:
+                    # Display the actual image with caption below
+                    story_html += f'<div style="margin: 30px 0; text-align: center;">'
+                    story_html += matching_image.get("full_html", "")
+                    story_html += f'<div style="font-style: italic; color: #555; margin-top: 8px; font-size: 0.95rem;">📝 {caption}</div>'
+                    story_html += f'</div>'
+                else:
+                    # Image not found
+                    story_html += f'<div style="background-color: #fff3e0; padding: 15px; border-radius: 5px; margin: 20px 0; color: #e67e22; border-left: 4px solid #e67e22;">🖼️ Photo not found: {caption}</div>'
         else:
-            full_answer_content += "[Image]\n"
+            # Display regular text with proper formatting
+            if part.strip():
+                # Convert newlines to <br> tags
+                formatted_text = part.replace('\n', '<br>')
+                story_html += f'<div style="margin-bottom: 20px;">{formatted_text}</div>'
+else:
+    story_html += '<div style="color: #999; text-align: center; padding: 60px 20px; font-size: 1.2rem;">✨ Your story will appear here. Write and save to see it with photos.</div>'
+
+story_html += '</div>'
+st.markdown(story_html, unsafe_allow_html=True)
+
+st.markdown('<div style="height: 30px;"></div>', unsafe_allow_html=True)
+st.markdown("---")
 
 # ============================================================================
-# TEXT AREA - Shows everything together (text + image tags)
+# SECTION 2: EDIT YOUR STORY (WITH IMAGE TAGS)
 # ============================================================================
-st.markdown("### ✍️ Your Story")
-st.markdown("""
-<div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #36cfc9;">
-    <span style="font-weight: bold;">📸 How to add photos:</span> 
-    Upload photos below, then type <code>[Image: your caption here]</code> anywhere in your text where you want the photo to appear.
-</div>
-""", unsafe_allow_html=True)
 
-user_input = st.text_area(
-    "Write your story here. Add [Image: caption] tags to place your photos:",
-    value=full_answer_content,
-    key=f"ans_{current_session_id}_{hash(current_question_text)}",
-    height=500,
-    placeholder="""Write your story here...
+st.markdown("## ✍️ Edit Your Story")
 
-To include a photo, type: [Image: Your caption here]
+with st.expander("Click to edit your story", expanded=True):
+    st.markdown("""
+    <div style="background-color: #f0f8ff; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 5px solid #36cfc9;">
+        <span style="font-weight: bold; font-size: 1.1rem;">📸 How to add photos:</span><br>
+        1. Upload photos below<br>
+        2. Copy the <code>[Image: your caption]</code> tag<br>
+        3. Paste it anywhere in your text where you want the photo to appear
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Build the editor content
+    editor_content = existing_answer if existing_answer else ""
+    
+    user_input = st.text_area(
+        "Edit your story:",
+        value=editor_content,
+        key=f"ans_{current_session_id}_{hash(current_question_text)}",
+        height=350,
+        placeholder="""Write your story here...
 
 Example:
 My grandmother's garden was beautiful. [Image: Grandma in her rose garden, 1985] She spent every morning there.""",
-    label_visibility="collapsed"
-)
+        label_visibility="collapsed"
+    )
+
+st.markdown("---")
 
 # ============================================================================
-# IMAGE MANAGEMENT SECTION - BELOW THE TEXT BOX
+# SECTION 3: IMAGE MANAGEMENT - UPLOAD AND MANAGE PHOTOS
 # ============================================================================
+
 if st.session_state.logged_in and st.session_state.image_handler:
     
-    # Display existing images as thumbnails with copyable caption tags
+    st.markdown("## 📸 Your Photos")
+    
+    # Display existing images in a grid
     if existing_images:
-        st.markdown("### 📸 Your Uploaded Photos")
-        st.markdown("**Click the code box to copy, then paste into your text above:**")
+        st.markdown("### Available Photos")
+        st.markdown("**Click the code box to copy the tag, then paste it into your story above:**")
         
-        cols = st.columns(min(len(existing_images), 3))
-        for idx, img in enumerate(existing_images):
-            with cols[idx % 3]:
-                st.markdown(img.get("thumb_html", ""), unsafe_allow_html=True)
-                
-                # Display caption and copyable tag
-                caption_text = img.get("caption", "photo")
-                tag = f"[Image: {caption_text}]"
-                
-                # Show the tag in a copyable code block
-                st.code(tag, language="text")
-                
-                # Delete button
-                if st.button(f"🗑️ Delete", key=f"del_img_{img['id']}_{idx}"):
-                    st.session_state.image_handler.delete_image(img['id'])
-                    st.rerun()
+        # Create rows of 3 images
+        for i in range(0, len(existing_images), 3):
+            cols = st.columns(3)
+            for j in range(3):
+                idx = i + j
+                if idx < len(existing_images):
+                    img = existing_images[idx]
+                    with cols[j]:
+                        # Display thumbnail
+                        st.markdown(img.get("thumb_html", ""), unsafe_allow_html=True)
+                        
+                        # Show caption
+                        caption_text = img.get("caption", "photo")
+                        st.markdown(f'<div style="font-weight: bold; margin: 8px 0 5px 0; color: #0066cc;">{caption_text}</div>', unsafe_allow_html=True)
+                        
+                        # Copyable tag
+                        tag = f"[Image: {caption_text}]"
+                        st.code(tag, language="text")
+                        
+                        # Delete button
+                        if st.button(f"🗑️ Delete", key=f"del_img_{img['id']}_{idx}"):
+                            st.session_state.image_handler.delete_image(img['id'])
+                            st.rerun()
         
         st.markdown("---")
     
     # Upload new images
     with st.expander("📤 Upload New Photos", expanded=len(existing_images) == 0):
-        st.markdown("**Add new photos to your story:**")
+        st.markdown("### Add New Photos to Your Story")
         
         uploaded_file = st.file_uploader(
-            "Choose an image...", 
+            "Choose an image (JPG, PNG):", 
             type=['jpg', 'jpeg', 'png'], 
             key=f"up_{current_session_id}_{hash(current_question_text)}",
             label_visibility="collapsed"
         )
         
         if uploaded_file:
-            caption = st.text_input(
-                "Caption / Description:",
-                placeholder="What does this photo show? When was it taken?",
-                key=f"cap_{current_session_id}_{hash(current_question_text)}"
-            )
-            
-            if st.button("📤 Upload Photo", key=f"btn_{current_session_id}_{hash(current_question_text)}"):
-                with st.spinner("Uploading..."):
-                    result = st.session_state.image_handler.save_image(
-                        uploaded_file, 
-                        current_session_id, 
-                        current_question_text, 
-                        caption
-                    )
-                    if result:
-                        st.success(f"✅ Photo uploaded! Copy this tag and paste it in your text:")
-                        st.code(f"[Image: {caption}]", language="text")
-                        time.sleep(2)
-                        st.rerun()
-                    else:
-                        st.error("Upload failed")
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                caption = st.text_input(
+                    "Caption / Description:",
+                    placeholder="What does this photo show? When was it taken?",
+                    key=f"cap_{current_session_id}_{hash(current_question_text)}"
+                )
+            with col2:
+                if st.button("📤 Upload", key=f"btn_{current_session_id}_{hash(current_question_text)}", type="primary", use_container_width=True):
+                    with st.spinner("Uploading..."):
+                        result = st.session_state.image_handler.save_image(
+                            uploaded_file, 
+                            current_session_id, 
+                            current_question_text, 
+                            caption
+                        )
+                        if result:
+                            st.success("✅ Photo uploaded successfully!")
+                            if caption:
+                                st.info(f"📋 Copy this tag: `[Image: {caption}]`")
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error("Upload failed")
     
     st.markdown("---")
 
 # ============================================================================
-# SAVE BUTTONS
+# SECTION 4: SAVE BUTTONS AND NAVIGATION
 # ============================================================================
+
 col1, col2, col3 = st.columns([1, 1, 2])
 with col1:
-    if st.button("💾 Save", key="save_ans", type="primary", use_container_width=True):
-        if user_input.strip():
-            with st.spinner("Saving..."):
+    if st.button("💾 Save Story", key="save_ans", type="primary", use_container_width=True):
+        if user_input.strip() or existing_images:
+            with st.spinner("Saving your story with photos..."):
                 if save_response(current_session_id, current_question_text, user_input):
-                    st.success("Saved!")
+                    st.success("✅ Story saved with photos!")
                     time.sleep(0.5)
                     st.rerun()
                 else: 
                     st.error("Failed to save")
         else: 
-            # Allow saving even if just images with no text
-            if existing_images:
-                with st.spinner("Saving..."):
-                    if save_response(current_session_id, current_question_text, user_input):
-                        st.success("Saved!")
-                        time.sleep(0.5)
-                        st.rerun()
-                    else:
-                        st.error("Failed to save")
-            else:
-                st.warning("Please write something or upload photos!")
+            st.warning("Please write something or upload photos!")
 with col2:
     if existing_answer or existing_images:
-        if st.button("🗑️ Delete", key="del_ans", use_container_width=True):
+        if st.button("🗑️ Delete Story", key="del_ans", use_container_width=True):
             if delete_response(current_session_id, current_question_text):
-                st.success("Deleted!")
+                st.success("✅ Story deleted!")
                 st.rerun()
     else: 
         st.button("🗑️ Delete", key="del_dis", disabled=True, use_container_width=True)
@@ -1450,13 +1508,13 @@ with col3:
     nav1, nav2 = st.columns(2)
     with nav1: 
         prev_dis = st.session_state.current_question == 0
-        if st.button("← Previous", disabled=prev_dis, key="prev_btn", use_container_width=True):
+        if st.button("← Previous Topic", disabled=prev_dis, key="prev_btn", use_container_width=True):
             if not prev_dis: 
                 st.session_state.update(current_question=st.session_state.current_question-1, editing=False, current_question_override=None)
                 st.rerun()
     with nav2:
         next_dis = st.session_state.current_question >= len(current_session["questions"]) - 1
-        if st.button("Next →", disabled=next_dis, key="next_btn", use_container_width=True):
+        if st.button("Next Topic →", disabled=next_dis, key="next_btn", use_container_width=True):
             if not next_dis: 
                 st.session_state.update(current_question=st.session_state.current_question+1, editing=False, current_question_override=None)
                 st.rerun()
@@ -1486,6 +1544,8 @@ if answered_cnt == total_q and total_q > 0:
             with st.spinner("Analyzing..."):
                 if beta_reader:
                     session_text = beta_reader.get_session_full_text(current_session_id, st.session_state.responses) if beta_reader else ""
+                    # Remove image tags for analysis
+                    session_text = re.sub(r'\[Image:.*?\]', '[PHOTO]', session_text)
                     if session_text.strip():
                         fb = generate_beta_reader_feedback(current_session["title"], session_text, fb_type)
                         if "error" not in fb: 
