@@ -77,7 +77,7 @@ default_state = {
     "current_question_bank": None, "current_bank_name": None, "current_bank_type": None,
     "current_bank_id": None, "show_bank_manager": False, "show_bank_editor": False,
     "editing_bank_id": None, "editing_bank_name": None, "qb_manager": None, "qb_manager_initialized": False,
-    "confirm_delete": None, "user_account": None, "show_profile_setup": False,
+    "confirm_delete": None, "user_account": None, "show__setup": False,
     "image_handler": None, "show_image_manager": False
 }
 for key, value in default_state.items():
@@ -408,7 +408,7 @@ def create_user_account(user_data, password=None):
             "account_type": user_data.get("account_for", "self"),
             "created_at": datetime.now().isoformat(), 
             "last_login": datetime.now().isoformat(),
-            "profile": {
+            "": {
                 "first_name": user_data["first_name"], 
                 "last_name": user_data["last_name"],
                 "email": user_data["email"], 
@@ -452,8 +452,8 @@ def update_accounts_index(user_record):
         index = json.load(open(index_file, 'r')) if os.path.exists(index_file) else {}
         index[user_record['user_id']] = {
             "email": user_record['email'], 
-            "first_name": user_record['profile']['first_name'],
-            "last_name": user_record['profile']['last_name'], 
+            "first_name": user_record['']['first_name'],
+            "last_name": user_record['']['last_name'], 
             "created_at": user_record['created_at'],
             "account_type": user_record['account_type']
         }
@@ -524,7 +524,7 @@ def logout_user():
     st.session_state.qb_manager = None
     st.session_state.qb_manager_initialized = False
     st.session_state.image_handler = None
-    keys = ['user_id', 'user_account', 'logged_in', 'show_profile_setup', 'current_session',
+    keys = ['user_id', 'user_account', 'logged_in', 'show__setup', 'current_session',
             'current_question', 'responses', 'session_conversations', 'data_loaded',
             'show_vignette_modal', 'vignette_topic', 'vignette_content', 'selected_vignette_type',
             'current_vignette_list', 'editing_vignette_index', 'show_vignette_manager',
@@ -1478,322 +1478,6 @@ if st.session_state.get('show_profile_setup', False):
     
     st.markdown('</div>', unsafe_allow_html=True); 
     st.stop()
-# ============================================================================
-# NARRATIVE GPS PROFILE SECTION
-# ============================================================================
-def render_narrative_gps():
-    """Render the Narrative GPS questionnaire in the profile"""
-    st.markdown("### 📋 The Narrative GPS")
-    st.info("The more information you give me, the better we will work together. You can come back and update this at any time.")
-    
-    if 'narrative_gps' not in st.session_state.user_account:
-        st.session_state.user_account['narrative_gps'] = {}
-    
-    gps = st.session_state.user_account['narrative_gps']
-    
-    with st.expander("📖 Section 1: The Book Itself (Project Scope)", expanded=True):
-        gps['book_title'] = st.text_input(
-            "BOOK TITLE (Working or Final):",
-            value=gps.get('book_title', ''),
-            placeholder="What's your working title? If unsure, what feeling or idea should the title convey?",
-            key="gps_title"
-        )
-        
-        gps['genre'] = st.selectbox(
-            "BOOK GENRE/CATEGORY:",
-            options=["", "Memoir", "Autobiography", "Family History", "Business/Legacy Book", "Other"],
-            index=0 if not gps.get('genre') else ["", "Memoir", "Autobiography", "Family History", "Business/Legacy Book", "Other"].index(gps['genre']),
-            key="gps_genre"
-        )
-        if gps['genre'] == "Other":
-            gps['genre_other'] = st.text_input("Please specify:", value=gps.get('genre_other', ''), key="gps_genre_other")
-        
-        gps['book_length'] = st.selectbox(
-            "BOOK LENGTH VISION:",
-            options=["", "A short book (100-150 pages)", "Standard length (200-300 pages)", "Comprehensive (300+ pages)"],
-            index=0 if not gps.get('book_length') else ["", "A short book (100-150 pages)", "Standard length (200-300 pages)", "Comprehensive (300+ pages)"].index(gps['book_length']),
-            key="gps_length"
-        )
-        
-        gps['timeline'] = st.text_area(
-            "TIMELINE & DEADLINES:",
-            value=gps.get('timeline', ''),
-            placeholder="Do you have a target publication date or event this book is tied to? (e.g., birthday, retirement, anniversary)",
-            key="gps_timeline"
-        )
-        
-        gps['completion_status'] = st.selectbox(
-            "COMPLETION STATUS:",
-            options=["", "Notes only", "Partial chapters", "Full draft"],
-            index=0 if not gps.get('completion_status') else ["", "Notes only", "Partial chapters", "Full draft"].index(gps['completion_status']),
-            key="gps_completion"
-        )
-    
-    with st.expander("🎯 Section 2: Purpose & Audience (The 'Why')", expanded=False):
-        st.markdown("**THE CORE PURPOSE (Choose all that apply):**")
-        
-        # Initialize purposes if not exists
-        if 'purposes' not in gps:
-            gps['purposes'] = []
-        
-        purposes_options = [
-            "Leave a legacy for family/future generations",
-            "Share life lessons to help others",
-            "Document professional/business journey",
-            "Heal or process through writing",
-            "Establish authority/expertise",
-            "Entertain with entertaining stories"
-        ]
-        
-        for purpose in purposes_options:
-            if st.checkbox(
-                f"□ {purpose}",
-                value=purpose in gps.get('purposes', []),
-                key=f"gps_purpose_{purpose}"
-            ):
-                if purpose not in gps['purposes']:
-                    gps['purposes'].append(purpose)
-            else:
-                if purpose in gps['purposes']:
-                    gps['purposes'].remove(purpose)
-        
-        gps['purpose_other'] = st.text_input("Other:", value=gps.get('purpose_other', ''), key="gps_purpose_other")
-        
-        st.markdown("---")
-        st.markdown("**PRIMARY AUDIENCE:**")
-        st.markdown("*Who is your ideal reader? Be specific:*")
-        
-        gps['audience_family'] = st.text_input(
-            "Family members (which generations?):",
-            value=gps.get('audience_family', ''),
-            key="gps_audience_family"
-        )
-        
-        gps['audience_industry'] = st.text_input(
-            "People in your industry/profession:",
-            value=gps.get('audience_industry', ''),
-            key="gps_audience_industry"
-        )
-        
-        gps['audience_challenges'] = st.text_input(
-            "People facing similar challenges you overcame:",
-            value=gps.get('audience_challenges', ''),
-            key="gps_audience_challenges"
-        )
-        
-        gps['audience_general'] = st.text_input(
-            "The general public interested in:",
-            value=gps.get('audience_general', ''),
-            placeholder="your topic",
-            key="gps_audience_general"
-        )
-        
-        st.markdown("---")
-        gps['reader_takeaway'] = st.text_area(
-            "THE READER TAKEAWAY:",
-            value=gps.get('reader_takeaway', ''),
-            placeholder="What do you want readers to feel, think, or do after finishing your book?",
-            key="gps_takeaway"
-        )
-    
-    with st.expander("🎭 Section 3: Tone & Voice (The 'How')", expanded=False):
-        st.markdown("**NARRATIVE VOICE:**")
-        
-        if 'narrative_voices' not in gps:
-            gps['narrative_voices'] = []
-        
-        voice_options = [
-            "Warm and conversational (like talking to a friend)",
-            "Professional and authoritative",
-            "Raw and vulnerable",
-            "Humorous/lighthearted",
-            "Philosophical/reflective"
-        ]
-        
-        for voice in voice_options:
-            if st.checkbox(
-                f"□ {voice}",
-                value=voice in gps.get('narrative_voices', []),
-                key=f"gps_voice_{voice}"
-            ):
-                if voice not in gps['narrative_voices']:
-                    gps['narrative_voices'].append(voice)
-            else:
-                if voice in gps['narrative_voices']:
-                    gps['narrative_voices'].remove(voice)
-        
-        gps['voice_other'] = st.text_input("Other:", value=gps.get('voice_other', ''), key="gps_voice_other")
-        
-        st.markdown("---")
-        gps['emotional_tone'] = st.text_area(
-            "EMOTIONAL TONE:",
-            value=gps.get('emotional_tone', ''),
-            placeholder="Should readers laugh? Cry? Feel inspired? Get angry? All of the above?",
-            key="gps_emotional"
-        )
-        
-        st.markdown("---")
-        gps['language_style'] = st.selectbox(
-            "LANGUAGE STYLE:",
-            options=["", "Simple, everyday language", "Rich, descriptive prose", "Short, punchy chapters", "Long, flowing narratives"],
-            index=0 if not gps.get('language_style') else ["", "Simple, everyday language", "Rich, descriptive prose", "Short, punchy chapters", "Long, flowing narratives"].index(gps['language_style']),
-            key="gps_language"
-        )
-    
-    with st.expander("📋 Section 4: Content Parameters (The 'What')", expanded=False):
-        gps['time_coverage'] = st.selectbox(
-            "TIME COVERAGE:",
-            options=["", "Your entire life", "A specific era/decade", "One defining experience", "Your career/business journey"],
-            index=0 if not gps.get('time_coverage') else ["", "Your entire life", "A specific era/decade", "One defining experience", "Your career/business journey"].index(gps['time_coverage']),
-            key="gps_time"
-        )
-        
-        st.markdown("---")
-        gps['sensitive_material'] = st.text_area(
-            "SENSITIVE MATERIAL:",
-            value=gps.get('sensitive_material', ''),
-            placeholder="Are there topics, people, or events you want to handle carefully or omit entirely?",
-            key="gps_sensitive"
-        )
-        
-        gps['sensitive_people'] = st.text_area(
-            "Any living people whose portrayal requires sensitivity or legal consideration?",
-            value=gps.get('sensitive_people', ''),
-            key="gps_sensitive_people"
-        )
-        
-        st.markdown("---")
-        st.markdown("**INCLUSIONS:**")
-        
-        if 'inclusions' not in gps:
-            gps['inclusions'] = []
-        
-        inclusion_options = ["Photos", "Family trees", "Recipes", "Letters/documents", "Timelines", "Resources for readers"]
-        for inc in inclusion_options:
-            if st.checkbox(
-                f"□ {inc}",
-                value=inc in gps.get('inclusions', []),
-                key=f"gps_inc_{inc}"
-            ):
-                if inc not in gps['inclusions']:
-                    gps['inclusions'].append(inc)
-            else:
-                if inc in gps['inclusions']:
-                    gps['inclusions'].remove(inc)
-        
-        st.markdown("---")
-        gps['locations'] = st.text_area(
-            "LOCATIONS:",
-            value=gps.get('locations', ''),
-            placeholder="List key places that must appear in the story (hometowns, meaningful travels, etc.)",
-            key="gps_locations"
-        )
-    
-    with st.expander("📦 Section 5: Assets & Access (The 'Resources')", expanded=False):
-        st.markdown("**EXISTING MATERIALS:**")
-        
-        if 'materials' not in gps:
-            gps['materials'] = []
-        
-        material_options = [
-            "Journals/diaries", "Letters or emails", "Photos (with dates/context)",
-            "Video/audio recordings", "Newspaper clippings", "Awards/certificates",
-            "Social media posts", "Previous interviews"
-        ]
-        
-        for mat in material_options:
-            if st.checkbox(
-                f"□ {mat}",
-                value=mat in gps.get('materials', []),
-                key=f"gps_mat_{mat}"
-            ):
-                if mat not in gps['materials']:
-                    gps['materials'].append(mat)
-            else:
-                if mat in gps['materials']:
-                    gps['materials'].remove(mat)
-        
-        st.markdown("---")
-        gps['people_to_interview'] = st.text_area(
-            "PEOPLE TO INTERVIEW:",
-            value=gps.get('people_to_interview', ''),
-            placeholder="Are there family members, friends, or colleagues who should contribute their memories?",
-            key="gps_people"
-        )
-        
-        st.markdown("---")
-        st.markdown("**FINANCIAL & LEGAL:**")
-        
-        if 'legal' not in gps:
-            gps['legal'] = []
-        
-        legal_options = ["ISBN registration", "Copyright", "Libel review", "Permissions for quoted material"]
-        for leg in legal_options:
-            if st.checkbox(
-                f"□ {leg}",
-                value=leg in gps.get('legal', []),
-                key=f"gps_legal_{leg}"
-            ):
-                if leg not in gps['legal']:
-                    gps['legal'].append(leg)
-            else:
-                if leg in gps['legal']:
-                    gps['legal'].remove(leg)
-    
-    with st.expander("🤝 Section 6: Ghostwriter Relationship (The 'Collaboration')", expanded=False):
-        st.markdown("**YOUR INVOLVEMENT:**")
-        
-        gps['involvement'] = st.radio(
-            "How do you want to work together?",
-            options=[
-                "I'll answer questions, you write everything",
-                "I'll write drafts, you polish",
-                "We'll interview together, then you write",
-                "Mixed approach: [explain]"
-            ],
-            index=0 if not gps.get('involvement') else [
-                "I'll answer questions, you write everything",
-                "I'll write drafts, you polish",
-                "We'll interview together, then you write",
-                "Mixed approach: [explain]"
-            ].index(gps['involvement']) if gps.get('involvement') in [
-                "I'll answer questions, you write everything",
-                "I'll write drafts, you polish",
-                "We'll interview together, then you write",
-                "Mixed approach: [explain]"
-            ] else 3,
-            key="gps_involvement"
-        )
-        
-        if gps.get('involvement') == "Mixed approach: [explain]":
-            gps['involvement_explain'] = st.text_area(
-                "Explain your preferred approach:",
-                value=gps.get('involvement_explain', ''),
-                key="gps_involvement_explain"
-            )
-        
-        st.markdown("---")
-        gps['feedback_style'] = st.selectbox(
-            "FEEDBACK STYLE:",
-            options=["", "Written comments", "Phone/video discussions", "Line-by-line edits"],
-            index=0 if not gps.get('feedback_style') else ["", "Written comments", "Phone/video discussions", "Line-by-line edits"].index(gps['feedback_style']),
-            key="gps_feedback"
-        )
-        
-        st.markdown("---")
-        gps['unspoken'] = st.text_area(
-            "THE UNSPOKEN:",
-            value=gps.get('unspoken', ''),
-            placeholder="What are you hoping I'll bring to this project that you can't do yourself?",
-            key="gps_unspoken"
-        )
-    
-    # Save button for Narrative GPS
-    if st.button("💾 Save Narrative GPS", key="save_narrative_gps", type="primary", use_container_width=True):
-        save_account_data(st.session_state.user_account)
-        st.success("✅ Narrative GPS saved!")
-        st.rerun()
-
 
 # ============================================================================
 # AUTHENTICATION UI
@@ -1876,6 +1560,52 @@ if not st.session_state.logged_in:
                         st.rerun()
                     else: 
                         st.error(f"Error: {result.get('error', 'Unknown error')}")
+    st.stop()
+
+# ============================================================================
+# PROFILE SETUP MODAL (UPDATED WITH NARRATIVE GPS)
+# ============================================================================
+if st.session_state.get('show_profile_setup', False):
+    st.markdown('<div class="profile-setup-modal">', unsafe_allow_html=True)
+    st.title("👤 Your Profile & Book Planning")
+    
+    # Create tabs for basic profile and Narrative GPS
+    profile_tab, gps_tab = st.tabs(["📝 Basic Profile", "📋 Narrative GPS"])
+    
+    with profile_tab:
+        with st.form("profile_setup_form"):
+            gender = st.radio("Gender", ["Male", "Female", "Other", "Prefer not to say"], horizontal=True, key="modal_gender", label_visibility="collapsed")
+            col1, col2, col3 = st.columns(3)
+            with col1: 
+                birth_month = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"], key="modal_month")
+            with col2: 
+                birth_day = st.selectbox("Day", list(range(1,32)), key="modal_day")
+            with col3: 
+                birth_year = st.selectbox("Year", list(range(datetime.now().year, datetime.now().year-120, -1)), key="modal_year")
+            account_for = st.radio("Account Type", ["For me", "For someone else"], key="modal_account_type", horizontal=True)
+            
+            if st.form_submit_button("Complete Profile", type="primary", use_container_width=True):
+                if birth_month and birth_day and birth_year:
+                    birthdate = f"{birth_month} {birth_day}, {birth_year}"
+                    if st.session_state.user_account:
+                        st.session_state.user_account['profile'].update({'gender': gender, 'birthdate': birthdate, 'timeline_start': birthdate})
+                        st.session_state.user_account['account_type'] = "self" if account_for == "For me" else "other"
+                        save_account_data(st.session_state.user_account)
+                    st.session_state.show_profile_setup = False
+                    st.rerun()
+            if st.form_submit_button("Skip for Now", use_container_width=True):
+                st.session_state.show_profile_setup = False
+                st.rerun()
+    
+    with gps_tab:
+        render_narrative_gps()
+    
+    # Add a close button at the bottom
+    if st.button("← Close Profile", key="close_profile", use_container_width=True):
+        st.session_state.show_profile_setup = False
+        st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 # ============================================================================
