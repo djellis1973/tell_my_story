@@ -882,7 +882,7 @@ def render_narrative_gps():
         if gps.get('involvement') in involvement_options:
             involvement_index = involvement_options.index(gps['involvement'])
         
-        gps['involvement'] st.radio(
+        gps['involvement'] = st.radio(
             "How do you want to work together?",
             options=involvement_options,
             index=involvement_index,
@@ -905,6 +905,7 @@ def render_narrative_gps():
             "What do you hope I'll bring to this project?",
             value=gps.get('unspoken', ''),
             key="gps_unspoken"
+        )"gps_unspoken"
         )
     
     if st.button("💾 Save The Heart of Your Story", key="save_narrative_gps", type="primary"):
