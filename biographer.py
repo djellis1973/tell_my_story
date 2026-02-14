@@ -105,12 +105,23 @@ EMAIL_CONFIG = {
 }
 
 # ============================================================================
-# IMAGE HANDLER - COMPLETE WORKING VERSION
+# IMAGE HANDLER - COMPLETE WORKING VERSION WITH AUTO-RESIZE
 # ============================================================================
 class ImageHandler:
     def __init__(self, user_id=None):
         self.user_id = user_id
         self.base_path = "uploads"
+        
+        # Kindle-optimized settings
+        self.settings = {
+            "full_width": 1600,      # Max width for full-page images
+            "inline_width": 800,      # Width for inline images
+            "thumbnail_size": 200,     # Thumbnail size
+            "dpi": 300,                # Target DPI (will be maintained during resize)
+            "quality": 85,              # JPEG quality (85 is good balance)
+            "max_file_size_mb": 5,      # Warn if original > 5MB
+            "aspect_ratio": 1.6         # Kindle ideal ratio (height/width = 1.6)
+        }
     
     def get_user_path(self):
         if self.user_id:
@@ -120,31 +131,95 @@ class ImageHandler:
             return path
         return self.base_path
     
-    def save_image(self, uploaded_file, session_id, question_text, caption=""):
+    def optimize_image(self, image, max_width=1600, is_thumbnail=False):
+        """Optimize image for Kindle with automatic resizing"""
         try:
+            # Convert to RGB if needed
+            if image.mode in ('RGBA', 'LA', 'P'):
+                # Create white background for transparency
+                bg = Image.new('RGB', image.size, (255, 255, 255))
+                if image.mode == 'P':
+                    image = image.convert('RGBA')
+                if image.mode == 'RGBA':
+                    bg.paste(image, mask=image.split()[-1])
+                else:
+                    bg.paste(image)
+                image = bg
+            
+            # Calculate new dimensions while maintaining aspect ratio
+            width, height = image.size
+            aspect = height / width
+            
+            # For thumbnails, use square crop
+            if is_thumbnail:
+                # Crop to square first
+                size = min(width, height)
+                left = (width - size) // 2
+                top = (height - size) // 2
+                right = left + size
+                bottom = top + size
+                image = image.crop((left, top, right, bottom))
+                # Resize to thumbnail size
+                image.thumbnail((self.settings["thumbnail_size"], self.settings["thumbnail_size"]), Image.Resampling.LANCZOS)
+                return image
+            
+            # For regular images, resize based on max_width
+            if width > max_width:
+                new_width = max_width
+                new_height = int(max_width * aspect)
+                image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
+            
+            return image
+            
+        except Exception as e:
+            print(f"Error optimizing image: {e}")
+            return image
+    
+    def save_image(self, uploaded_file, session_id, question_text, caption="", usage="full_page"):
+        """
+        Save image with automatic optimization
+        usage: "full_page" (1600px) or "inline" (800px)
+        """
+        try:
+            # Read and open image
             image_data = uploaded_file.read()
-            image_id = hashlib.md5(f"{self.user_id}{session_id}{question_text}{datetime.now()}".encode()).hexdigest()[:16]
+            original_size = len(image_data) / (1024 * 1024)  # Size in MB
+            
+            # Warn if image is very large
+            if original_size > self.settings["max_file_size_mb"]:
+                print(f"Warning: Large image ({original_size:.1f}MB). Will be optimized.")
             
             img = Image.open(io.BytesIO(image_data))
-            if img.mode == 'RGBA': 
-                img = img.convert('RGB')
             
-            # Save full image
+            # Determine target width based on usage
+            target_width = self.settings["full_width"] if usage == "full_page" else self.settings["inline_width"]
+            
+            # Generate unique ID
+            image_id = hashlib.md5(f"{self.user_id}{session_id}{question_text}{datetime.now()}".encode()).hexdigest()[:16]
+            
+            # Create optimized version for main storage
+            optimized_img = self.optimize_image(img, target_width, is_thumbnail=False)
+            
+            # Create thumbnail
+            thumb_img = self.optimize_image(img, is_thumbnail=True)
+            
+            # Save optimized main image
             main_buffer = io.BytesIO()
-            img.save(main_buffer, format="JPEG", quality=85, optimize=True)
+            optimized_img.save(main_buffer, format="JPEG", quality=self.settings["quality"], optimize=True)
+            main_size = len(main_buffer.getvalue()) / (1024 * 1024)
             
             # Save thumbnail
-            img.thumbnail((200, 200))
             thumb_buffer = io.BytesIO()
-            img.save(thumb_buffer, format="JPEG", quality=70, optimize=True)
+            thumb_img.save(thumb_buffer, format="JPEG", quality=70, optimize=True)
             
+            # Write files
             user_path = self.get_user_path()
             with open(f"{user_path}/{image_id}.jpg", 'wb') as f: 
                 f.write(main_buffer.getvalue())
             with open(f"{user_path}/thumbnails/{image_id}.jpg", 'wb') as f: 
                 f.write(thumb_buffer.getvalue())
             
-            # Save metadata
+            # Save metadata with optimization info
             metadata = {
                 "id": image_id, 
                 "session_id": session_id, 
@@ -152,12 +227,32 @@ class ImageHandler:
                 "caption": caption, 
                 "alt_text": caption[:100] if caption else "",
                 "timestamp": datetime.now().isoformat(),
-                "user_id": self.user_id
+                "user_id": self.user_id,
+                "usage": usage,
+                "original_size_mb": round(original_size, 2),
+                "optimized_size_mb": round(main_size, 2),
+                "dimensions": f"{optimized_img.width}x{optimized_img.height}",
+                "optimized": True,
+                "format": "JPEG",
+                "dpi": self.settings["dpi"]
             }
             with open(f"{self.base_path}/metadata/{image_id}.json", 'w') as f: 
-                json.dump(metadata, f)
+                json.dump(metadata, f, indent=2)
             
-            return {"has_images": True, "images": [{"id": image_id, "caption": caption}]}
+            # Show optimization stats if significant reduction
+            reduction = ((original_size - main_size) / original_size) * 100 if original_size > 0 else 0
+            if reduction > 20:  # If we saved more than 20%
+                print(f"✅ Image optimized: {original_size:.1f}MB → {main_size:.1f}MB ({reduction:.0f}% reduction)")
+            
+            return {
+                "has_images": True, 
+                "images": [{
+                    "id": image_id, 
+                    "caption": caption,
+                    "dimensions": f"{optimized_img.width}x{optimized_img.height}",
+                    "size_mb": round(main_size, 2)
+                }]
+            }
         except Exception as e:
             print(f"Error saving image: {e}")
             return None
@@ -175,15 +270,19 @@ class ImageHandler:
             
             meta_path = f"{self.base_path}/metadata/{image_id}.json"
             caption = ""
+            dimensions = ""
             if os.path.exists(meta_path):
                 with open(meta_path, 'r') as f:
                     metadata = json.load(f)
                     caption = metadata.get("caption", "")
+                    dimensions = metadata.get("dimensions", "")
             
+            # Add dimension info as data attribute for debugging
             return {
-                "html": f'<img src="data:image/jpeg;base64,{b64}" style="max-width:100%; border-radius:8px; margin:5px 0;" alt="{caption}">',
+                "html": f'<img src="data:image/jpeg;base64,{b64}" style="max-width:100%; border-radius:8px; margin:5px 0;" alt="{caption}" data-dimensions="{dimensions}">',
                 "caption": caption, 
-                "base64": b64
+                "base64": b64,
+                "dimensions": dimensions
             }
         except:
             return None
@@ -270,10 +369,13 @@ class ImageHandler:
                                    key=f"up_{session_id}_{hash(question_text)}", label_visibility="collapsed")
         if uploaded:
             cap = st.text_input("Caption:", key=f"cap_{session_id}_{hash(question_text)}")
+            usage = st.radio("Image size:", ["Full Page", "Inline"], horizontal=True, key=f"usage_{session_id}_{hash(question_text)}")
             if st.button("📤 Upload", key=f"btn_{session_id}_{hash(question_text)}"):
-                with st.spinner("Uploading..."):
-                    if self.save_image(uploaded, session_id, question_text, cap):
-                        st.success("Uploaded!"); st.rerun()
+                with st.spinner("Uploading and optimizing..."):
+                    usage_type = "full_page" if usage == "Full Page" else "inline"
+                    if self.save_image(uploaded, session_id, question_text, cap, usage_type):
+                        st.success("✅ Uploaded and optimized!")
+                        st.rerun()
         return existing_images or []
 
 def init_image_handler():
@@ -717,6 +819,57 @@ def get_previous_beta_feedback(user_id, session_id):
     if not beta_reader: 
         return None
     return beta_reader.get_previous_feedback(user_id, session_id, get_user_filename, load_user_data)
+
+def display_saved_feedback(user_id, session_id):
+    """Display all saved beta feedback for a session"""
+    user_data = load_user_data(user_id)
+    feedback_data = user_data.get("beta_feedback", {})
+    session_feedback = feedback_data.get(str(session_id), [])
+    
+    if not session_feedback:
+        st.info("No saved feedback for this session yet.")
+        return
+    
+    st.markdown("### 📚 Saved Beta Reader Feedback")
+    
+    # Sort by date, newest first
+    session_feedback.sort(key=lambda x: x.get('generated_at', ''), reverse=True)
+    
+    for i, fb in enumerate(session_feedback):
+        with st.expander(f"Feedback from {datetime.fromisoformat(fb['generated_at']).strftime('%B %d, %Y at %I:%M %p')}"):
+            col1, col2, col3 = st.columns([1, 1, 1])
+            
+            with col1:
+                st.markdown(f"**Type:** {fb.get('feedback_type', 'comprehensive').title()}")
+            with col2:
+                st.markdown(f"**Overall Score:** {fb.get('overall_score', 'N/A')}/10")
+            with col3:
+                if st.button(f"🗑️ Delete", key=f"del_fb_{i}_{fb.get('generated_at')}"):
+                    # Delete this feedback
+                    session_feedback.pop(i)
+                    user_data["beta_feedback"][str(session_id)] = session_feedback
+                    save_user_data(user_id, user_data.get("responses", {}))
+                    st.rerun()
+            
+            # Display the feedback content
+            if 'summary' in fb:
+                st.markdown("**Summary:**")
+                st.markdown(fb['summary'])
+            
+            if 'strengths' in fb:
+                st.markdown("**Strengths:**")
+                for s in fb['strengths']:
+                    st.markdown(f"✅ {s}")
+            
+            if 'areas_for_improvement' in fb:
+                st.markdown("**Areas for Improvement:**")
+                for a in fb['areas_for_improvement']:
+                    st.markdown(f"📝 {a}")
+            
+            if 'suggestions' in fb:
+                st.markdown("**Suggestions:**")
+                for sug in fb['suggestions']:
+                    st.markdown(f"💡 {sug}")
 
 # ============================================================================
 # VIGNETTE FUNCTIONS
@@ -1850,17 +2003,26 @@ if st.session_state.logged_in and st.session_state.image_handler:
                     placeholder="What does this photo show? When was it taken?",
                     key=f"cap_{current_session_id}_{hash(current_question_text)}"
                 )
+                usage = st.radio(
+                    "Image size:",
+                    ["Full Page", "Inline"],
+                    horizontal=True,
+                    key=f"usage_{current_session_id}_{hash(current_question_text)}",
+                    help="Full Page: 1600px wide, Inline: 800px wide"
+                )
             with col2:
                 if st.button("📤 Upload", key=f"btn_{current_session_id}_{hash(current_question_text)}", type="primary", use_container_width=True):
-                    with st.spinner("Uploading..."):
+                    with st.spinner("Uploading and optimizing..."):
+                        usage_type = "full_page" if usage == "Full Page" else "inline"
                         result = st.session_state.image_handler.save_image(
                             uploaded_file, 
                             current_session_id, 
                             current_question_text, 
-                            caption
+                            caption,
+                            usage_type
                         )
                         if result:
-                            st.success("✅ Photo uploaded!")
+                            st.success("✅ Photo uploaded and optimized!")
                             time.sleep(1.5)
                             st.rerun()
                         else:
@@ -1921,48 +2083,137 @@ if user_input and user_input != "<p><br></p>" and user_input != "<p>Start writin
         st.markdown("---")
 
 # ============================================================================
-# BETA READER SECTION
+# BETA READER FEEDBACK SECTION
 # ============================================================================
 st.subheader("🦋 Beta Reader Feedback")
-sdata = st.session_state.responses.get(current_session_id, {})
-answered_cnt = len(sdata.get("questions", {}))
-total_q = len(current_session["questions"])
 
-if answered_cnt == total_q and total_q > 0:
-    st.success("✅ Session complete - ready for beta reading!")
-    prev_fb = get_previous_beta_feedback(st.session_state.user_id, current_session_id)
-    if prev_fb: 
-        st.info(f"📖 Previous feedback from {datetime.fromisoformat(prev_fb['generated_at']).strftime('%B %d')}")
-    
-    col1, col2 = st.columns([2, 1])
-    with col1: 
-        fb_type = st.selectbox("Feedback Type", ["comprehensive", "concise", "developmental"], key="beta_type")
-    with col2:
-        if st.button("🦋 Get Beta Reader Feedback", use_container_width=True, type="primary"):
-            with st.spinner("Analyzing..."):
-                if beta_reader:
-                    # Get all answers for this session, strip HTML
-                    session_text = ""
-                    for q, a in sdata.get("questions", {}).items():
-                        text_only = re.sub(r'<[^>]+>', '', a.get("answer", ""))
-                        session_text += f"Question: {q}\nAnswer: {text_only}\n\n"
-                    
-                    if session_text.strip():
-                        fb = generate_beta_reader_feedback(current_session["title"], session_text, fb_type)
-                        if "error" not in fb: 
-                            st.session_state.current_beta_feedback = fb
-                            st.session_state.show_beta_reader = True
-                            st.rerun()
+# Create tabs for Current Session and Feedback History
+tab1, tab2 = st.tabs(["📝 Current Session", "📚 Feedback History"])
+
+with tab1:
+    sdata = st.session_state.responses.get(current_session_id, {})
+    answered_cnt = len(sdata.get("questions", {}))
+    total_q = len(current_session["questions"])
+
+    if answered_cnt == total_q and total_q > 0:
+        st.success("✅ Session complete - ready for beta reading!")
+        
+        col1, col2 = st.columns([2, 1])
+        with col1: 
+            fb_type = st.selectbox("Feedback Type", ["comprehensive", "concise", "developmental"], key="beta_type")
+        with col2:
+            if st.button("🦋 Get Beta Reader Feedback", use_container_width=True, type="primary"):
+                with st.spinner("Analyzing your stories..."):
+                    if beta_reader:
+                        # Get all answers for this session, strip HTML
+                        session_text = ""
+                        for q, a in sdata.get("questions", {}).items():
+                            text_only = re.sub(r'<[^>]+>', '', a.get("answer", ""))
+                            session_text += f"Question: {q}\nAnswer: {text_only}\n\n"
+                        
+                        if session_text.strip():
+                            fb = generate_beta_reader_feedback(current_session["title"], session_text, fb_type)
+                            if "error" not in fb: 
+                                st.session_state.current_beta_feedback = fb
+                                st.session_state.show_beta_reader = True
+                                st.rerun()
+                            else: 
+                                st.error(f"Failed: {fb['error']}")
                         else: 
-                            st.error(f"Failed: {fb['error']}")
-                    else: 
-                        st.error("No content to analyze")
-    if prev_fb and st.button("📖 View Previous Feedback", use_container_width=True):
-        st.session_state.current_beta_feedback = prev_fb
-        st.session_state.show_beta_reader = True
-        st.rerun()
-else: 
-    st.info(f"Complete all {total_q} topics in this session to get beta reader feedback.")
+                            st.error("No content to analyze")
+    else: 
+        st.info(f"Complete all {total_q} topics in this session to get beta reader feedback.")
+
+with tab2:
+    st.markdown("### 📚 Your Saved Feedback (Forever)")
+    
+    # Load all feedback
+    user_data = load_user_data(st.session_state.user_id) if st.session_state.user_id else {}
+    all_feedback = user_data.get("beta_feedback", {})
+    
+    if not all_feedback:
+        st.info("No saved feedback yet. Generate feedback from any completed session and it will appear here forever.")
+    else:
+        # Create a reverse chronological list of all feedback
+        all_entries = []
+        for session_id_str, feedback_list in all_feedback.items():
+            # Find session title
+            session_title = "Unknown Session"
+            for s in SESSIONS:
+                if str(s["id"]) == session_id_str:
+                    session_title = s["title"]
+                    break
+            
+            for fb in feedback_list:
+                all_entries.append({
+                    "session_id": session_id_str,
+                    "session_title": session_title,
+                    "date": fb.get('generated_at', datetime.now().isoformat()),
+                    "feedback": fb
+                })
+        
+        # Sort by date, newest first
+        all_entries.sort(key=lambda x: x['date'], reverse=True)
+        
+        # Display each feedback entry
+        for i, entry in enumerate(all_entries):
+            fb = entry['feedback']
+            fb_date = datetime.fromisoformat(entry['date']).strftime('%B %d, %Y at %I:%M %p')
+            
+            with st.expander(f"📖 {entry['session_title']} - {fb_date} ({fb.get('feedback_type', 'comprehensive').title()})"):
+                col1, col2, col3 = st.columns([2, 2, 1])
+                
+                with col1:
+                    st.markdown(f"**Session:** {entry['session_title']}")
+                with col2:
+                    st.markdown(f"**Type:** {fb.get('feedback_type', 'comprehensive').title()}")
+                with col3:
+                    if st.button(f"🗑️ Delete", key=f"del_fb_{i}_{entry['date']}"):
+                        # Delete this specific feedback
+                        session_id_str = entry['session_id']
+                        feedback_list = all_feedback.get(session_id_str, [])
+                        
+                        # Remove the matching feedback
+                        feedback_list = [f for f in feedback_list if f.get('generated_at') != entry['date']]
+                        
+                        if feedback_list:
+                            all_feedback[session_id_str] = feedback_list
+                        else:
+                            del all_feedback[session_id_str]
+                        
+                        # Save updated data
+                        user_data["beta_feedback"] = all_feedback
+                        save_user_data(st.session_state.user_id, user_data.get("responses", {}))
+                        st.success("Feedback deleted!")
+                        st.rerun()
+                
+                # Overall score if available
+                if fb.get('overall_score'):
+                    st.markdown(f"**Overall Score:** {fb['overall_score']}/10")
+                
+                # Display the feedback content
+                if 'summary' in fb and fb['summary']:
+                    st.markdown("**Summary:**")
+                    st.markdown(fb['summary'])
+                
+                if 'strengths' in fb and fb['strengths']:
+                    st.markdown("**Strengths:**")
+                    for s in fb['strengths']:
+                        st.markdown(f"✅ {s}")
+                
+                if 'areas_for_improvement' in fb and fb['areas_for_improvement']:
+                    st.markdown("**Areas for Improvement:**")
+                    for a in fb['areas_for_improvement']:
+                        st.markdown(f"📝 {a}")
+                
+                if 'suggestions' in fb and fb['suggestions']:
+                    st.markdown("**Suggestions:**")
+                    for sug in fb['suggestions']:
+                        st.markdown(f"💡 {sug}")
+                
+                # Raw feedback if nothing else
+                if not any([fb.get('summary'), fb.get('strengths'), fb.get('areas_for_improvement'), fb.get('suggestions')]):
+                    st.json(fb)
 
 st.divider()
 
