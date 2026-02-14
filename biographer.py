@@ -1,5 +1,4 @@
-
-# biographer.py – Tell My Story App (COMPLETE FIXED VERSION)
+# biographer.py – Tell My Story App (COMPLETE FIXED VERSION WITH EXTENDED PROFILE)
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -160,7 +159,9 @@ default_state = {
     "confirm_delete": None, "user_account": None, "show_profile_setup": False,
     "image_handler": None, "show_image_manager": False,
     # Added for Quill fix
-    "editor_instance": 0
+    "editor_instance": 0,
+    # Extended profile fields
+    "extended_profile_complete": False
 }
 for key, value in default_state.items():
     if key not in st.session_state:
@@ -496,7 +497,16 @@ def create_user_account(user_data, password=None):
                 "email": user_data["email"], 
                 "gender": user_data.get("gender", ""),
                 "birthdate": user_data.get("birthdate", ""), 
-                "timeline_start": user_data.get("birthdate", "")
+                "timeline_start": user_data.get("birthdate", ""),
+                # Extended profile fields
+                "birth_place": user_data.get("birth_place", ""),
+                "current_location": user_data.get("current_location", ""),
+                "occupation": user_data.get("occupation", ""),
+                "education": user_data.get("education", ""),
+                "family": user_data.get("family", ""),
+                "life_theme": user_data.get("life_theme", ""),
+                "values": user_data.get("values", ""),
+                "legacy_hopes": user_data.get("legacy_hopes", "")
             },
             "settings": {
                 "email_notifications": True, 
@@ -512,6 +522,14 @@ def create_user_account(user_data, password=None):
                 "longest_streak": 0,
                 "account_age_days": 0, 
                 "last_active": datetime.now().isoformat()
+            },
+            "narrative_gps": {
+                "life_arc": "",
+                "key_moments": [],
+                "influences": [],
+                "chapters": [],
+                "themes": [],
+                "milestones": {}
             }
         }
         save_account_data(user_record)
@@ -616,12 +634,216 @@ def logout_user():
             'selected_vignette_for_session', 'published_vignette', 'show_beta_reader',
             'current_beta_feedback', 'current_question_bank', 'current_bank_name',
             'current_bank_type', 'current_bank_id', 'show_bank_manager', 'show_bank_editor',
-            'editing_bank_id', 'editing_bank_name', 'show_image_manager']
+            'editing_bank_id', 'editing_bank_name', 'show_image_manager', 'extended_profile_complete']
     for key in keys:
         if key in st.session_state: 
             del st.session_state[key]
     st.query_params.clear()
     st.rerun()
+
+# ============================================================================
+# EXTENDED PROFILE FUNCTIONS
+# ============================================================================
+def save_extended_profile(profile_data):
+    """Save extended profile information to user account"""
+    if not st.session_state.user_account:
+        return False
+    
+    # Update profile with extended fields
+    st.session_state.user_account['profile'].update({
+        "birth_place": profile_data.get("birth_place", ""),
+        "current_location": profile_data.get("current_location", ""),
+        "occupation": profile_data.get("occupation", ""),
+        "education": profile_data.get("education", ""),
+        "family": profile_data.get("family", ""),
+        "life_theme": profile_data.get("life_theme", ""),
+        "values": profile_data.get("values", ""),
+        "legacy_hopes": profile_data.get("legacy_hopes", "")
+    })
+    
+    # Update narrative GPS
+    if "narrative_gps" not in st.session_state.user_account:
+        st.session_state.user_account["narrative_gps"] = {}
+    
+    st.session_state.user_account["narrative_gps"].update({
+        "life_arc": profile_data.get("life_arc", ""),
+        "key_moments": profile_data.get("key_moments", []),
+        "influences": profile_data.get("influences", []),
+        "chapters": profile_data.get("chapters", []),
+        "themes": profile_data.get("themes", []),
+        "milestones": profile_data.get("milestones", {})
+    })
+    
+    # Save to file
+    success = save_account_data(st.session_state.user_account)
+    if success:
+        st.session_state.extended_profile_complete = True
+    return success
+
+def get_narrative_gps_for_ai():
+    """Format narrative GPS data for AI context"""
+    if not st.session_state.user_account:
+        return ""
+    
+    profile = st.session_state.user_account.get('profile', {})
+    gps = st.session_state.user_account.get('narrative_gps', {})
+    
+    context = []
+    
+    # Basic life context
+    life_context = []
+    if profile.get('birth_place'):
+        life_context.append(f"Born in: {profile['birth_place']}")
+    if profile.get('current_location'):
+        life_context.append(f"Currently lives: {profile['current_location']}")
+    if profile.get('occupation'):
+        life_context.append(f"Occupation: {profile['occupation']}")
+    if profile.get('education'):
+        life_context.append(f"Education: {profile['education']}")
+    if profile.get('family'):
+        life_context.append(f"Family: {profile['family']}")
+    
+    if life_context:
+        context.append("LIFE CONTEXT:")
+        context.extend(life_context)
+        context.append("")
+    
+    # Life theme and values
+    if profile.get('life_theme'):
+        context.append(f"LIFE THEME: {profile['life_theme']}")
+    if profile.get('values'):
+        context.append(f"CORE VALUES: {profile['values']}")
+    if profile.get('legacy_hopes'):
+        context.append(f"LEGACY HOPES: {profile['legacy_hopes']}")
+    
+    if life_context or profile.get('life_theme'):
+        context.append("")
+    
+    # Narrative GPS
+    if gps.get('life_arc'):
+        context.append(f"LIFE ARC: {gps['life_arc']}")
+    
+    if gps.get('key_moments'):
+        context.append("KEY LIFE MOMENTS:")
+        for moment in gps['key_moments']:
+            context.append(f"• {moment}")
+        context.append("")
+    
+    if gps.get('influences'):
+        context.append("MAJOR INFLUENCES:")
+        for inf in gps['influences']:
+            context.append(f"• {inf}")
+        context.append("")
+    
+    if gps.get('themes'):
+        context.append("RECURRING THEMES:")
+        for theme in gps['themes']:
+            context.append(f"• {theme}")
+        context.append("")
+    
+    if gps.get('milestones'):
+        context.append("LIFE MILESTONES:")
+        for key, value in gps['milestones'].items():
+            context.append(f"• {key}: {value}")
+        context.append("")
+    
+    return "\n".join(context)
+
+def show_extended_profile_modal():
+    """Display extended profile setup modal"""
+    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
+    
+    if st.button("← Back", key="ext_profile_back"):
+        st.session_state.show_profile_setup = False
+        st.rerun()
+    
+    st.title("👤 Complete Your Extended Profile")
+    st.markdown("Help us understand your life story better. This information will help provide more personalized feedback.")
+    
+    with st.form("extended_profile_form"):
+        st.subheader("📍 Life Geography")
+        col1, col2 = st.columns(2)
+        with col1:
+            birth_place = st.text_input("Place of Birth", placeholder="City, Country")
+        with col2:
+            current_location = st.text_input("Current Location", placeholder="City, Country")
+        
+        st.subheader("💼 Life Path")
+        col1, col2 = st.columns(2)
+        with col1:
+            occupation = st.text_input("Occupation / Career", placeholder="Your profession or life work")
+        with col2:
+            education = st.text_input("Education", placeholder="Schools, degrees, learning")
+        
+        st.subheader("👨‍👩‍👧 Family & Relationships")
+        family = st.text_area("Family & Important Relationships", 
+                             placeholder="Tell us about your family, partners, children, close friends...",
+                             height=100)
+        
+        st.subheader("🎯 Life's Direction")
+        life_theme = st.text_input("Life Theme (in one sentence)", 
+                                  placeholder="What's the overarching theme of your life?")
+        
+        st.subheader("💭 Core Values")
+        values = st.text_area("What values guide your life?", 
+                             placeholder="e.g., family, integrity, adventure, creativity...",
+                             height=80)
+        
+        st.subheader("🌟 Legacy Hopes")
+        legacy_hopes = st.text_area("What do you hope to leave behind?", 
+                                   placeholder="How do you want to be remembered? What impact do you hope to have?",
+                                   height=80)
+        
+        st.subheader("🗺️ Narrative GPS")
+        st.caption("These optional fields help us provide better story suggestions and feedback")
+        
+        life_arc = st.text_area("Life Arc (overall story shape)", 
+                               placeholder="How would you describe the arc of your life so far?",
+                               height=60)
+        
+        key_moments = st.text_area("Key Life Moments (one per line)", 
+                                   placeholder="Graduation\nFirst job\nMarriage\nBirth of children\nCareer change\nLoss\nRelocation...",
+                                   height=100)
+        
+        influences = st.text_area("Major Influences (one per line)", 
+                                  placeholder="Mentors\nBooks\nExperiences\nHistorical events\nChallenges...",
+                                  height=80)
+        
+        themes = st.text_area("Recurring Themes in Your Life (one per line)", 
+                             placeholder="Resilience\nLearning\nFamily\nAdventure\nService...",
+                             height=60)
+        
+        if st.form_submit_button("💾 Save Extended Profile", type="primary", use_container_width=True):
+            # Process key moments, influences, themes as lists
+            moments_list = [m.strip() for m in key_moments.split('\n') if m.strip()]
+            influences_list = [i.strip() for i in influences.split('\n') if i.strip()]
+            themes_list = [t.strip() for t in themes.split('\n') if t.strip()]
+            
+            profile_data = {
+                "birth_place": birth_place,
+                "current_location": current_location,
+                "occupation": occupation,
+                "education": education,
+                "family": family,
+                "life_theme": life_theme,
+                "values": values,
+                "legacy_hopes": legacy_hopes,
+                "life_arc": life_arc,
+                "key_moments": moments_list,
+                "influences": influences_list,
+                "themes": themes_list,
+                "milestones": {}  # Can be populated later
+            }
+            
+            if save_extended_profile(profile_data):
+                st.success("✅ Extended profile saved!")
+                st.session_state.show_profile_setup = False
+                st.rerun()
+            else:
+                st.error("Failed to save profile")
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
 
 # ============================================================================
 # STORAGE FUNCTIONS
@@ -885,7 +1107,7 @@ def load_question_bank(sessions, bank_name, bank_type, bank_id=None):
             }
 
 # ============================================================================
-# BETA READER FUNCTIONS - MODIFIED TO WORK WITH SINGLE TOPIC
+# BETA READER FUNCTIONS - WITH ENHANCED GPS CONTEXT
 # ============================================================================
 def generate_beta_reader_feedback(session_title, session_text, feedback_type="comprehensive"):
     if not beta_reader: 
@@ -1549,35 +1771,40 @@ if not SESSIONS:
     st.stop()
 
 # ============================================================================
-# PROFILE SETUP MODAL
+# PROFILE SETUP MODAL - EXTENDED VERSION
 # ============================================================================
 if st.session_state.get('show_profile_setup', False):
-    st.markdown('<div class="profile-setup-modal">', unsafe_allow_html=True)
-    st.title("👤 Complete Your Profile")
-    with st.form("profile_setup_form"):
-        gender = st.radio("Gender", ["Male", "Female", "Other", "Prefer not to say"], horizontal=True, key="modal_gender", label_visibility="collapsed")
-        col1, col2, col3 = st.columns(3)
-        with col1: 
-            birth_month = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"], key="modal_month")
-        with col2: 
-            birth_day = st.selectbox("Day", list(range(1,32)), key="modal_day")
-        with col3: 
-            birth_year = st.selectbox("Year", list(range(datetime.now().year, datetime.now().year-120, -1)), key="modal_year")
-        account_for = st.radio("Account Type", ["For me", "For someone else"], key="modal_account_type", horizontal=True)
-        
-        if st.form_submit_button("Complete Profile", type="primary", use_container_width=True):
-            if birth_month and birth_day and birth_year:
-                birthdate = f"{birth_month} {birth_day}, {birth_year}"
-                if st.session_state.user_account:
-                    st.session_state.user_account['profile'].update({'gender': gender, 'birthdate': birthdate, 'timeline_start': birthdate})
-                    st.session_state.user_account['account_type'] = "self" if account_for == "For me" else "other"
-                    save_account_data(st.session_state.user_account)
-                st.session_state.show_profile_setup = False; 
+    # Check if we're showing extended profile or basic
+    if st.session_state.user_account and not st.session_state.extended_profile_complete:
+        show_extended_profile_modal()
+    else:
+        st.markdown('<div class="profile-setup-modal">', unsafe_allow_html=True)
+        st.title("👤 Complete Your Profile")
+        with st.form("profile_setup_form"):
+            gender = st.radio("Gender", ["Male", "Female", "Other", "Prefer not to say"], horizontal=True, key="modal_gender", label_visibility="collapsed")
+            col1, col2, col3 = st.columns(3)
+            with col1: 
+                birth_month = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"], key="modal_month")
+            with col2: 
+                birth_day = st.selectbox("Day", list(range(1,32)), key="modal_day")
+            with col3: 
+                birth_year = st.selectbox("Year", list(range(datetime.now().year, datetime.now().year-120, -1)), key="modal_year")
+            account_for = st.radio("Account Type", ["For me", "For someone else"], key="modal_account_type", horizontal=True)
+            
+            if st.form_submit_button("Complete Basic Profile", type="primary", use_container_width=True):
+                if birth_month and birth_day and birth_year:
+                    birthdate = f"{birth_month} {birth_day}, {birth_year}"
+                    if st.session_state.user_account:
+                        st.session_state.user_account['profile'].update({'gender': gender, 'birthdate': birthdate, 'timeline_start': birthdate})
+                        st.session_state.user_account['account_type'] = "self" if account_for == "For me" else "other"
+                        save_account_data(st.session_state.user_account)
+                    st.session_state.extended_profile_complete = False  # Will trigger extended profile next
+                    st.rerun()
+            if st.form_submit_button("Skip for Now", use_container_width=True):
+                st.session_state.show_profile_setup = False
+                st.session_state.extended_profile_complete = True
                 st.rerun()
-        if st.form_submit_button("Skip for Now", use_container_width=True):
-            st.session_state.show_profile_setup = False; 
-            st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True); 
+        st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 # ============================================================================
@@ -1715,9 +1942,18 @@ with st.sidebar:
     if st.session_state.user_account:
         profile = st.session_state.user_account['profile']
         st.success(f"✓ **{profile['first_name']} {profile['last_name']}**")
+        
+        # Show extended profile status
+        if st.session_state.extended_profile_complete:
+            st.caption("✨ Extended profile complete")
+        else:
+            st.warning("⚠️ Extended profile incomplete")
+    
     if st.button("📝 Edit Profile", use_container_width=True): 
-        st.session_state.show_profile_setup = True; 
+        st.session_state.show_profile_setup = True
+        st.session_state.extended_profile_complete = False
         st.rerun()
+    
     if st.button("🚪 Log Out", use_container_width=True): 
         logout_user()
     
@@ -1806,6 +2042,7 @@ with st.sidebar:
             complete_data = {
                 "user": st.session_state.user_id, 
                 "user_profile": st.session_state.user_account.get('profile', {}),
+                "narrative_gps": st.session_state.user_account.get('narrative_gps', {}),
                 "stories": export_data, 
                 "export_date": datetime.now().isoformat(),
                 "summary": {
@@ -2197,7 +2434,7 @@ if user_content and user_content not in ["<p><br></p>", "<p></p>", "<p>Start wri
         st.markdown("---")
 
 # ============================================================================
-# BETA READER FEEDBACK SECTION - MODIFIED TO WORK WITH SINGLE TOPIC
+# BETA READER FEEDBACK SECTION - WITH ENHANCED GPS CONTEXT
 # ============================================================================
 st.subheader("🦋 Beta Reader Feedback")
 
@@ -2216,14 +2453,20 @@ with tab1:
             fb_type = st.selectbox("Feedback Type", ["comprehensive", "concise", "developmental"], key="beta_type_single")
         with col2:
             if st.button("🦋 Get Feedback on This Story", use_container_width=True, type="primary"):
-                with st.spinner("Analyzing your story..."):
+                with st.spinner("Analyzing your story with life context..."):
                     if beta_reader:
+                        # Get Narrative GPS context for AI suggestions
+                        gps_context = get_narrative_gps_for_ai()
+                        
                         session_text = f"Question: {current_question_feedback['question']}\nAnswer: {current_question_feedback['answer']}\n\n"
                         
                         if session_text.strip():
+                            # Combine session text with GPS context
+                            full_text = gps_context + "\n\n" + session_text if gps_context else session_text
+                            
                             fb = generate_beta_reader_feedback(
                                 f"{current_session['title']} - {current_question_feedback['question'][:50]}", 
-                                session_text, 
+                                full_text, 
                                 fb_type
                             )
                             if "error" not in fb: 
@@ -2380,9 +2623,23 @@ with col4:
     st.metric("Total Answers", sum(len(st.session_state.responses.get(s["id"], {}).get("questions", {})) for s in SESSIONS))
 
 st.markdown("---")
+
+# Display extended profile status in footer
 if st.session_state.user_account:
     profile = st.session_state.user_account['profile']
     age = (datetime.now() - datetime.fromisoformat(st.session_state.user_account['created_at'])).days
-    st.caption(f"Tell My Story Timeline • 👤 {profile['first_name']} {profile['last_name']} • 📅 Account Age: {age} days • 📚 Bank: {st.session_state.get('current_bank_name', 'None')}")
+    
+    # Show extended profile fields if available
+    extended_info = []
+    if profile.get('birth_place'):
+        extended_info.append(f"📍 {profile['birth_place']}")
+    if profile.get('current_location'):
+        extended_info.append(f"🏠 {profile['current_location']}")
+    if profile.get('occupation'):
+        extended_info.append(f"💼 {profile['occupation']}")
+    
+    extended_text = " • " + " • ".join(extended_info) if extended_info else ""
+    
+    st.caption(f"Tell My Story Timeline • 👤 {profile['first_name']} {profile['last_name']} • 📅 Account Age: {age} days • 📚 Bank: {st.session_state.get('current_bank_name', 'None')}{extended_text}")
 else: 
     st.caption(f"Tell My Story Timeline • User: {st.session_state.user_id}")
