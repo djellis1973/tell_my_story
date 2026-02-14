@@ -1,4 +1,4 @@
-# biographer.py – Tell My Story App (ORIGINAL WORKING + PUBLISH BUTTONS)
+# biographer.py – Tell My Story App (ORIGINAL WORKING + 2 SEC REFRESH FIXED)
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -77,8 +77,10 @@ default_state = {
     "current_question_bank": None, "current_bank_name": None, "current_bank_type": None,
     "current_bank_id": None, "show_bank_manager": False, "show_bank_editor": False,
     "editing_bank_id": None, "editing_bank_name": None, "qb_manager": None, "qb_manager_initialized": False,
-    "confirm_delete": None, "user_account": None, "show__setup": False,
-    "image_handler": None, "show_image_manager": False
+    "confirm_delete": None, "user_account": None, "show_profile_setup": False,
+    "image_handler": None, "show_image_manager": False,
+    # ADDED: Track last update time to prevent refresh loops
+    "last_editor_update": 0
 }
 for key, value in default_state.items():
     if key not in st.session_state:
@@ -408,7 +410,7 @@ def create_user_account(user_data, password=None):
             "account_type": user_data.get("account_for", "self"),
             "created_at": datetime.now().isoformat(), 
             "last_login": datetime.now().isoformat(),
-            "": {
+            "profile": {
                 "first_name": user_data["first_name"], 
                 "last_name": user_data["last_name"],
                 "email": user_data["email"], 
@@ -452,8 +454,8 @@ def update_accounts_index(user_record):
         index = json.load(open(index_file, 'r')) if os.path.exists(index_file) else {}
         index[user_record['user_id']] = {
             "email": user_record['email'], 
-            "first_name": user_record['']['first_name'],
-            "last_name": user_record['']['last_name'], 
+            "first_name": user_record['profile']['first_name'],
+            "last_name": user_record['profile']['last_name'], 
             "created_at": user_record['created_at'],
             "account_type": user_record['account_type']
         }
@@ -524,7 +526,7 @@ def logout_user():
     st.session_state.qb_manager = None
     st.session_state.qb_manager_initialized = False
     st.session_state.image_handler = None
-    keys = ['user_id', 'user_account', 'logged_in', 'show__setup', 'current_session',
+    keys = ['user_id', 'user_account', 'logged_in', 'show_profile_setup', 'current_session',
             'current_question', 'responses', 'session_conversations', 'data_loaded',
             'show_vignette_modal', 'vignette_topic', 'vignette_content', 'selected_vignette_type',
             'current_vignette_list', 'editing_vignette_index', 'show_vignette_manager',
@@ -1439,43 +1441,34 @@ if not SESSIONS:
     st.stop()
 
 # ============================================================================
-# PROFILE SETUP MODAL (UPDATED WITH NARRATIVE GPS)
+# PROFILE SETUP MODAL
 # ============================================================================
 if st.session_state.get('show_profile_setup', False):
     st.markdown('<div class="profile-setup-modal">', unsafe_allow_html=True)
-    st.title("👤 Your Profile & Book Planning")
-    
-    # Create tabs for basic profile and Narrative GPS
-    profile_tab, gps_tab = st.tabs(["📝 Basic Profile", "📋 Narrative GPS"])
-    
-    with profile_tab:
-        with st.form("profile_setup_form"):
-            gender = st.radio("Gender", ["Male", "Female", "Other", "Prefer not to say"], horizontal=True, key="modal_gender", label_visibility="collapsed")
-            col1, col2, col3 = st.columns(3)
-            with col1: 
-                birth_month = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"], key="modal_month")
-            with col2: 
-                birth_day = st.selectbox("Day", list(range(1,32)), key="modal_day")
-            with col3: 
-                birth_year = st.selectbox("Year", list(range(datetime.now().year, datetime.now().year-120, -1)), key="modal_year")
-            account_for = st.radio("Account Type", ["For me", "For someone else"], key="modal_account_type", horizontal=True)
-            
-            if st.form_submit_button("Complete Profile", type="primary", use_container_width=True):
-                if birth_month and birth_day and birth_year:
-                    birthdate = f"{birth_month} {birth_day}, {birth_year}"
-                    if st.session_state.user_account:
-                        st.session_state.user_account['profile'].update({'gender': gender, 'birthdate': birthdate, 'timeline_start': birthdate})
-                        st.session_state.user_account['account_type'] = "self" if account_for == "For me" else "other"
-                        save_account_data(st.session_state.user_account)
-                    st.session_state.show_profile_setup = False; 
-                    st.rerun()
-            if st.form_submit_button("Skip for Now", use_container_width=True):
+    st.title("👤 Complete Your Profile")
+    with st.form("profile_setup_form"):
+        gender = st.radio("Gender", ["Male", "Female", "Other", "Prefer not to say"], horizontal=True, key="modal_gender", label_visibility="collapsed")
+        col1, col2, col3 = st.columns(3)
+        with col1: 
+            birth_month = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"], key="modal_month")
+        with col2: 
+            birth_day = st.selectbox("Day", list(range(1,32)), key="modal_day")
+        with col3: 
+            birth_year = st.selectbox("Year", list(range(datetime.now().year, datetime.now().year-120, -1)), key="modal_year")
+        account_for = st.radio("Account Type", ["For me", "For someone else"], key="modal_account_type", horizontal=True)
+        
+        if st.form_submit_button("Complete Profile", type="primary", use_container_width=True):
+            if birth_month and birth_day and birth_year:
+                birthdate = f"{birth_month} {birth_day}, {birth_year}"
+                if st.session_state.user_account:
+                    st.session_state.user_account['profile'].update({'gender': gender, 'birthdate': birthdate, 'timeline_start': birthdate})
+                    st.session_state.user_account['account_type'] = "self" if account_for == "For me" else "other"
+                    save_account_data(st.session_state.user_account)
                 st.session_state.show_profile_setup = False; 
                 st.rerun()
-    
-    with gps_tab:
-        render_narrative_gps()
-    
+        if st.form_submit_button("Skip for Now", use_container_width=True):
+            st.session_state.show_profile_setup = False; 
+            st.rerun()
     st.markdown('</div>', unsafe_allow_html=True); 
     st.stop()
 
@@ -1560,52 +1553,6 @@ if not st.session_state.logged_in:
                         st.rerun()
                     else: 
                         st.error(f"Error: {result.get('error', 'Unknown error')}")
-    st.stop()
-
-# ============================================================================
-# PROFILE SETUP MODAL (UPDATED WITH NARRATIVE GPS)
-# ============================================================================
-if st.session_state.get('show_profile_setup', False):
-    st.markdown('<div class="profile-setup-modal">', unsafe_allow_html=True)
-    st.title("👤 Your Profile & Book Planning")
-    
-    # Create tabs for basic profile and Narrative GPS
-    profile_tab, gps_tab = st.tabs(["📝 Basic Profile", "📋 Narrative GPS"])
-    
-    with profile_tab:
-        with st.form("profile_setup_form"):
-            gender = st.radio("Gender", ["Male", "Female", "Other", "Prefer not to say"], horizontal=True, key="modal_gender", label_visibility="collapsed")
-            col1, col2, col3 = st.columns(3)
-            with col1: 
-                birth_month = st.selectbox("Month", ["January","February","March","April","May","June","July","August","September","October","November","December"], key="modal_month")
-            with col2: 
-                birth_day = st.selectbox("Day", list(range(1,32)), key="modal_day")
-            with col3: 
-                birth_year = st.selectbox("Year", list(range(datetime.now().year, datetime.now().year-120, -1)), key="modal_year")
-            account_for = st.radio("Account Type", ["For me", "For someone else"], key="modal_account_type", horizontal=True)
-            
-            if st.form_submit_button("Complete Profile", type="primary", use_container_width=True):
-                if birth_month and birth_day and birth_year:
-                    birthdate = f"{birth_month} {birth_day}, {birth_year}"
-                    if st.session_state.user_account:
-                        st.session_state.user_account['profile'].update({'gender': gender, 'birthdate': birthdate, 'timeline_start': birthdate})
-                        st.session_state.user_account['account_type'] = "self" if account_for == "For me" else "other"
-                        save_account_data(st.session_state.user_account)
-                    st.session_state.show_profile_setup = False
-                    st.rerun()
-            if st.form_submit_button("Skip for Now", use_container_width=True):
-                st.session_state.show_profile_setup = False
-                st.rerun()
-    
-    with gps_tab:
-        render_narrative_gps()
-    
-    # Add a close button at the bottom
-    if st.button("← Close Profile", key="close_profile", use_container_width=True):
-        st.session_state.show_profile_setup = False
-        st.rerun()
-    
-    st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
 
 # ============================================================================
@@ -1962,7 +1909,7 @@ if st.session_state.logged_in:
     existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
 
 # ============================================================================
-# QUILL EDITOR
+# QUILL EDITOR - FIXED 2 SECOND REFRESH ISSUE
 # ============================================================================
 editor_key = f"quill_{current_session_id}_{current_question_text[:20]}"
 content_key = f"{editor_key}_content"
@@ -1981,15 +1928,25 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ONE Quill editor
-content = st_quill(
-    st.session_state[content_key],
-    editor_key
-)
-
-# Update session state when editor changes
-if content is not None:
-    st.session_state[content_key] = content
+# ADDED: Check if enough time has passed since last update to prevent refresh loops
+current_time = time.time()
+if current_time - st.session_state.last_editor_update > 1.0:  # Only update if more than 1 second passed
+    # ONE Quill editor
+    content = st_quill(
+        st.session_state[content_key],
+        editor_key
+    )
+    
+    # Update session state when editor changes, but not too frequently
+    if content is not None and content != st.session_state[content_key]:
+        st.session_state[content_key] = content
+        st.session_state.last_editor_update = current_time
+else:
+    # Just display the editor without processing updates
+    content = st_quill(
+        st.session_state[content_key],
+        editor_key
+    )
 
 user_input = st.session_state[content_key]
 
@@ -2328,4 +2285,3 @@ if st.session_state.user_account:
     st.caption(f"Tell My Story Timeline • 👤 {profile['first_name']} {profile['last_name']} • 📅 Account Age: {age} days • 📚 Bank: {st.session_state.get('current_bank_name', 'None')}")
 else: 
     st.caption(f"Tell My Story Timeline • User: {st.session_state.user_id}")
-
