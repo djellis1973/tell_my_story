@@ -1,4 +1,4 @@
-# biographer.py – Tell My Story App (COMPLETE FIXED VERSION WITH EXTENDED PROFILE)
+# biographer.py – Tell My Story App (COMPLETE FIXED VERSION)
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -498,15 +498,15 @@ def create_user_account(user_data, password=None):
                 "gender": user_data.get("gender", ""),
                 "birthdate": user_data.get("birthdate", ""), 
                 "timeline_start": user_data.get("birthdate", ""),
-                # Extended profile fields
-                "birth_place": user_data.get("birth_place", ""),
-                "current_location": user_data.get("current_location", ""),
-                "occupation": user_data.get("occupation", ""),
-                "education": user_data.get("education", ""),
-                "family": user_data.get("family", ""),
-                "life_theme": user_data.get("life_theme", ""),
-                "values": user_data.get("values", ""),
-                "legacy_hopes": user_data.get("legacy_hopes", "")
+                # Extended profile fields (will be filled later)
+                "birth_place": "",
+                "current_location": "",
+                "occupation": "",
+                "education": "",
+                "family": "",
+                "life_theme": "",
+                "values": "",
+                "legacy_hopes": ""
             },
             "settings": {
                 "email_notifications": True, 
@@ -753,9 +753,11 @@ def show_extended_profile_modal():
     """Display extended profile setup modal"""
     st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
     
-    if st.button("← Back", key="ext_profile_back"):
-        st.session_state.show_profile_setup = False
-        st.rerun()
+    col1, col2 = st.columns([1, 10])
+    with col1:
+        if st.button("←", key="ext_profile_back"):
+            st.session_state.show_profile_setup = False
+            st.rerun()
     
     st.title("👤 Complete Your Extended Profile")
     st.markdown("Help us understand your life story better. This information will help provide more personalized feedback.")
@@ -832,7 +834,7 @@ def show_extended_profile_modal():
                 "key_moments": moments_list,
                 "influences": influences_list,
                 "themes": themes_list,
-                "milestones": {}  # Can be populated later
+                "milestones": {}
             }
             
             if save_extended_profile(profile_data):
@@ -1107,7 +1109,7 @@ def load_question_bank(sessions, bank_name, bank_type, bank_id=None):
             }
 
 # ============================================================================
-# BETA READER FUNCTIONS - WITH ENHANCED GPS CONTEXT
+# BETA READER FUNCTIONS - MODIFIED TO WORK WITH SINGLE TOPIC
 # ============================================================================
 def generate_beta_reader_feedback(session_title, session_text, feedback_type="comprehensive"):
     if not beta_reader: 
@@ -1771,7 +1773,7 @@ if not SESSIONS:
     st.stop()
 
 # ============================================================================
-# PROFILE SETUP MODAL - EXTENDED VERSION
+# PROFILE SETUP MODAL
 # ============================================================================
 if st.session_state.get('show_profile_setup', False):
     # Check if we're showing extended profile or basic
@@ -1798,14 +1800,14 @@ if st.session_state.get('show_profile_setup', False):
                         st.session_state.user_account['profile'].update({'gender': gender, 'birthdate': birthdate, 'timeline_start': birthdate})
                         st.session_state.user_account['account_type'] = "self" if account_for == "For me" else "other"
                         save_account_data(st.session_state.user_account)
-                    st.session_state.extended_profile_complete = False  # Will trigger extended profile next
+                    st.session_state.extended_profile_complete = False  # This will trigger extended profile next
                     st.rerun()
             if st.form_submit_button("Skip for Now", use_container_width=True):
                 st.session_state.show_profile_setup = False
                 st.session_state.extended_profile_complete = True
                 st.rerun()
-        st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
+        st.markdown('</div>', unsafe_allow_html=True); 
+        st.stop()
 
 # ============================================================================
 # AUTHENTICATION UI
@@ -1951,7 +1953,6 @@ with st.sidebar:
     
     if st.button("📝 Edit Profile", use_container_width=True): 
         st.session_state.show_profile_setup = True
-        st.session_state.extended_profile_complete = False
         st.rerun()
     
     if st.button("🚪 Log Out", use_container_width=True): 
@@ -2434,7 +2435,7 @@ if user_content and user_content not in ["<p><br></p>", "<p></p>", "<p>Start wri
         st.markdown("---")
 
 # ============================================================================
-# BETA READER FEEDBACK SECTION - WITH ENHANCED GPS CONTEXT
+# BETA READER FEEDBACK SECTION - MODIFIED TO WORK WITH SINGLE TOPIC
 # ============================================================================
 st.subheader("🦋 Beta Reader Feedback")
 
