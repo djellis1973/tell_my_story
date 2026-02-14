@@ -1909,19 +1909,19 @@ if st.session_state.logged_in:
     existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
 
 # ============================================================================
-# QUILL EDITOR - FIXED 2 SECOND REFRESH ISSUE
+# QUILL EDITOR - FIXED
 # ============================================================================
-# ADD THIS: Create a version key that changes only when the question changes
-if 'editor_version' not in st.session_state:
-    st.session_state.editor_version = 0
-
-# Update version when question changes
+# Track question changes without modifying the editor key
 current_question_id = f"{current_session_id}_{current_question_text}"
 if st.session_state.get('last_question_id') != current_question_id:
     st.session_state.last_question_id = current_question_id
-    st.session_state.editor_version += 1
+    # Clear the content key for the new question
+    content_key = f"quill_{current_session_id}_{current_question_text[:20]}_content"
+    if content_key in st.session_state:
+        del st.session_state[content_key]
 
-editor_key = f"quill_{current_session_id}_{current_question_text[:20]}_{st.session_state.editor_version}"
+# Use a STABLE editor key WITHOUT version number
+editor_key = f"quill_{current_session_id}_{current_question_text[:20]}"
 content_key = f"{editor_key}_content"
 
 # Initialize session state for this editor's content
@@ -1938,14 +1938,14 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# ONE Quill editor - NO time check
+# ONE Quill editor with STABLE key
 content = st_quill(
     st.session_state[content_key],
-    key=editor_key
+    editor_key
 )
 
 # Update session state when editor changes
-if content is not None and content != st.session_state[content_key]:
+if content is not None:
     st.session_state[content_key] = content
 
 user_input = st.session_state[content_key]
