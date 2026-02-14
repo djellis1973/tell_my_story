@@ -1,4 +1,4 @@
-# biographer.py – Tell My Story App (ORIGINAL WORKING + PUBLISH BUTTONS + NARRATIVE GPS)
+# biographer.py – Tell My Story App (ORIGINAL WORKING + PUBLISH BUTTONS + NARRATIVE GPS + AI SUGGESTIONS)
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -78,7 +78,8 @@ default_state = {
     "current_bank_id": None, "show_bank_manager": False, "show_bank_editor": False,
     "editing_bank_id": None, "editing_bank_name": None, "qb_manager": None, "qb_manager_initialized": False,
     "confirm_delete": None, "user_account": None, "show_profile_setup": False,
-    "image_handler": None, "show_image_manager": False
+    "image_handler": None, "show_image_manager": False, "show_ai_suggestions": False,
+    "current_ai_suggestions": None, "current_suggestion_topic": None
 }
 for key, value in default_state.items():
     if key not in st.session_state:
@@ -543,12 +544,198 @@ def logout_user():
     st.rerun()
 
 # ============================================================================
-# NARRATIVE GPS PROFILE SECTION (UPDATED - NO SQUARE BOXES)
+# NARRATIVE GPS HELPER FUNCTIONS (FOR AI INTEGRATION)
+# ============================================================================
+def get_narrative_gps_for_ai():
+    """Format Narrative GPS data for AI prompts"""
+    if not st.session_state.user_account or 'narrative_gps' not in st.session_state.user_account:
+        return ""
+    
+    gps = st.session_state.user_account['narrative_gps']
+    if not gps:
+        return ""
+    
+    context = "\n\n=== BOOK PROJECT CONTEXT (From Narrative GPS) ===\n"
+    
+    # Section 1
+    if gps.get('book_title') or gps.get('genre') or gps.get('book_length'):
+        context += "\n📖 PROJECT SCOPE:\n"
+        if gps.get('book_title'): context += f"- Book Title: {gps['book_title']}\n"
+        if gps.get('genre'): 
+            genre = gps['genre']
+            if genre == "Other" and gps.get('genre_other'):
+                genre = gps['genre_other']
+            context += f"- Genre: {genre}\n"
+        if gps.get('book_length'): context += f"- Length Vision: {gps['book_length']}\n"
+        if gps.get('timeline'): context += f"- Timeline/Deadlines: {gps['timeline']}\n"
+        if gps.get('completion_status'): context += f"- Current Status: {gps['completion_status']}\n"
+    
+    # Section 2
+    if gps.get('purposes') or gps.get('reader_takeaway'):
+        context += "\n🎯 PURPOSE & AUDIENCE:\n"
+        if gps.get('purposes'): 
+            context += f"- Core Purposes: {', '.join(gps['purposes'])}\n"
+        if gps.get('purpose_other'): context += f"- Other Purpose: {gps['purpose_other']}\n"
+        if gps.get('audience_family'): context += f"- Family Audience: {gps['audience_family']}\n"
+        if gps.get('audience_industry'): context += f"- Industry Audience: {gps['audience_industry']}\n"
+        if gps.get('audience_challenges'): context += f"- Audience Facing Similar Challenges: {gps['audience_challenges']}\n"
+        if gps.get('audience_general'): context += f"- General Audience: {gps['audience_general']}\n"
+        if gps.get('reader_takeaway'): context += f"- Reader Takeaway: {gps['reader_takeaway']}\n"
+    
+    # Section 3
+    if gps.get('narrative_voices') or gps.get('emotional_tone'):
+        context += "\n🎭 TONE & VOICE:\n"
+        if gps.get('narrative_voices'): 
+            context += f"- Narrative Voice: {', '.join(gps['narrative_voices'])}\n"
+        if gps.get('voice_other'): context += f"- Other Voice: {gps['voice_other']}\n"
+        if gps.get('emotional_tone'): context += f"- Emotional Tone: {gps['emotional_tone']}\n"
+        if gps.get('language_style'): context += f"- Language Style: {gps['language_style']}\n"
+    
+    # Section 4
+    if gps.get('time_coverage') or gps.get('sensitive_material') or gps.get('inclusions'):
+        context += "\n📋 CONTENT PARAMETERS:\n"
+        if gps.get('time_coverage'): context += f"- Time Coverage: {gps['time_coverage']}\n"
+        if gps.get('sensitive_material'): context += f"- Sensitive Topics: {gps['sensitive_material']}\n"
+        if gps.get('sensitive_people'): context += f"- Sensitive People: {gps['sensitive_people']}\n"
+        if gps.get('inclusions'): 
+            context += f"- Planned Inclusions: {', '.join(gps['inclusions'])}\n"
+        if gps.get('locations'): context += f"- Key Locations: {gps['locations']}\n"
+    
+    # Section 5
+    if gps.get('materials') or gps.get('people_to_interview'):
+        context += "\n📦 RESOURCES:\n"
+        if gps.get('materials'): 
+            context += f"- Available Materials: {', '.join(gps['materials'])}\n"
+        if gps.get('people_to_interview'): context += f"- People to Interview: {gps['people_to_interview']}\n"
+        if gps.get('legal'): 
+            context += f"- Legal Considerations: {', '.join(gps['legal'])}\n"
+    
+    # Section 6
+    if gps.get('involvement') or gps.get('unspoken'):
+        context += "\n🤝 COLLABORATION:\n"
+        if gps.get('involvement'): 
+            involvement = gps['involvement']
+            if involvement == "Mixed approach: [explain]" and gps.get('involvement_explain'):
+                involvement = f"Mixed approach: {gps['involvement_explain']}"
+            context += f"- Working Style: {involvement}\n"
+        if gps.get('feedback_style'): context += f"- Feedback Preference: {gps['feedback_style']}\n"
+        if gps.get('unspoken'): context += f"- Hopes for Collaboration: {gps['unspoken']}\n"
+    
+    return context
+
+# ============================================================================
+# AI WRITING SUGGESTIONS FUNCTION
+# ============================================================================
+def generate_writing_suggestions(question, answer_text, session_title):
+    """Generate immediate writing suggestions based on the answer and Narrative GPS context"""
+    if not client:
+        return {"error": "OpenAI client not available"}
+    
+    try:
+        # Get Narrative GPS context
+        gps_context = get_narrative_gps_for_ai()
+        
+        # Strip HTML from answer
+        clean_answer = re.sub(r'<[^>]+>', '', answer_text)
+        
+        if len(clean_answer.split()) < 20:  # Don't suggest on very short answers
+            return None
+        
+        system_prompt = """You are an expert writing coach and developmental editor. Your task is to provide focused, actionable suggestions for improving a piece of life story writing.
+
+Based on the story context provided and the user's answer, offer 2-3 specific suggestions that will help strengthen this passage. Focus on:
+1. Alignment with the book's stated purpose and audience
+2. Consistency with the desired tone and voice
+3. Opportunities to deepen emotional impact or add sensory details
+4. Areas where the story could be expanded or clarified
+5. Connections to broader themes in the book project
+
+Keep suggestions positive, encouraging, and actionable. Format them as brief bullet points with a brief explanation for each."""
+
+        user_prompt = f"""{gps_context}
+
+SESSION: {session_title}
+QUESTION: {question}
+ANSWER: {clean_answer}
+
+Based on the book project context above, provide 2-3 specific suggestions to improve this answer. Focus on making it more aligned with the book's purpose, audience, and desired tone."""
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": user_prompt}
+            ],
+            max_tokens=500,
+            temperature=0.7
+        )
+        
+        suggestions = response.choices[0].message.content
+        return suggestions
+    except Exception as e:
+        return {"error": str(e)}
+
+def show_ai_suggestions_modal():
+    """Display AI writing suggestions in a modal"""
+    if not st.session_state.get('current_ai_suggestions'):
+        return
+    
+    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([6, 1])
+    with col1:
+        st.markdown("### 💡 AI Writing Suggestions")
+    with col2:
+        if st.button("✕", key="close_suggestions"):
+            st.session_state.show_ai_suggestions = False
+            st.session_state.current_ai_suggestions = None
+            st.rerun()
+    
+    st.markdown("---")
+    
+    suggestions = st.session_state.current_ai_suggestions
+    if isinstance(suggestions, dict) and suggestions.get('error'):
+        st.error(f"Could not generate suggestions: {suggestions['error']}")
+    else:
+        st.markdown("**Based on your book's context, here are some ideas to consider:**")
+        st.markdown(suggestions)
+        
+        st.markdown("---")
+        st.markdown("*These are suggestions only - trust your instincts and write the story only you can tell.*")
+    
+    if st.button("Close", key="close_suggestions_btn", use_container_width=True):
+        st.session_state.show_ai_suggestions = False
+        st.session_state.current_ai_suggestions = None
+        st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
+# ============================================================================
+# NARRATIVE GPS PROFILE SECTION (UPDATED - HEART OF YOUR STORY)
 # ============================================================================
 def render_narrative_gps():
     """Render the Narrative GPS questionnaire in the profile"""
-    st.markdown("### 📋 The Narrative GPS")
-    st.info("The more information you give me, the better we will work together. You can come back and update this at any time.")
+    st.markdown("### ❤️ The Heart of Your Story")
+    
+    # New inspirational message
+    st.markdown("""
+    <div style="background-color: #f0f2f6; padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #ff4b4b;">
+    <p style="font-size: 1.1em; margin-bottom: 10px;">Before we write a single word, let's understand why this book matters.</p>
+    
+    <p>Your story deserves to be told with intention. These questions help us uncover:</p>
+    
+    <ul style="margin-left: 20px;">
+        <li>Who needs to hear what you have to say</li>
+        <li>What you want readers to feel when they close the book</li>
+        <li>The legacy you're leaving behind</li>
+    </ul>
+    
+    <p><strong>The more honest and detailed you are here, the more your true voice will shine through every page.</strong> Think of this as a conversation between you and your future reader—one where I'm just here to take notes and guide the way.</p>
+    
+    <p>Take your time. Come back and update whenever inspiration strikes. This is your story's foundation, and we want it solid.</p>
+    </div>
+    """, unsafe_allow_html=True)
     
     if 'narrative_gps' not in st.session_state.user_account:
         st.session_state.user_account['narrative_gps'] = {}
@@ -992,6 +1179,15 @@ def save_response(session_id, question, answer):
     success = save_user_data(user_id, st.session_state.responses)
     if success: 
         st.session_state.data_loaded = False
+        
+        # Generate AI writing suggestions after saving
+        session_title = st.session_state.responses[session_id].get("title", f"Session {session_id}")
+        suggestions = generate_writing_suggestions(question, answer, session_title)
+        if suggestions and not isinstance(suggestions, dict) or (isinstance(suggestions, dict) and not suggestions.get('error')):
+            st.session_state.current_ai_suggestions = suggestions
+            st.session_state.show_ai_suggestions = True
+            st.session_state.current_suggestion_topic = question
+    
     return success
 
 def delete_response(session_id, question):
@@ -1895,15 +2091,15 @@ if not st.session_state.logged_in:
     st.stop()
 
 # ============================================================================
-# PROFILE SETUP MODAL (WITH NARRATIVE GPS BELOW - NO TABS)
+# PROFILE SETUP MODAL (WITH NARRATIVE GPS - NO TABS)
 # ============================================================================
 if st.session_state.get('show_profile_setup', False):
     st.markdown('<div class="profile-setup-modal">', unsafe_allow_html=True)
     st.title("👤 Your Profile & Book Planning")
     
     # Basic Profile Section
+    st.markdown("### 📝 Basic Profile")
     with st.form("profile_setup_form"):
-        st.markdown("### 📝 Basic Profile")
         gender = st.radio("Gender", ["Male", "Female", "Other", "Prefer not to say"], horizontal=True, key="modal_gender", label_visibility="collapsed")
         col1, col2, col3 = st.columns(3)
         with col1: 
@@ -1914,7 +2110,8 @@ if st.session_state.get('show_profile_setup', False):
             birth_year = st.selectbox("Year", list(range(datetime.now().year, datetime.now().year-120, -1)), key="modal_year")
         account_for = st.radio("Account Type", ["For me", "For someone else"], key="modal_account_type", horizontal=True)
         
-        if st.form_submit_button("Complete Profile", type="primary", use_container_width=True):
+        # Save Basic Profile button - now blue like the other
+        if st.form_submit_button("💾 Save Basic Profile", type="primary", use_container_width=True):
             if birth_month and birth_day and birth_year:
                 birthdate = f"{birth_month} {birth_day}, {birth_year}"
                 if st.session_state.user_account:
@@ -1923,9 +2120,6 @@ if st.session_state.get('show_profile_setup', False):
                     save_account_data(st.session_state.user_account)
                 st.session_state.show_profile_setup = False
                 st.rerun()
-        if st.form_submit_button("Skip for Now", use_container_width=True):
-            st.session_state.show_profile_setup = False
-            st.rerun()
     
     st.divider()
     
@@ -1939,9 +2133,14 @@ if st.session_state.get('show_profile_setup', False):
     
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
+
 # ============================================================================
-# MODAL HANDLING
+# MODAL HANDLING (including AI suggestions)
 # ============================================================================
+if st.session_state.show_ai_suggestions and st.session_state.current_ai_suggestions:
+    show_ai_suggestions_modal()
+    st.stop()
+
 if st.session_state.show_bank_manager: 
     show_bank_manager(); 
     st.stop()
@@ -2498,8 +2697,13 @@ with tab1:
                             text_only = re.sub(r'<[^>]+>', '', a.get("answer", ""))
                             session_text += f"Question: {q}\nAnswer: {text_only}\n\n"
                         
+                        # Add Narrative GPS context for AI suggestions
+                        gps_context = get_narrative_gps_for_ai()
+                        
                         if session_text.strip():
-                            fb = generate_beta_reader_feedback(current_session["title"], session_text, fb_type)
+                            # Combine session text with GPS context
+                            full_text = gps_context + "\n\n" + session_text if gps_context else session_text
+                            fb = generate_beta_reader_feedback(current_session["title"], full_text, fb_type)
                             if "error" not in fb: 
                                 st.session_state.current_beta_feedback = fb
                                 st.session_state.show_beta_reader = True
