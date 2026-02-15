@@ -897,7 +897,7 @@ def show_ai_suggestions_modal():
 def render_enhanced_profile():
     """Render an expanded biographer-style questionnaire"""
     st.markdown("### 📋 The Biographer's Questions")
-    st.info("A biographer would ask these questions to capture the full richness of your life story.")
+    st.info("These questions ensure we capture the full richness of your life story.")
     
     if 'enhanced_profile' not in st.session_state.user_account:
         st.session_state.user_account['enhanced_profile'] = {}
