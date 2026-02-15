@@ -1497,6 +1497,7 @@ def initialize_question_bank():
     return False
 
 def load_question_bank(sessions, bank_name, bank_type, bank_id=None):
+    """Load a question bank and return to main Q&A screen"""
     st.session_state.current_question_bank = sessions
     st.session_state.current_bank_name = bank_name
     st.session_state.current_bank_type = bank_type
@@ -1505,14 +1506,17 @@ def load_question_bank(sessions, bank_name, bank_type, bank_id=None):
     st.session_state.current_question = 0
     st.session_state.current_question_override = None
     
+    # Initialize response structure for new sessions
     for s in sessions:
         sid = s["id"]
         if sid not in st.session_state.responses:
             st.session_state.responses[sid] = {
-                "title": s["title"], "questions": {}, "summary": "",
-                "completed": False, "word_target": s.get("word_target", DEFAULT_WORD_TARGET)
+                "title": s["title"], 
+                "questions": {}, 
+                "summary": "",
+                "completed": False, 
+                "word_target": s.get("word_target", DEFAULT_WORD_TARGET)
             }
-
 # ============================================================================
 # BETA READER FUNCTIONS
 # ============================================================================
