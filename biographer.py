@@ -2393,30 +2393,36 @@ if st.session_state.get('show_profile_setup', False):
         with col3: 
             birth_year = st.selectbox("Birth Year", list(range(datetime.now().year, datetime.now().year-120, -1)), key="modal_year")
         
-        # Save Basic Profile button - now blue
-        if st.form_submit_button("💾 Save Basic Information", type="primary", width='stretch'):
-            if birth_month and birth_day and birth_year:
-                birthdate = f"{birth_month} {birth_day}, {birth_year}"
-                if st.session_state.user_account:
-                    st.session_state.user_account['profile'].update({
-                        'gender': gender, 
-                        'birthdate': birthdate, 
-                        'timeline_start': birthdate
-                    })
-                    st.session_state.user_account['account_type'] = "self" if account_for == "For me" else "other"
-                    save_account_data(st.session_state.user_account)
-                st.success("Basic information saved!")
+        # Save Basic Profile button
+        col_save, col_close = st.columns([3, 1])
+        with col_save:
+            if st.form_submit_button("💾 Save Basic Information", type="primary", use_container_width=True):
+                if birth_month and birth_day and birth_year:
+                    birthdate = f"{birth_month} {birth_day}, {birth_year}"
+                    if st.session_state.user_account:
+                        st.session_state.user_account['profile'].update({
+                            'gender': gender, 
+                            'birthdate': birthdate, 
+                            'timeline_start': birthdate
+                        })
+                        st.session_state.user_account['account_type'] = "self" if account_for == "For me" else "other"
+                        save_account_data(st.session_state.user_account)
+                    st.success("Basic information saved!")
+                    st.rerun()
+        with col_close:
+            if st.form_submit_button("✕ Close Profile", use_container_width=True):
+                st.session_state.show_profile_setup = False
                 st.rerun()
     
     st.divider()
     
-    # Enhanced Biographer Profile
-    render_enhanced_profile()
+    # Narrative GPS Section - Heart of Your Story (MOVED ABOVE Biographer's Questions)
+    render_narrative_gps()
     
     st.divider()
     
-    # Narrative GPS Section
-    render_narrative_gps()
+    # Enhanced Biographer Profile (MOVED BELOW Heart of Your Story)
+    render_enhanced_profile()
     
     st.divider()
     
@@ -2500,7 +2506,6 @@ if st.session_state.get('show_profile_setup', False):
     
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
-
 # ============================================================================
 # MODAL HANDLING (including AI suggestions)
 # ============================================================================
