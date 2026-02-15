@@ -12,7 +12,7 @@ from email.mime.multipart import MIMEMultipart
 import secrets
 import string
 import time
-import shutil
+import shutilf
 import base64
 from PIL import Image
 import io
@@ -2755,16 +2755,23 @@ if st.session_state.logged_in:
     existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
 
 # ============================================================================
-# QUILL EDITOR
+# QUILL EDITOR - COMPLETE FIXED VERSION (NO AUTO-RERUN)
 # ============================================================================
 editor_key = f"quill_{current_session_id}_{current_question_text[:20]}"
 content_key = f"{editor_key}_content"
 
+# Get existing answer
+existing_answer = ""
+if current_session_id in st.session_state.responses:
+    if current_question_text in st.session_state.responses[current_session_id]["questions"]:
+        existing_answer = st.session_state.responses[current_session_id]["questions"][current_question_text]["answer"]
+
+# Initialize session state for this editor's content
 if content_key not in st.session_state:
     if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
         st.session_state[content_key] = existing_answer
     else:
-        st.session_state[content_key] = ""
+        st.session_state[content_key] = "<p>Start writing your story here...</p>"
 
 st.markdown("### ✍️ Your Story")
 st.markdown("""
@@ -2773,17 +2780,68 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
+# Use a unique key for the editor that doesn't change
+editor_component_key = f"quill_editor_{current_session_id}_{hash(current_question_text)}"
+
+# Display the editor - it will NOT trigger reruns on typing
 content = st_quill(
-    st.session_state[content_key],
-    editor_key
+    value=st.session_state[content_key],
+    key=editor_component_key,
+    placeholder="Start writing your story here...",
+    html=True  # Ensure HTML content is preserved
 )
 
-if content is not None:
+# Only update session state when content actually changes
+if content is not None and content != st.session_state[content_key]:
     st.session_state[content_key] = content
 
-user_input = st.session_state[content_key]
-
 st.markdown("---")
+
+# Save button (separate from editor)
+col1, col2, col3 = st.columns([1, 1, 2])
+with col1:
+    if st.button("💾 Save Story", key=f"save_btn_{editor_key}", type="primary", use_container_width=True):
+        current_content = st.session_state[content_key]
+        if current_content and current_content.strip() and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>":
+            with st.spinner("Saving your story..."):
+                if save_response(current_session_id, current_question_text, current_content):
+                    st.success("✅ Story saved!")
+                    time.sleep(0.5)
+                    st.rerun()
+                else: 
+                    st.error("Failed to save")
+        else: 
+            st.warning("Please write something!")
+
+with col2:
+    if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
+        if st.button("🗑️ Delete Story", key=f"del_btn_{editor_key}", use_container_width=True):
+            if delete_response(current_session_id, current_question_text):
+                # Clear the editor content
+                st.session_state[content_key] = "<p>Start writing your story here...</p>"
+                st.success("✅ Story deleted!")
+                st.rerun()
+    else: 
+        st.button("🗑️ Delete", key=f"del_disabled_{editor_key}", disabled=True, use_container_width=True)
+
+with col3:
+    nav1, nav2 = st.columns(2)
+    with nav1: 
+        prev_disabled = st.session_state.current_question == 0
+        if st.button("← Previous Topic", disabled=prev_disabled, key=f"prev_{editor_key}", use_container_width=True):
+            if not prev_disabled:
+                st.session_state.current_question -= 1
+                st.session_state.current_question_override = None
+                st.rerun()
+    with nav2:
+        next_disabled = st.session_state.current_question >= len(current_session["questions"]) - 1
+        if st.button("Next Topic →", disabled=next_disabled, key=f"next_{editor_key}", use_container_width=True):
+            if not next_disabled:
+                st.session_state.current_question += 1
+                st.session_state.current_question_override = None
+                st.rerun()
+
+st.divider()
 
 # ============================================================================
 # IMAGE UPLOAD SECTION
