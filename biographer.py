@@ -995,6 +995,8 @@ def render_enhanced_profile():
 # ============================================================================
 def render_narrative_gps():
     """Render the Narrative GPS questionnaire in the profile"""
+    st.markdown("### ❤️ The Heart of Your Story")  # <-- ADD THIS BACK
+    
     st.markdown("""
     <div style="background-color: #e6f3ff; padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #0066cc;">
     <p style="color: #004d99;">Your answers to these questions help me support you properly throughout the process and make sure the finished book is exactly right for you and your readers.</p>
