@@ -12,7 +12,7 @@ from email.mime.multipart import MIMEMultipart
 import secrets
 import string
 import time
-import shutilf
+import shutil
 import base64
 from PIL import Image
 import io
