@@ -1837,16 +1837,34 @@ def show_topic_browser():
         st.error("Topic module not available"); 
         st.session_state.show_topic_browser = False; 
         return
+    
     st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    if st.button("← Back", key="topic_back"): 
-        st.session_state.show_topic_browser = False; 
+    
+    col1, col2 = st.columns([6, 1])
+    with col1:
+        st.title("📚 Topic Bank")
+    with col2:
+        if st.button("✕", key="close_topic_browser"):
+            st.session_state.show_topic_browser = False
+            st.rerun()
+    
+    st.markdown("Browse and load topics into your current session.")
+    st.divider()
+    
+    topic_bank = TopicBank(st.session_state.user_id)
+    
+    def on_topic_selected(topic_text):
+        switch_to_custom_topic(topic_text)
+        st.session_state.show_topic_browser = False
         st.rerun()
-    st.title("📚 Topic Browser")
-    TopicBank(st.session_state.user_id).display_topic_browser(
-        on_topic_select=lambda t: (switch_to_custom_topic(t), st.session_state.update(show_topic_browser=False)),
-        unique_key=str(time.time())
+    
+    topic_bank.display_topic_browser(
+        on_topic_select=on_topic_selected,
+        unique_key="topic_bank_browser"
     )
+    
     st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
 
 def show_session_creator():
     if not SessionManager: 
