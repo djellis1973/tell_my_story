@@ -21,7 +21,6 @@ from docx.shared import Inches
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 from fpdf import FPDF
 import zipfile
-import biography_publisher
 
 # ============================================================================
 # IMPORT QUILL RICH TEXT EDITOR
@@ -570,6 +569,69 @@ def show_privacy_settings():
     if st.button("💾 Save Privacy Settings", type="primary", width='stretch'):
         save_account_data(st.session_state.user_account)
         st.success("Privacy settings saved!")
+        time.sleep(1)
+        st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
+# ============================================================================
+# COVER DESIGNER MODAL
+# ============================================================================
+def show_cover_designer():
+    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
+    st.title("🎨 Cover Designer")
+    
+    if st.button("← Back", key="cover_back"):
+        st.session_state.show_cover_designer = False
+        st.rerun()
+    
+    st.markdown("### Design your book cover")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Cover Options**")
+        cover_type = st.selectbox("Cover Style", ["Simple", "Elegant", "Modern", "Classic", "Vintage"])
+        title_font = st.selectbox("Title Font", ["Georgia", "Arial", "Times New Roman", "Helvetica", "Calibri"])
+        title_color = st.color_picker("Title Color", "#000000")
+        background_color = st.color_picker("Background Color", "#FFFFFF")
+        
+        uploaded_cover = st.file_uploader("Upload Cover Image (optional)", type=['jpg', 'jpeg', 'png'])
+        if uploaded_cover:
+            st.image(uploaded_cover, caption="Your cover image", width=300)
+    
+    with col2:
+        st.markdown("**Preview**")
+        first_name = st.session_state.user_account.get('profile', {}).get('first_name', 'My')
+        preview_title = st.text_input("Preview Title", value=f"{first_name}'s Story")
+        
+        preview_style = f"""
+        <div class="cover-preview" style="background-color:{background_color};">
+            <h1 style="font-family:{title_font}; color:{title_color};">{preview_title}</h1>
+            <p>by {st.session_state.user_account.get('profile', {}).get('first_name', '')}</p>
+        </div>
+        """
+        st.markdown(preview_style, unsafe_allow_html=True)
+    
+    if st.button("💾 Save Cover Design", type="primary", width='stretch'):
+        if 'cover_design' not in st.session_state.user_account:
+            st.session_state.user_account['cover_design'] = {}
+        
+        st.session_state.user_account['cover_design'].update({
+            "cover_type": cover_type, "title_font": title_font, "title_color": title_color,
+            "background_color": background_color, "title": preview_title
+        })
+        
+        if uploaded_cover:
+            cover_path = f"uploads/covers/{st.session_state.user_id}_cover.jpg"
+            os.makedirs("uploads/covers", exist_ok=True)
+            with open(cover_path, 'wb') as f:
+                f.write(uploaded_cover.getbuffer())
+            st.session_state.user_account['cover_design']['cover_image'] = cover_path
+        
+        save_account_data(st.session_state.user_account)
+        st.success("Cover design saved!")
         time.sleep(1)
         st.rerun()
     
@@ -2691,11 +2753,9 @@ if st.session_state.show_privacy_settings:
     show_privacy_settings()
     st.stop()
 
-# REMOVE the cover designer modal handling since it's now in publisher
 if st.session_state.show_cover_designer:
-    st.session_state.show_publisher = True
-    st.session_state.show_cover_designer = False
-    st.rerun()
+    show_cover_designer()
+    st.stop()
 
 # For modals that have their own navigation/close buttons, we need to be careful
 # Only stop if the modal is actually being displayed, not when it's being closed
@@ -2766,16 +2826,10 @@ with st.sidebar:
         if st.button("🔒 Privacy", width='stretch'):
             st.session_state.show_privacy_settings = True
             st.rerun()
-if st.button("🎨 Cover", width='stretch'):
-    # Store the current data for the publisher
-    st.session_state.publisher_data = {
-        "stories_data": {
-            "user_profile": st.session_state.user_account.get('profile', {}),
-            "stories": []  # We'll populate this if needed
-        }
-    }
-    st.session_state.show_publisher = True
-    st.rerun()
+    with col2:
+        if st.button("🎨 Cover", width='stretch'):
+            st.session_state.show_cover_designer = True
+            st.rerun()
     
     st.divider()
     st.header("📚 Question Banks")
@@ -3067,13 +3121,6 @@ if st.session_state.logged_in:
     init_image_handler()
     existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
 
-# ============================================================================
-# PUBLISHER PAGE
-# ============================================================================
-if st.session_state.get('show_publisher', False):
-    biography_publisher.main()
-    st.stop()
-    
 # ============================================================================
 # QUILL EDITOR - COMPLETE FIXED VERSION (NO AUTO-RERUN)
 # ============================================================================
@@ -3427,6 +3474,9 @@ if st.session_state.user_account:
     st.caption(f"Tell My Story Timeline • 👤 {profile['first_name']} {profile['last_name']} • 📅 Account Age: {age} days • 📚 Bank: {st.session_state.get('current_bank_name', 'None')}")
 else: 
     st.caption(f"Tell My Story Timeline • User: {st.session_state.user_id}")
+
+
+
 
 
 
