@@ -1517,51 +1517,108 @@ def generate_beta_reader_feedback(session_title, session_text, feedback_type="co
     if not beta_reader: 
         return {"error": "BetaReader not available"}
     
-    # Get profile context to provide to beta reader
-    profile_context = ""
+    # Track what profile information was accessed
+    accessed_profile_sections = []
+    profile_context = "\n\n" + "="*80 + "\n"
+    profile_context += "📋 BIOGRAPHER'S INTELLIGENCE BRIEFING\n"
+    profile_context += "="*80 + "\n"
+    profile_context += "The Beta Reader has accessed the following profile information to provide contextual feedback:\n\n"
+    
     if st.session_state.user_account:
         # Get Narrative GPS (Heart of Your Story)
         gps = st.session_state.user_account.get('narrative_gps', {})
         if gps:
-            profile_context += "\n\n=== BOOK PROJECT CONTEXT (From Narrative GPS) ===\n"
+            profile_context += "\n📖 SECTION 1: BOOK PROJECT CONTEXT (From Narrative GPS)\n"
+            profile_context += "-" * 50 + "\n"
+            
             if gps.get('book_title'):
-                profile_context += f"Book Title: {gps['book_title']}\n"
+                profile_context += f"• Book Title: {gps['book_title']}\n"
+                accessed_profile_sections.append("Book Title")
             if gps.get('genre'):
                 genre = gps['genre']
                 if genre == "Other" and gps.get('genre_other'):
                     genre = gps['genre_other']
-                profile_context += f"Genre: {genre}\n"
+                profile_context += f"• Genre: {genre}\n"
+                accessed_profile_sections.append("Genre")
             if gps.get('purposes'):
-                profile_context += f"Purpose: {', '.join(gps['purposes'])}\n"
+                profile_context += f"• Purpose: {', '.join(gps['purposes'])}\n"
+                accessed_profile_sections.append("Book Purpose")
             if gps.get('reader_takeaway'):
-                profile_context += f"Reader Takeaway: {gps['reader_takeaway']}\n"
+                profile_context += f"• Reader Takeaway: {gps['reader_takeaway']}\n"
+                accessed_profile_sections.append("Reader Takeaway")
             if gps.get('emotional_tone'):
-                profile_context += f"Emotional Tone: {gps['emotional_tone']}\n"
+                profile_context += f"• Emotional Tone: {gps['emotional_tone']}\n"
+                accessed_profile_sections.append("Emotional Tone")
             if gps.get('narrative_voices'):
-                profile_context += f"Narrative Voice: {', '.join(gps['narrative_voices'])}\n"
+                profile_context += f"• Narrative Voice: {', '.join(gps['narrative_voices'])}\n"
+                accessed_profile_sections.append("Narrative Voice")
+            if gps.get('time_coverage'):
+                profile_context += f"• Time Coverage: {gps['time_coverage']}\n"
+                accessed_profile_sections.append("Time Coverage")
+            if gps.get('audience_family') or gps.get('audience_industry'):
+                profile_context += f"• Target Audience: "
+                audiences = []
+                if gps.get('audience_family'): audiences.append(f"Family ({gps['audience_family']})")
+                if gps.get('audience_industry'): audiences.append(f"Industry ({gps['audience_industry']})")
+                if gps.get('audience_general'): audiences.append(f"General ({gps['audience_general']})")
+                profile_context += f"{', '.join(audiences)}\n"
+                accessed_profile_sections.append("Target Audience")
         
         # Get Enhanced Biographer Profile
         ep = st.session_state.user_account.get('enhanced_profile', {})
         if ep:
-            profile_context += "\n\n=== BIOGRAPHER'S PROFILE (Subject Information) ===\n"
+            profile_context += "\n\n👤 SECTION 2: SUBJECT BIOGRAPHY (From Enhanced Profile)\n"
+            profile_context += "-" * 50 + "\n"
+            
             if ep.get('birth_place'):
-                profile_context += f"Birth Place: {ep['birth_place']}\n"
+                profile_context += f"• Birth Place: {ep['birth_place']}\n"
+                accessed_profile_sections.append("Birth Place")
+            if ep.get('parents'):
+                profile_context += f"• Parents: {ep['parents'][:150]}...\n" if len(ep['parents']) > 150 else f"• Parents: {ep['parents']}\n"
+                accessed_profile_sections.append("Family Background")
             if ep.get('childhood_home'):
-                profile_context += f"Childhood Home: {ep['childhood_home'][:200]}...\n" if len(ep['childhood_home']) > 200 else f"Childhood Home: {ep['childhood_home']}\n"
+                profile_context += f"• Childhood Home: {ep['childhood_home'][:150]}...\n" if len(ep['childhood_home']) > 150 else f"• Childhood Home: {ep['childhood_home']}\n"
+                accessed_profile_sections.append("Childhood")
             if ep.get('family_traditions'):
-                profile_context += f"Family Background: {ep['family_traditions'][:200]}...\n" if len(ep['family_traditions']) > 200 else f"Family Background: {ep['family_traditions']}\n"
+                profile_context += f"• Family Traditions: {ep['family_traditions'][:150]}...\n" if len(ep['family_traditions']) > 150 else f"• Family Traditions: {ep['family_traditions']}\n"
+                accessed_profile_sections.append("Family Traditions")
+            if ep.get('school'):
+                profile_context += f"• Education: {ep['school'][:150]}...\n" if len(ep['school']) > 150 else f"• Education: {ep['school']}\n"
+                accessed_profile_sections.append("Education")
             if ep.get('career_path'):
-                profile_context += f"Career: {ep['career_path'][:200]}...\n" if len(ep['career_path']) > 200 else f"Career: {ep['career_path']}\n"
+                profile_context += f"• Career: {ep['career_path'][:150]}...\n" if len(ep['career_path']) > 150 else f"• Career: {ep['career_path']}\n"
+                accessed_profile_sections.append("Career")
+            if ep.get('romance') or ep.get('marriage'):
+                profile_context += f"• Relationships: "
+                if ep.get('marriage'): profile_context += f"Married - {ep['marriage'][:100]}... " if len(ep['marriage']) > 100 else f"Married - {ep['marriage']} "
+                if ep.get('children'): profile_context += f"Children - {ep['children'][:100]}... " if len(ep['children']) > 100 else f"Children - {ep['children']} "
+                profile_context += "\n"
+                accessed_profile_sections.append("Relationships")
+            if ep.get('challenges'):
+                profile_context += f"• Life Challenges: {ep['challenges'][:150]}...\n" if len(ep['challenges']) > 150 else f"• Life Challenges: {ep['challenges']}\n"
+                accessed_profile_sections.append("Challenges")
             if ep.get('life_lessons'):
-                profile_context += f"Life Philosophy: {ep['life_lessons'][:200]}...\n" if len(ep['life_lessons']) > 200 else f"Life Philosophy: {ep['life_lessons']}\n"
+                profile_context += f"• Life Philosophy: {ep['life_lessons'][:150]}...\n" if len(ep['life_lessons']) > 150 else f"• Life Philosophy: {ep['life_lessons']}\n"
+                accessed_profile_sections.append("Life Philosophy")
             if ep.get('legacy'):
-                profile_context += f"Legacy Hope: {ep['legacy'][:200]}...\n" if len(ep['legacy']) > 200 else f"Legacy Hope: {ep['legacy']}\n"
+                profile_context += f"• Legacy Hope: {ep['legacy'][:150]}...\n" if len(ep['legacy']) > 150 else f"• Legacy Hope: {ep['legacy']}\n"
+                accessed_profile_sections.append("Legacy Hope")
+    
+    # Add summary of accessed sections
+    if accessed_profile_sections:
+        profile_context += f"\n📊 PROFILE SECTIONS USED: {', '.join(set(accessed_profile_sections))}\n"
+    else:
+        profile_context += "\n⚠️ No profile information found. Complete your profile for personalized feedback!\n"
+    
+    profile_context += "\n" + "="*80 + "\n"
+    profile_context += "📝 BETA READER INSTRUCTIONS: Use the above profile information to provide personalized feedback.\n"
+    profile_context += "When your feedback is influenced by specific profile details, mark it with [PROFILE: section_name]\n"
+    profile_context += "="*80 + "\n\n"
     
     # Combine profile context with session text
-    full_context = profile_context + "\n\n=== SESSION CONTENT TO REVIEW ===\n" + session_text
+    full_context = profile_context + "\n=== SESSION CONTENT TO REVIEW ===\n\n" + session_text
     
-    return beta_reader.generate_feedback(session_title, full_context, feedback_type)
-
+    return beta_reader.generate_feedback(session_title, full_context, feedback_type, accessed_profile_sections)
 # ============================================================================
 # FIXED: save_beta_feedback function
 # ============================================================================
