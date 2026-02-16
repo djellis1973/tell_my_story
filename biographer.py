@@ -2486,34 +2486,51 @@ if st.session_state.get('show_profile_setup', False):
     st.stop()
 
 # ============================================================================
-# MODAL HANDLING
+# MODAL HANDLING - UPDATED
 # ============================================================================
 if st.session_state.show_ai_suggestions and st.session_state.current_ai_suggestions:
     show_ai_suggestions_modal()
+    st.stop()  # ADD THIS - Stop after showing modal
 
 if st.session_state.show_privacy_settings:
     show_privacy_settings()
+    st.stop()  # ADD THIS
 
 if st.session_state.show_cover_designer:
     show_cover_designer()
+    st.stop()  # ADD THIS
 
 if st.session_state.show_bank_manager: 
     show_bank_manager()
+    st.stop()  # ADD THIS - Prevents Bank Manager from showing extra logos
+
 if st.session_state.show_bank_editor: 
     show_bank_editor()
+    st.stop()  # ADD THIS
+
 if st.session_state.show_vignette_detail: 
     show_vignette_detail()
+    st.stop()  # ADD THIS
+
 if st.session_state.show_vignette_manager: 
     show_vignette_manager()
+    st.stop()  # ADD THIS
+
 if st.session_state.show_vignette_modal: 
     show_vignette_modal()
+    st.stop()  # ADD THIS
+
 if st.session_state.show_topic_browser: 
     show_topic_browser()
+    st.stop()  # ADD THIS
+
 if st.session_state.show_session_manager: 
     show_session_manager()
+    st.stop()  # ADD THIS
+
 if st.session_state.show_session_creator: 
     show_session_creator()
-
+    st.stop()  # ADD THIS
 # ============================================================================
 # MAIN HEADER
 # ============================================================================
