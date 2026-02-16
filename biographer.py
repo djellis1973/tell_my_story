@@ -2784,7 +2784,85 @@ with st.sidebar:
 # ============================================================================
 # MAIN CONTENT AREA - FIXED
 # ============================================================================
+# ============================================================================
+# MAIN HEADER
+# ============================================================================
+st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
 
+# ============================================================================
+# SIDEBAR
+# ============================================================================
+with st.sidebar:
+    # ... sidebar code ...
+
+# ============================================================================
+# MAIN CONTENT AREA - FIXED with bounds checking
+# ============================================================================
+
+# ADD THIS CHECK AT THE VERY TOP OF MAIN CONTENT AREA
+# Skip rendering main content if any modal is active
+if (st.session_state.show_vignette_modal or 
+    st.session_state.show_vignette_manager or 
+    st.session_state.show_vignette_detail or
+    st.session_state.show_topic_browser or 
+    st.session_state.show_session_manager or 
+    st.session_state.show_session_creator or
+    st.session_state.show_bank_manager or 
+    st.session_state.show_bank_editor or
+    st.session_state.show_privacy_settings or
+    st.session_state.show_cover_designer or
+    st.session_state.show_profile_setup or
+    st.session_state.show_ai_suggestions):
+    
+    # Still show the main header but don't render the Q&A section
+    st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
+    st.stop()  # This stops execution here, preventing the Q&A section from rendering
+
+# Original main content continues below this point
+if st.session_state.current_session >= len(SESSIONS): 
+    st.session_state.current_session = 0
+
+current_session = SESSIONS[st.session_state.current_session]
+current_session_id = current_session["id"]
+
+# FIX: Ensure current_question is within bounds for this session
+if st.session_state.current_question >= len(current_session["questions"]):
+    st.session_state.current_question = 0
+
+if st.session_state.current_question_override:
+    current_question_text = st.session_state.current_question_override
+    question_source = "custom"
+else:
+    if st.session_state.current_question >= len(current_session["questions"]): 
+        st.session_state.current_question = 0
+    current_question_text = current_session["questions"][st.session_state.current_question]
+    question_source = "regular"
+
+# Make sure we have a valid question to display
+if not current_question_text and len(current_session["questions"]) > 0:
+    current_question_text = current_session["questions"][0]
+    st.session_state.current_question = 0
+
+st.markdown("---")
+
+col1, col2 = st.columns([3, 1])
+with col1:
+    st.subheader(f"Session {current_session_id}: {current_session['title']}")
+    sdata = st.session_state.responses.get(current_session_id, {})
+    answered = len(sdata.get("questions", {}))
+    total = len(current_session["questions"])
+    if total > 0: 
+        st.progress(answered/total)
+        st.caption(f"📝 Topics explored: {answered}/{total} ({answered/total*100:.0f}%)")
+with col2:
+    if question_source == "custom":
+        st.markdown(f'<div class="custom-topic-badge">{"📝 Vignette" if "Vignette:" in st.session_state.current_question_override else "✨ Custom Topic"}</div>', unsafe_allow_html=True)
+    else:
+        st.markdown(f'<div class="topic-counter">Topic {st.session_state.current_question+1} of {len(current_session["questions"])}</div>', unsafe_allow_html=True)
+
+st.markdown(f'<div class="question-box">{current_question_text}</div>', unsafe_allow_html=True)
+
+# ... rest of your code continues ...
 # ADD THIS CHECK AT THE VERY TOP OF MAIN CONTENT AREA
 # Skip rendering main content if any modal is active
 if (st.session_state.show_vignette_modal or 
