@@ -301,7 +301,7 @@ class ImageHandler:
                     dimensions = metadata.get("dimensions", "")
             
             return {
-                "html": f'<img src="data:image/jpeg;base64,{b64}" style="max-width:100%; border-radius:8px; margin:5px 0;" alt="{caption}" data-dimensions="{dimensions}">',
+                "html": f'<img src="data:image/jpeg;base64,{b64}" class="story-image" alt="{caption}" data-dimensions="{dimensions}">',
                 "caption": caption, "base64": b64, "dimensions": dimensions
             }
         except:
@@ -486,7 +486,7 @@ def send_welcome_email(user_data, credentials):
         body = f"""
         <html><body style="font-family: Arial;">
         <h2>Welcome to Tell My Story, {user_data['first_name']}!</h2>
-        <div style="background: #f0f8ff; padding: 15px; border-left: 4px solid #3498db;">
+        <div class="welcome-email">
             <h3>Your Account Details:</h3>
             <p><strong>Account ID:</strong> {credentials['user_id']}</p>
             <p><strong>Email:</strong> {user_data['email']}</p>
@@ -607,12 +607,9 @@ def show_cover_designer():
         preview_title = st.text_input("Preview Title", value=f"{first_name}'s Story")
         
         preview_style = f"""
-        <div style="width:300px; height:400px; background-color:{background_color}; 
-                    border:2px solid #ccc; border-radius:10px; padding:20px; 
-                    display:flex; flex-direction:column; justify-content:center; 
-                    align-items:center; text-align:center;">
+        <div class="cover-preview" style="background-color:{background_color};">
             <h1 style="font-family:{title_font}; color:{title_color};">{preview_title}</h1>
-            <p style="margin-top:50px;">by {st.session_state.user_account.get('profile', {}).get('first_name', '')}</p>
+            <p>by {st.session_state.user_account.get('profile', {}).get('first_name', '')}</p>
         </div>
         """
         st.markdown(preview_style, unsafe_allow_html=True)
@@ -898,12 +895,12 @@ def render_narrative_gps():
     st.markdown("### ❤️ The Heart of Your Story")
     
     st.markdown("""
-    <div style="background-color: #e6f3ff; padding: 20px; border-radius: 10px; margin-bottom: 20px; border-left: 4px solid #0066cc;">
-    <p style="color: #004d99;">Your answers to these questions help me support you properly throughout the process and make sure the finished book is exactly right for you and your readers.</p>
+    <div class="narrative-gps-box">
+    <p>Your answers to these questions help me support you properly throughout the process and make sure the finished book is exactly right for you and your readers.</p>
     
-    <p style="color: #004d99;">The more open and detailed you are here, the easier it is for your real voice and personality to come through on every page. Think of this as a conversation between you and the person who will read your story one day — and I'm here alongside you, listening, capturing what matters, and helping shape it into something lasting.</p>
+    <p>The more open and detailed you are here, the easier it is for your real voice and personality to come through on every page. Think of this as a conversation between you and the person who will read your story one day — and I'm here alongside you, listening, capturing what matters, and helping shape it into something lasting.</p>
     
-    <p style="color: #004d99;"><strong>There's no rush.</strong> You can return and add to this whenever new thoughts or memories surface. This is where your story truly begins.</p>
+    <p><strong>There's no rush.</strong> You can return and add to this whenever new thoughts or memories surface. This is where your story truly begins.</p>
     </div>
     """, unsafe_allow_html=True)
     
@@ -1574,34 +1571,6 @@ def save_beta_feedback(user_id, session_id, feedback_data):
     except Exception as e:
         print(f"Error saving feedback: {e}")
         return False
-        
-        if "beta_feedback" not in user_data:
-            user_data["beta_feedback"] = {}
-        
-        session_key = str(session_id)
-        
-        if session_key not in user_data["beta_feedback"]:
-            user_data["beta_feedback"][session_key] = []
-        
-        if "generated_at" not in feedback_data:
-            feedback_data["generated_at"] = datetime.now().isoformat()
-        
-        if "feedback_type" not in feedback_data:
-            feedback_data["feedback_type"] = "comprehensive"
-        
-        for s in SESSIONS:
-            if str(s["id"]) == session_key:
-                feedback_data["session_title"] = s["title"]
-                break
-        
-        user_data["beta_feedback"][session_key].append(feedback_data)
-        
-        save_user_data(user_id, st.session_state.responses)
-        
-        return True
-    except Exception as e:
-        print(f"Error saving feedback: {e}")
-        return False
 
 def get_previous_beta_feedback(user_id, session_id):
     if not beta_reader: 
@@ -2068,94 +2037,7 @@ def generate_html(book_title, author_name, stories):
 <head>
     <meta charset="UTF-8">
     <title>{book_title}</title>
-    <style>
-        body {{
-            font-family: 'Georgia', 'Times New Roman', serif;
-            max-width: 800px;
-            margin: 40px auto;
-            padding: 20px;
-            line-height: 1.6;
-            color: #333;
-            background: #fff;
-        }}
-        h1 {{
-            color: #667eea;
-            text-align: center;
-            font-size: 2.5em;
-            border-bottom: 3px solid #667eea;
-            padding-bottom: 10px;
-        }}
-        h2 {{
-            color: #764ba2;
-            margin-top: 40px;
-        }}
-        .author {{
-            text-align: center;
-            font-size: 1.2em;
-            color: #666;
-            margin-bottom: 40px;
-        }}
-        .story {{
-            margin-bottom: 50px;
-            padding: 25px;
-            background: #f9f9f9;
-            border-radius: 10px;
-            box-shadow: 0 4px 6px rgba(0,0,0,0.1);
-        }}
-        .question {{
-            font-size: 1.4em;
-            font-weight: bold;
-            color: #2c3e50;
-            margin-bottom: 15px;
-            border-left: 4px solid #667eea;
-            padding-left: 15px;
-        }}
-        .answer {{
-            font-size: 1.1em;
-            white-space: pre-wrap;
-            margin-bottom: 20px;
-        }}
-        img {{
-            max-width: 100%;
-            height: auto;
-            border-radius: 8px;
-            margin: 15px 0;
-            display: block;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
-        }}
-        .caption {{
-            font-style: italic;
-            color: #666;
-            text-align: center;
-            margin-top: -10px;
-            margin-bottom: 20px;
-            font-size: 0.95em;
-        }}
-        hr {{
-            border: none;
-            border-top: 2px solid #e0e0e0;
-            margin: 40px 0;
-        }}
-        .footer {{
-            text-align: center;
-            color: #999;
-            font-size: 0.9em;
-            margin-top: 50px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-        }}
-        .image-gallery {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            justify-content: center;
-            margin: 20px 0;
-        }}
-        .image-item {{
-            flex: 0 1 auto;
-            max-width: 300px;
-        }}
-    </style>
+    <link rel="stylesheet" type="text/css" href="styles.css">
 </head>
 <body>
     <h1>{book_title}</h1>
@@ -2204,24 +2086,11 @@ def generate_zip(book_title, author_name, stories):
 <head>
     <meta charset="UTF-8">
     <title>{book_title}</title>
-    <style>
-        body {{
-            font-family: 'Georgia', serif;
-            max-width: 800px;
-            margin: 40px auto;
-            padding: 20px;
-            line-height: 1.6;
-        }}
-        h1 {{ color: #667eea; text-align: center; }}
-        .story {{ margin-bottom: 50px; padding: 20px; background: #f9f9f9; border-radius: 10px; }}
-        .question {{ font-size: 1.3em; font-weight: bold; color: #2c3e50; margin-bottom: 15px; }}
-        img {{ max-width: 100%; border-radius: 8px; margin: 10px 0; }}
-        .caption {{ font-style: italic; color: #666; text-align: center; }}
-    </style>
+    <link rel="stylesheet" type="text/css" href="styles.css">
 </head>
 <body>
     <h1>{book_title}</h1>
-    <div style="text-align: center;">by {author_name}</div>
+    <div class="author">by {author_name}</div>
 """
         
         image_counter = 0
@@ -2531,7 +2400,7 @@ st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></
 # SIDEBAR
 # ============================================================================
 with st.sidebar:
-    st.markdown('<div style="text-align: center; padding: 1rem 0;"><h2 style="color: #0066cc;">Tell My Story</h2><p style="color: #36cfc9;">Your Life Timeline</p></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-header"><h2>Tell My Story</h2><p>Your Life Timeline</p></div>', unsafe_allow_html=True)
     
     st.header("👤 Your Profile")
     if st.session_state.user_account:
@@ -2793,9 +2662,9 @@ with col1:
         st.caption(f"📝 Topics explored: {answered}/{total} ({answered/total*100:.0f}%)")
 with col2:
     if question_source == "custom":
-        st.markdown(f'<div style="margin-top:1rem;color:{"#9b59b6" if "Vignette:" in st.session_state.current_question_override else "#ff6b00"};">{"📝 Vignette" if "Vignette:" in st.session_state.current_question_override else "✨ Custom Topic"}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="custom-topic-badge">{"📝 Vignette" if "Vignette:" in st.session_state.current_question_override else "✨ Custom Topic"}</div>', unsafe_allow_html=True)
     else:
-        st.markdown(f'<div style="margin-top:1rem;">Topic {st.session_state.current_question+1} of {len(current_session["questions"])}</div>', unsafe_allow_html=True)
+        st.markdown(f'<div class="topic-counter">Topic {st.session_state.current_question+1} of {len(current_session["questions"])}</div>', unsafe_allow_html=True)
 
 st.markdown(f'<div class="question-box">{current_question_text}</div>', unsafe_allow_html=True)
 
@@ -2840,7 +2709,7 @@ if content_key not in st.session_state:
 
 st.markdown("### ✍️ Your Story")
 st.markdown("""
-<div style="background-color: #f0f8ff; padding: 10px; border-radius: 5px; margin-bottom: 15px; border-left: 4px solid #36cfc9;">
+<div class="image-drop-info">
     📸 <strong>Drag & drop images</strong> directly into the editor.
 </div>
 """, unsafe_allow_html=True)
@@ -2977,49 +2846,6 @@ if st.session_state.logged_in and st.session_state.image_handler:
                             st.error("Upload failed")
     
     st.markdown("---")
-
-# ============================================================================
-# SAVE BUTTONS
-# ============================================================================
-col1, col2, col3 = st.columns([1, 1, 2])
-with col1:
-    if st.button("💾 Save Story", key="save_ans", type="primary", width='stretch'):
-        if user_input and user_input.strip() and user_input != "<p><br></p>" and user_input != "<p>Start writing your story here...</p>":
-            with st.spinner("Saving your story..."):
-                if save_response(current_session_id, current_question_text, user_input):
-                    st.success("✅ Story saved!")
-                    time.sleep(0.5)
-                    st.rerun()
-                else: 
-                    st.error("Failed to save")
-        else: 
-            st.warning("Please write something!")
-with col2:
-    if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
-        if st.button("🗑️ Delete Story", key="del_ans", width='stretch'):
-            if delete_response(current_session_id, current_question_text):
-                st.success("✅ Story deleted!")
-                st.rerun()
-    else: 
-        st.button("🗑️ Delete", key="del_dis", disabled=True, width='stretch')
-with col3:
-    nav1, nav2 = st.columns(2)
-    with nav1: 
-        prev_disabled = st.session_state.current_question == 0
-        if st.button("← Previous Topic", disabled=prev_disabled, key="prev_btn", width='stretch'):
-            if not prev_disabled:
-                st.session_state.current_question -= 1
-                st.session_state.current_question_override = None
-                st.rerun()
-    with nav2:
-        next_disabled = st.session_state.current_question >= len(current_session["questions"]) - 1
-        if st.button("Next Topic →", disabled=next_disabled, key="next_btn", width='stretch'):
-            if not next_disabled:
-                st.session_state.current_question += 1
-                st.session_state.current_question_override = None
-                st.rerun()
-
-st.divider()
 
 # ============================================================================
 # PREVIEW SECTION - FIXED
@@ -3171,7 +2997,7 @@ st.markdown(f"""
 <div class="progress-header">📊 Session Progress</div>
 <div class="progress-status">{progress_info['emoji']} {progress_info['progress_percent']:.0f}% complete • {progress_info['remaining_words']} words remaining</div>
 <div class="progress-bar-container"><div class="progress-bar-fill" style="width: {min(progress_info['progress_percent'], 100)}%; background-color: {progress_info['color']};"></div></div>
-<div style="text-align:center;font-size:0.9rem;color:#666;">{progress_info['current_count']} / {progress_info['target']} words</div>
+<div class="progress-stats">{progress_info['current_count']} / {progress_info['target']} words</div>
 </div>
 """, unsafe_allow_html=True)
 
