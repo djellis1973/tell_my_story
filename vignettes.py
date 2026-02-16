@@ -1,4 +1,4 @@
-# vignettes.py - ULTRA SIMPLE VERSION
+# vignettes.py - ULTRA SIMPLE VERSION with Beta Reader on Edit
 import streamlit as st
 import json
 from datetime import datetime
@@ -142,7 +142,8 @@ class VignetteManager:
                 if st.button("Read", key=f"r_{v['id']}"):
                     on_select(v['id'])
             with col2:
-                if st.button("Edit", key=f"e_{v['id']}"):
+                # CHANGED: Now shows Edit/Beta Read
+                if st.button("✏️ Edit/Beta Read", key=f"e_{v['id']}"):
                     on_edit(v['id'])
             with col3:
                 if st.button("Delete", key=f"d_{v['id']}"):
