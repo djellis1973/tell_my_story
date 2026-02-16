@@ -576,7 +576,7 @@ def show_privacy_settings():
     st.stop()
 
 # ============================================================================
-# SIMPLIFIED COVER DESIGNER MODAL - Just adds the missing fields
+# SIMPLIFIED COVER DESIGNER MODAL - Fixed unbound variables
 # ============================================================================
 def show_cover_designer():
     st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
@@ -619,6 +619,11 @@ def show_cover_designer():
         st.markdown("---")
         st.markdown("**Accolades/Blurbs (optional)**")
         use_blurb = st.checkbox("Add a praise blurb")
+        
+        # Initialize blurb variables
+        blurb_text = ""
+        blurb_position = "Top"
+        
         if use_blurb:
             blurb_text = st.text_area("Blurb text", placeholder="e.g., 'A captivating story...' — New York Times", height=60)
             blurb_position = st.radio("Blurb position", ["Top", "Bottom"], horizontal=True)
@@ -646,13 +651,25 @@ def show_cover_designer():
             # Build blurb HTML
             blurb_html = ""
             if use_blurb and blurb_text:
-                if blurb_position == "Top":
-                    blurb_html = f'<div style="margin-bottom: 15px; font-style: italic; color: white; text-shadow: 1px 1px 2px black; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px;">"{blurb_text}"</div>'
-                else:
-                    blurb_html = f'<div style="margin-top: 15px; font-style: italic; color: white; text-shadow: 1px 1px 2px black; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px;">"{blurb_text}"</div>'
+                blurb_html = f'<div style="font-style: italic; color: white; text-shadow: 1px 1px 2px black; background: rgba(0,0,0,0.3); padding: 8px; border-radius: 4px;">"{blurb_text}"</div>'
             
             # Build subtitle HTML
-            subtitle_html = f'<h2 style="font-family:{title_font}; color:white; font-size:24px; margin:5px 0; text-shadow:2px 2px 4px black;">{subtitle}</h2>' if subtitle else ""
+            subtitle_html = ""
+            if subtitle:
+                subtitle_html = f'<h2 style="font-family:{title_font}; color:white; font-size:24px; margin:5px 0; text-shadow:2px 2px 4px black;">{subtitle}</h2>'
+            
+            # Build top and bottom content
+            top_content = ""
+            bottom_content = ""
+            
+            if series_text:
+                top_content += f'<div style="font-family:{title_font}; color:white; font-size:16px; letter-spacing:2px; margin-bottom:10px; text-shadow:1px 1px 2px black;">{series_text}</div>'
+            
+            if use_blurb and blurb_text and blurb_position == "Top":
+                top_content += blurb_html
+            
+            if use_blurb and blurb_text and blurb_position == "Bottom":
+                bottom_content += blurb_html
             
             preview_style = f'''
             <div style="
@@ -683,8 +700,7 @@ def show_cover_designer():
                     box-sizing: border-box;
                 ">
                     <div style="width:100%;">
-                        {f'<div style="font-family:{title_font}; color:white; font-size:16px; letter-spacing:2px; margin-bottom:10px; text-shadow:1px 1px 2px black;">{series_text}</div>' if series_text else ''}
-                        {blurb_html if blurb_position == "Top" else ''}
+                        {top_content}
                     </div>
                     
                     <div>
@@ -694,7 +710,7 @@ def show_cover_designer():
                     
                     <div style="width:100%;">
                         <p style="font-family:{title_font}; color:white; font-size:24px; text-shadow:1px 1px 2px black;">by {author}</p>
-                        {blurb_html if blurb_position == "Bottom" else ''}
+                        {bottom_content}
                     </div>
                 </div>
             </div>
@@ -710,13 +726,25 @@ def show_cover_designer():
             # Build blurb HTML
             blurb_html = ""
             if use_blurb and blurb_text:
-                if blurb_position == "Top":
-                    blurb_html = f'<div style="margin-bottom: 15px; font-style: italic; color: {title_color};">"{blurb_text}"</div>'
-                else:
-                    blurb_html = f'<div style="margin-top: 15px; font-style: italic; color: {title_color};">"{blurb_text}"</div>'
+                blurb_html = f'<div style="font-style: italic; color: {title_color};">"{blurb_text}"</div>'
             
             # Build subtitle HTML
-            subtitle_html = f'<h2 style="font-family:{title_font}; color:{title_color}; font-size:24px; margin:5px 0;">{subtitle}</h2>' if subtitle else ""
+            subtitle_html = ""
+            if subtitle:
+                subtitle_html = f'<h2 style="font-family:{title_font}; color:{title_color}; font-size:24px; margin:5px 0;">{subtitle}</h2>'
+            
+            # Build top and bottom content
+            top_content = ""
+            bottom_content = ""
+            
+            if series_text:
+                top_content += f'<div style="font-family:{title_font}; color:{title_color}; font-size:16px; letter-spacing:2px; margin-bottom:10px;">{series_text}</div>'
+            
+            if use_blurb and blurb_text and blurb_position == "Top":
+                top_content += blurb_html
+            
+            if use_blurb and blurb_text and blurb_position == "Bottom":
+                bottom_content += blurb_html
             
             preview_style = f'''
             <div style="
@@ -735,8 +763,7 @@ def show_cover_designer():
                 box-shadow: 0 4px 8px rgba(0,0,0,0.1);
             ">
                 <div style="width:100%;">
-                    {f'<div style="font-family:{title_font}; color:{title_color}; font-size:16px; letter-spacing:2px; margin-bottom:10px;">{series_text}</div>' if series_text else ''}
-                    {blurb_html if blurb_position == "Top" else ''}
+                    {top_content}
                 </div>
                 
                 <div>
@@ -746,7 +773,7 @@ def show_cover_designer():
                 
                 <div style="width:100%;">
                     <p style="font-family:{title_font}; color:{title_color}; font-size:24px;">by {author}</p>
-                    {blurb_html if blurb_position == "Bottom" else ''}
+                    {bottom_content}
                 </div>
             </div>
             '''
@@ -771,7 +798,7 @@ def show_cover_designer():
             "background_color": background_color,
             "use_blurb": use_blurb,
             "blurb_text": blurb_text if use_blurb else "",
-            "blurb_position": blurb_position if use_blurb else "Top"
+            "blurb_position": blurb_position
         })
         
         if uploaded_cover:
