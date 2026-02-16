@@ -2691,9 +2691,11 @@ if st.session_state.show_privacy_settings:
     show_privacy_settings()
     st.stop()
 
+# REMOVE the cover designer modal handling since it's now in publisher
 if st.session_state.show_cover_designer:
-    show_cover_designer()
-    st.stop()
+    st.session_state.show_publisher = True
+    st.session_state.show_cover_designer = False
+    st.rerun()
 
 # For modals that have their own navigation/close buttons, we need to be careful
 # Only stop if the modal is actually being displayed, not when it's being closed
