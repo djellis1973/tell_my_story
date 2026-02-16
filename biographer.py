@@ -2926,18 +2926,16 @@ with tab1:
                               key=f"beta_type_{beta_key}")
     with col2:
         if st.button("🦋 Get Beta Read", key=f"beta_btn_{beta_key}", width='stretch', type="primary"):
-            with st.spinner("Beta Reader is analyzing your stories..."):
+            with st.spinner("Beta Reader is analyzing your stories with full profile context..."):
                 if beta_reader:
                     session_text = ""
                     for q, a in sdata.get("questions", {}).items():
                         text_only = re.sub(r'<[^>]+>', '', a.get("answer", ""))
                         session_text += f"Question: {q}\nAnswer: {text_only}\n\n"
                     
-                    gps_context = get_narrative_gps_for_ai()
-                    
                     if session_text.strip():
-                        full_text = gps_context + "\n\n" + session_text if gps_context else session_text
-                        fb = generate_beta_reader_feedback(current_session["title"], full_text, fb_type)
+                        # The profile context is now included inside generate_beta_reader_feedback
+                        fb = generate_beta_reader_feedback(current_session["title"], session_text, fb_type)
                         if "error" not in fb: 
                             st.session_state.beta_feedback_display = fb
                             st.session_state.beta_feedback_storage[beta_key] = fb
