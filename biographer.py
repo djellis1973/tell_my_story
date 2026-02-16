@@ -2812,7 +2812,7 @@ if st.session_state.current_session >= len(SESSIONS):
 current_session = SESSIONS[st.session_state.current_session]
 current_session_id = current_session["id"]
 
-# FIX: Ensure current_question is within bounds for this session
+# CRITICAL FIX: Ensure current_question is within bounds BEFORE using it
 if st.session_state.current_question >= len(current_session["questions"]):
     st.session_state.current_question = 0
 
@@ -2820,8 +2820,7 @@ if st.session_state.current_question_override:
     current_question_text = st.session_state.current_question_override
     question_source = "custom"
 else:
-    if st.session_state.current_question >= len(current_session["questions"]): 
-        st.session_state.current_question = 0
+    # Now this is safe because we already checked bounds above
     current_question_text = current_session["questions"][st.session_state.current_question]
     question_source = "regular"
 
@@ -2831,7 +2830,6 @@ if not current_question_text and len(current_session["questions"]) > 0:
     st.session_state.current_question = 0
 
 st.markdown("---")
-
 col1, col2 = st.columns([3, 1])
 with col1:
     st.subheader(f"Session {current_session_id}: {current_session['title']}")
