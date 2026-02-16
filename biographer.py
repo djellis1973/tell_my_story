@@ -576,7 +576,7 @@ def show_privacy_settings():
     st.stop()
 
 # ============================================================================
-# SIMPLE COVER DESIGNER - Fixed sizing and title at top
+# SIMPLE COVER DESIGNER - Loads saved cover when opened
 # ============================================================================
 def show_cover_designer():
     st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
@@ -588,41 +588,63 @@ def show_cover_designer():
     
     st.markdown("### Design your book cover - Portrait format (6\" x 9\")")
     
+    # Load existing cover design if it exists
+    saved_cover = st.session_state.user_account.get('cover_design', {}) if st.session_state.user_account else {}
+    
     col1, col2 = st.columns(2)
     
     with col1:
         st.markdown("**Cover Options**")
         
-        # Editable title
+        # Editable title - load saved value if exists
         default_title = f"{st.session_state.user_account.get('profile', {}).get('first_name', 'My')}'s Story"
-        title = st.text_input("Book Title", value=default_title)
+        title = st.text_input("Book Title", value=saved_cover.get('title', default_title))
         
-        # Editable subtitle
-        subtitle = st.text_input("Subtitle (optional)", placeholder="A brief subtitle or tagline")
+        # Editable subtitle - load saved value if exists
+        subtitle = st.text_input("Subtitle (optional)", value=saved_cover.get('subtitle', ''), placeholder="A brief subtitle or tagline")
         
-        # Editable author name
+        # Editable author name - load saved value if exists
         default_author = f"{st.session_state.user_account.get('profile', {}).get('first_name', '')} {st.session_state.user_account.get('profile', {}).get('last_name', '')}".strip()
-        author = st.text_input("Author Name", value=default_author if default_author else "Author Name")
+        author = st.text_input("Author Name", value=saved_cover.get('author', default_author if default_author else "Author Name"))
         
-        cover_type = st.selectbox("Cover Style", ["Simple", "Elegant", "Modern", "Classic", "Vintage"])
-        title_font = st.selectbox("Title Font", ["Georgia", "Arial", "Times New Roman", "Helvetica", "Calibri"])
-        title_color = st.color_picker("Title Color", "#000000")
-        background_color = st.color_picker("Background Color", "#FFFFFF")
+        cover_type = st.selectbox("Cover Style", ["Simple", "Elegant", "Modern", "Classic", "Vintage"], 
+                                 index=["Simple", "Elegant", "Modern", "Classic", "Vintage"].index(saved_cover.get('cover_type', 'Simple')))
+        title_font = st.selectbox("Title Font", ["Georgia", "Arial", "Times New Roman", "Helvetica", "Calibri"],
+                                 index=["Georgia", "Arial", "Times New Roman", "Helvetica", "Calibri"].index(saved_cover.get('title_font', 'Georgia')))
+        title_color = st.color_picker("Title Color", value=saved_cover.get('title_color', '#000000'))
+        background_color = st.color_picker("Background Color", value=saved_cover.get('background_color', '#FFFFFF'))
+        
+        # Show saved image if exists
+        if saved_cover.get('cover_image') and os.path.exists(saved_cover['cover_image']):
+            st.markdown("**Current Cover Image:**")
+            st.image(saved_cover['cover_image'], width=250)
+            st.markdown("---")
+            st.markdown("**Upload New Image (optional):**")
         
         uploaded_cover = st.file_uploader("Upload Cover Image (optional)", type=['jpg', 'jpeg', 'png'])
         if uploaded_cover:
-            st.image(uploaded_cover, caption="Your cover image", width=250)
+            st.image(uploaded_cover, caption="New cover image", width=250)
     
     with col2:
         st.markdown("**Preview (6\" x 9\" portrait)**")
         
         # Create a taller container for the preview
-        preview_height = 700  # Increased height
+        preview_height = 700
         
+        # Use uploaded image first, then saved image, then none
         if uploaded_cover:
             img_bytes = uploaded_cover.getvalue()
             img_base64 = base64.b64encode(img_bytes).decode()
-            
+            use_image = True
+        elif saved_cover.get('cover_image') and os.path.exists(saved_cover['cover_image']):
+            with open(saved_cover['cover_image'], 'rb') as f:
+                img_bytes = f.read()
+            img_base64 = base64.b64encode(img_bytes).decode()
+            use_image = True
+        else:
+            use_image = False
+        
+        if use_image:
             # Build subtitle HTML if provided
             subtitle_html = f'<h2 style="font-family:{title_font}; color:white; font-size:24px; margin:5px 0 0 0; text-shadow:2px 2px 4px black;">{subtitle}</h2>' if subtitle else ''
             
@@ -711,7 +733,8 @@ def show_cover_designer():
             "cover_type": cover_type,
             "title_font": title_font,
             "title_color": title_color,
-            "background_color": background_color
+            "background_color": background_color,
+            "last_updated": datetime.now().isoformat()
         })
         
         if uploaded_cover:
@@ -728,7 +751,6 @@ def show_cover_designer():
     
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
-
 # ============================================================================
 # NARRATIVE GPS HELPER FUNCTIONS
 # ============================================================================
