@@ -576,7 +576,7 @@ def show_privacy_settings():
     st.stop()
 
 # ============================================================================
-# SIMPLE COVER DESIGNER - Using st.components.v1.html for reliable rendering
+# SIMPLE COVER DESIGNER - Fixed sizing and title at top
 # ============================================================================
 def show_cover_designer():
     st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
@@ -616,18 +616,18 @@ def show_cover_designer():
     with col2:
         st.markdown("**Preview (6\" x 9\" portrait)**")
         
-        # Create a unique height for the component
-        preview_height = 500
+        # Create a taller container for the preview
+        preview_height = 700  # Increased height
         
         if uploaded_cover:
             img_bytes = uploaded_cover.getvalue()
             img_base64 = base64.b64encode(img_bytes).decode()
             
             # Build subtitle HTML if provided
-            subtitle_html = f'<h2 style="font-family:{title_font}; color:white; font-size:24px; margin:5px 0 15px 0; text-shadow:2px 2px 4px black;">{subtitle}</h2>' if subtitle else ''
+            subtitle_html = f'<h2 style="font-family:{title_font}; color:white; font-size:24px; margin:5px 0 0 0; text-shadow:2px 2px 4px black;">{subtitle}</h2>' if subtitle else ''
             
             html_content = f'''
-            <div style="width:100%; max-width:400px; margin:0 auto;">
+            <div style="width:100%; max-width:450px; margin:0 auto; padding:10px;">
                 <div style="
                     width:100%;
                     aspect-ratio:600/900;
@@ -649,25 +649,27 @@ def show_cover_designer():
                         background:rgba(0,0,0,0.3);
                         display:flex;
                         flex-direction:column;
-                        justify-content:center;
-                        align-items:center;
-                        text-align:center;
-                        padding:20px;
+                        justify-content:space-between;
+                        padding:30px 20px;
                         box-sizing:border-box;
                     ">
-                        <h1 style="font-family:{title_font}; color:white; font-size:48px; margin:0; text-shadow:2px 2px 4px black;">{title}</h1>
-                        {subtitle_html}
-                        <p style="font-family:{title_font}; color:white; font-size:24px; margin-top:15px; text-shadow:1px 1px 2px black;">by {author}</p>
+                        <div style="text-align:center;">
+                            <h1 style="font-family:{title_font}; color:white; font-size:48px; margin:0; text-shadow:2px 2px 4px black;">{title}</h1>
+                            {subtitle_html}
+                        </div>
+                        <div style="text-align:center;">
+                            <p style="font-family:{title_font}; color:white; font-size:24px; margin:0; text-shadow:1px 1px 2px black;">by {author}</p>
+                        </div>
                     </div>
                 </div>
             </div>
             '''
         else:
             # Build subtitle HTML if provided
-            subtitle_html = f'<h2 style="font-family:{title_font}; color:{title_color}; font-size:24px; margin:5px 0 15px 0;">{subtitle}</h2>' if subtitle else ''
+            subtitle_html = f'<h2 style="font-family:{title_font}; color:{title_color}; font-size:24px; margin:5px 0 0 0;">{subtitle}</h2>' if subtitle else ''
             
             html_content = f'''
-            <div style="width:100%; max-width:400px; margin:0 auto;">
+            <div style="width:100%; max-width:450px; margin:0 auto; padding:10px;">
                 <div style="
                     width:100%;
                     aspect-ratio:600/900;
@@ -676,21 +678,23 @@ def show_cover_designer():
                     border-radius:10px;
                     display:flex;
                     flex-direction:column;
-                    justify-content:center;
-                    align-items:center;
-                    text-align:center;
-                    padding:20px;
+                    justify-content:space-between;
+                    padding:30px 20px;
                     box-sizing:border-box;
                     box-shadow:0 4px 8px rgba(0,0,0,0.1);
                 ">
-                    <h1 style="font-family:{title_font}; color:{title_color}; font-size:48px; margin:0;">{title}</h1>
-                    {subtitle_html}
-                    <p style="font-family:{title_font}; color:{title_color}; font-size:24px; margin-top:15px;">by {author}</p>
+                    <div style="text-align:center;">
+                        <h1 style="font-family:{title_font}; color:{title_color}; font-size:48px; margin:0;">{title}</h1>
+                        {subtitle_html}
+                    </div>
+                    <div style="text-align:center;">
+                        <p style="font-family:{title_font}; color:{title_color}; font-size:24px; margin:0;">by {author}</p>
+                    </div>
                 </div>
             </div>
             '''
         
-        # Use st.components.v1.html instead of st.markdown
+        # Use st.components.v1.html with more height
         from streamlit.components.v1 import html
         html(html_content, height=preview_height)
         
