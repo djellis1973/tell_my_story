@@ -576,7 +576,7 @@ def show_privacy_settings():
     st.stop()
 
 # ============================================================================
-# FIXED COVER DESIGNER MODAL - Portrait orientation with all book cover elements
+# FIXED COVER DESIGNER MODAL - Proper HTML rendering
 # ============================================================================
 def show_cover_designer():
     st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
@@ -739,6 +739,7 @@ def show_cover_designer():
             dimensions=book_dimensions
         )
         
+        # Use markdown with unsafe_allow_html to render the HTML properly
         st.markdown(preview_html, unsafe_allow_html=True)
         
         # Add dimension info
@@ -781,50 +782,53 @@ def generate_cover_preview(title, subtitle=None, author_name=None, series_name=N
     if dimensions is None:
         dimensions = {"width": 600, "height": 900}
     
+    # Determine text color based on background (for uploaded images, use white text with shadow)
+    text_shadow = "2px 2px 4px rgba(0,0,0,0.5)" if uploaded_image else "none"
+    title_text_color = "#ffffff" if uploaded_image else title_color
+    body_text_color = "#ffffff" if uploaded_image else text_color
+    
     # Handle uploaded image
-    image_html = ""
     if uploaded_image:
         img_base64 = base64.b64encode(uploaded_image.getvalue()).decode()
-        image_html = f'''
-            <img src="data:image/jpeg;base64,{img_base64}" 
-                 style="width: 100%; height: 100%; object-fit: cover; position: absolute; top: 0; left: 0;">
-            <div style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; 
-                        background: linear-gradient(to bottom, rgba(0,0,0,0.2) 0%, rgba(0,0,0,0.4) 100%);">
-            </div>
+        background_style = f"""
+            background-image: url('data:image/jpeg;base64,{img_base64}');
+            background-size: cover;
+            background-position: center;
+            position: relative;
+        """
+        # Add overlay for better text readability
+        overlay = '''
+            <div style="
+                position: absolute;
+                top: 0;
+                left: 0;
+                width: 100%;
+                height: 100%;
+                background: linear-gradient(to bottom, rgba(0,0,0,0.3), rgba(0,0,0,0.5));
+                pointer-events: none;
+            "></div>
         '''
-        bg_color_style = ""
     else:
-        image_html = ""
-        bg_color_style = f"background-color: {background_color};"
+        background_style = f"background-color: {background_color};"
+        overlay = ""
     
-    # Determine layout based on cover type
-    if cover_type == "Simple":
-        title_size = "48px"
-        author_size = "24px"
-        padding = "20px"
-    elif cover_type == "Elegant":
-        title_size = "52px"
-        author_size = "26px"
-        padding = "30px"
-    elif cover_type == "Modern":
-        title_size = "44px"
-        author_size = "22px"
-        padding = "25px"
-    elif cover_type == "Classic":
-        title_size = "56px"
-        author_size = "28px"
-        padding = "35px"
-    else:  # Vintage
-        title_size = "46px"
-        author_size = "23px"
-        padding = "25px"
+    # Determine font sizes based on cover type
+    font_sizes = {
+        "Simple": {"title": "48px", "subtitle": "24px", "author": "24px", "series": "18px", "blurb": "16px"},
+        "Elegant": {"title": "52px", "subtitle": "26px", "author": "26px", "series": "18px", "blurb": "16px"},
+        "Modern": {"title": "44px", "subtitle": "22px", "author": "22px", "series": "16px", "blurb": "14px"},
+        "Classic": {"title": "56px", "subtitle": "28px", "author": "28px", "series": "20px", "blurb": "18px"},
+        "Vintage": {"title": "46px", "subtitle": "23px", "author": "23px", "series": "17px", "blurb": "15px"}
+    }
     
-    # Build the preview HTML
+    sizes = font_sizes.get(cover_type, font_sizes["Simple"])
+    
+    # Build the preview HTML as a single string
     preview_html = f'''
     <div style="
         width: 100%;
         max-width: {dimensions['width']}px;
-        margin: 0 auto;
+        margin: 20px auto;
         position: relative;
         border: 2px solid #ddd;
         border-radius: 8px;
@@ -832,71 +836,56 @@ def generate_cover_preview(title, subtitle=None, author_name=None, series_name=N
         box-shadow: 0 10px 20px rgba(0,0,0,0.2);
         aspect-ratio: {dimensions['width']} / {dimensions['height']};
     ">
-        <!-- Background -->
         <div style="
             width: 100%;
             height: 100%;
-            {bg_color_style}
-            position: relative;
+            {background_style}
             display: flex;
             flex-direction: column;
             justify-content: space-between;
-            padding: {padding};
+            padding: 30px;
             box-sizing: border-box;
             font-family: {title_font}, serif;
+            position: relative;
         ">
-            {image_html}
+            {overlay}
             
-            <!-- Content overlay -->
+            <!-- Content (positioned above overlay) -->
             <div style="position: relative; z-index: 2; height: 100%; display: flex; flex-direction: column;">
     '''
     
-    # Top section (for blurbs or series info)
+    # Top section
     preview_html += '<div style="flex: 0 0 auto; text-align: center;">'
     
-    # Series info at top if exists
-    if series_name and series_number:
+    # Series info
+    if series_name:
+        series_display = f"{series_name}" + (f" • {series_number}" if series_number else "")
         preview_html += f'''
             <div style="
-                font-family: {title_font}, serif;
-                color: {text_color if not uploaded_image else '#ffffff'};
-                font-size: 18px;
+                color: {body_text_color};
+                font-size: {sizes['series']};
                 letter-spacing: 2px;
                 margin-bottom: 10px;
                 text-transform: uppercase;
-                text-shadow: {('1px 1px 2px rgba(0,0,0,0.5)' if uploaded_image else 'none')};
+                text-shadow: {text_shadow};
+                font-weight: 300;
             ">
-                {series_name} • {series_number}
-            </div>
-        '''
-    elif series_name:
-        preview_html += f'''
-            <div style="
-                font-family: {title_font}, serif;
-                color: {text_color if not uploaded_image else '#ffffff'};
-                font-size: 18px;
-                letter-spacing: 2px;
-                margin-bottom: 10px;
-                text-transform: uppercase;
-                text-shadow: {('1px 1px 2px rgba(0,0,0,0.5)' if uploaded_image else 'none')};
-            ">
-                {series_name}
+                {series_display}
             </div>
         '''
     
-    # Blurb at top if selected
+    # Top blurb
     if use_blurb and blurb_text and blurb_position == "Top":
         preview_html += f'''
             <div style="
-                font-family: {title_font}, serif;
-                color: {text_color if not uploaded_image else '#ffffff'};
-                font-size: 16px;
+                color: {body_text_color};
+                font-size: {sizes['blurb']};
                 font-style: italic;
                 margin: 10px 0;
                 padding: 10px;
                 border-left: 3px solid {title_color};
-                text-shadow: {('1px 1px 2px rgba(0,0,0,0.5)' if uploaded_image else 'none')};
-                background: {('rgba(0,0,0,0.3)' if uploaded_image else 'rgba(255,255,255,0.8)')};
+                text-shadow: {text_shadow};
+                background: rgba(0,0,0,0.2);
                 border-radius: 4px;
             ">
                 "{blurb_text}"
@@ -909,69 +898,70 @@ def generate_cover_preview(title, subtitle=None, author_name=None, series_name=N
     preview_html += f'''
         <div style="flex: 1; display: flex; flex-direction: column; justify-content: center; text-align: center;">
             <h1 style="
-                font-family: {title_font}, serif;
-                color: {title_color if not uploaded_image else '#ffffff'};
-                font-size: {title_size};
+                color: {title_text_color};
+                font-size: {sizes['title']};
                 font-weight: bold;
                 margin: 0 0 10px 0;
                 line-height: 1.2;
-                text-shadow: {('2px 2px 4px rgba(0,0,0,0.5)' if uploaded_image else 'none')};
+                text-shadow: {text_shadow};
+                font-family: {title_font}, serif;
             ">{title}</h1>
     '''
     
     if subtitle:
         preview_html += f'''
             <h2 style="
-                font-family: {title_font}, serif;
-                color: {text_color if not uploaded_image else '#ffffff'};
-                font-size: 24px;
+                color: {body_text_color};
+                font-size: {sizes['subtitle']};
                 font-weight: normal;
                 margin: 0 0 20px 0;
-                text-shadow: {('1px 1px 2px rgba(0,0,0,0.5)' if uploaded_image else 'none')};
+                text-shadow: {text_shadow};
+                font-family: {title_font}, serif;
             ">{subtitle}</h2>
         '''
     
     preview_html += '</div>'  # Close middle section
     
-    # Bottom section - Author and blurbs
+    # Bottom section
     preview_html += '<div style="flex: 0 0 auto; text-align: center;">'
     
     # Author name
     if author_name:
         preview_html += f'''
             <div style="
-                font-family: {title_font}, serif;
-                color: {text_color if not uploaded_image else '#ffffff'};
-                font-size: {author_size};
+                color: {body_text_color};
+                font-size: {sizes['author']};
                 margin: 10px 0;
-                text-shadow: {('1px 1px 2px rgba(0,0,0,0.5)' if uploaded_image else 'none')};
+                text-shadow: {text_shadow};
+                font-family: {title_font}, serif;
             ">
                 by {author_name}
             </div>
         '''
     
-    # Blurb at bottom if selected
+    # Bottom blurb
     if use_blurb and blurb_text and blurb_position == "Bottom":
         preview_html += f'''
             <div style="
-                font-family: {title_font}, serif;
-                color: {text_color if not uploaded_image else '#ffffff'};
-                font-size: 16px;
+                color: {body_text_color};
+                font-size: {sizes['blurb']};
                 font-style: italic;
                 margin-top: 10px;
                 padding: 10px;
                 border-right: 3px solid {title_color};
-                text-shadow: {('1px 1px 2px rgba(0,0,0,0.5)' if uploaded_image else 'none')};
-                background: {('rgba(0,0,0,0.3)' if uploaded_image else 'rgba(255,255,255,0.8)')};
+                text-shadow: {text_shadow};
+                background: rgba(0,0,0,0.2);
                 border-radius: 4px;
             ">
                 "{blurb_text}"
             </div>
         '''
     
+    # Close all divs
     preview_html += '''
             </div>
         </div>
+    </div>
     </div>
     '''
     
