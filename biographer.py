@@ -1,4 +1,4 @@
-# biographer.py – Tell My Story App (FIXED VERSION)
+# biographer.py – Tell My Story App (COMPLETE FIXED VERSION)
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -2010,6 +2010,8 @@ def show_bank_manager():
         st.rerun()
     st.session_state.qb_manager.display_bank_selector()
     st.markdown('</div>', unsafe_allow_html=True)
+    if st.session_state.show_bank_manager:
+        st.stop()
 
 def show_bank_editor():
     if not QuestionBankManager or not st.session_state.get('editing_bank_id'): 
@@ -2023,6 +2025,8 @@ def show_bank_editor():
     st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
     st.session_state.qb_manager.display_bank_editor(st.session_state.editing_bank_id)
     st.markdown('</div>', unsafe_allow_html=True)
+    if st.session_state.show_bank_editor:
+        st.stop()
 
 # ============================================================================
 # PDF GENERATION FUNCTIONS
@@ -2500,17 +2504,14 @@ if st.session_state.show_cover_designer:
     show_cover_designer()
     st.stop()
 
-# For modals that have their own navigation/close buttons, we need to be careful
-# Only stop if the modal is actually being displayed, not when it's being closed
+# Each modal function now handles its own st.stop() internally
 if st.session_state.show_bank_manager:
     show_bank_manager()
-    if st.session_state.show_bank_manager:  # Still showing? Then stop
-        st.stop()
+    # st.stop() is now inside show_bank_manager
 
 if st.session_state.show_bank_editor:
     show_bank_editor()
-    if st.session_state.show_bank_editor:
-        st.stop()
+    # st.stop() is now inside show_bank_editor
 
 if st.session_state.show_vignette_detail:
     show_vignette_detail()
@@ -2541,6 +2542,7 @@ if st.session_state.show_session_creator:
     show_session_creator()
     if st.session_state.show_session_creator:
         st.stop()
+
 # ============================================================================
 # MAIN HEADER
 # ============================================================================
@@ -2782,24 +2784,9 @@ with st.sidebar:
             st.info("No matches found")
 
 # ============================================================================
-# MAIN CONTENT AREA - FIXED
-# ============================================================================
-# ============================================================================
-# MAIN HEADER
-# ============================================================================
-st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
-
-# ============================================================================
-# SIDEBAR
-# ============================================================================
-with st.sidebar:
-    # ... sidebar code ...
-
-# ============================================================================
 # MAIN CONTENT AREA - FIXED with bounds checking
 # ============================================================================
 
-# ADD THIS CHECK AT THE VERY TOP OF MAIN CONTENT AREA
 # Skip rendering main content if any modal is active
 if (st.session_state.show_vignette_modal or 
     st.session_state.show_vignette_manager or 
@@ -2816,7 +2803,7 @@ if (st.session_state.show_vignette_modal or
     
     # Still show the main header but don't render the Q&A section
     st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
-    st.stop()  # This stops execution here, preventing the Q&A section from rendering
+    st.stop()
 
 # Original main content continues below this point
 if st.session_state.current_session >= len(SESSIONS): 
@@ -2842,66 +2829,6 @@ else:
 if not current_question_text and len(current_session["questions"]) > 0:
     current_question_text = current_session["questions"][0]
     st.session_state.current_question = 0
-
-st.markdown("---")
-
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.subheader(f"Session {current_session_id}: {current_session['title']}")
-    sdata = st.session_state.responses.get(current_session_id, {})
-    answered = len(sdata.get("questions", {}))
-    total = len(current_session["questions"])
-    if total > 0: 
-        st.progress(answered/total)
-        st.caption(f"📝 Topics explored: {answered}/{total} ({answered/total*100:.0f}%)")
-with col2:
-    if question_source == "custom":
-        st.markdown(f'<div class="custom-topic-badge">{"📝 Vignette" if "Vignette:" in st.session_state.current_question_override else "✨ Custom Topic"}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="topic-counter">Topic {st.session_state.current_question+1} of {len(current_session["questions"])}</div>', unsafe_allow_html=True)
-
-st.markdown(f'<div class="question-box">{current_question_text}</div>', unsafe_allow_html=True)
-
-# ... rest of your code continues ...
-# ADD THIS CHECK AT THE VERY TOP OF MAIN CONTENT AREA
-# Skip rendering main content if any modal is active
-if (st.session_state.show_vignette_modal or 
-    st.session_state.show_vignette_manager or 
-    st.session_state.show_vignette_detail or
-    st.session_state.show_topic_browser or 
-    st.session_state.show_session_manager or 
-    st.session_state.show_session_creator or
-    st.session_state.show_bank_manager or 
-    st.session_state.show_bank_editor or
-    st.session_state.show_privacy_settings or
-    st.session_state.show_cover_designer or
-    st.session_state.show_profile_setup or
-    st.session_state.show_ai_suggestions):
-    
-    # Still show the main header but don't render the Q&A section
-    st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
-    st.stop()  # This stops execution here, preventing the Q&A section from rendering
-
-# Original main content continues below this point
-if st.session_state.current_session >= len(SESSIONS): 
-    st.session_state.current_session = 0
-
-current_session = SESSIONS[st.session_state.current_session]
-current_session_id = current_session["id"]
-if st.session_state.current_session >= len(SESSIONS): 
-    st.session_state.current_session = 0
-
-current_session = SESSIONS[st.session_state.current_session]
-current_session_id = current_session["id"]
-
-if st.session_state.current_question_override:
-    current_question_text = st.session_state.current_question_override
-    question_source = "custom"
-else:
-    if st.session_state.current_question >= len(current_session["questions"]): 
-        st.session_state.current_question = 0
-    current_question_text = current_session["questions"][st.session_state.current_question]
-    question_source = "regular"
 
 st.markdown("---")
 
@@ -2948,12 +2875,6 @@ if st.session_state.logged_in:
 editor_key = f"quill_{current_session_id}_{current_question_text[:20]}"
 content_key = f"{editor_key}_content"
 
-# Get existing answer
-existing_answer = ""
-if current_session_id in st.session_state.responses:
-    if current_question_text in st.session_state.responses[current_session_id]["questions"]:
-        existing_answer = st.session_state.responses[current_session_id]["questions"][current_question_text]["answer"]
-
 # Initialize session state for this editor's content
 if content_key not in st.session_state:
     if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
@@ -2976,7 +2897,7 @@ content = st_quill(
     value=st.session_state[content_key],
     key=editor_component_key,
     placeholder="Start writing your story here...",
-    html=True  # Ensure HTML content is preserved
+    html=True
 )
 
 # Only update session state when content actually changes
@@ -3005,7 +2926,6 @@ with col2:
     if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
         if st.button("🗑️ Delete Story", key=f"del_btn_{editor_key}", use_container_width=True):
             if delete_response(current_session_id, current_question_text):
-                # Clear the editor content
                 st.session_state[content_key] = "<p>Start writing your story here...</p>"
                 st.success("✅ Story deleted!")
                 st.rerun()
@@ -3144,7 +3064,6 @@ with tab1:
                         session_text += f"Question: {q}\nAnswer: {text_only}\n\n"
                     
                     if session_text.strip():
-                        # The profile context is now included inside generate_beta_reader_feedback
                         fb = generate_beta_reader_feedback(current_session["title"], session_text, fb_type)
                         if "error" not in fb: 
                             st.session_state.beta_feedback_display = fb
