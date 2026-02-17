@@ -11,7 +11,10 @@ import time
 import openai
 
 from streamlit_quill import st_quill
-
+def display_vignette_creator(self, on_publish=None, edit_vignette=None):
+    # SINGLE LINE FIX - ensure import state exists
+    if 'import_state_init' not in st.session_state:
+        st.session_state['import_state_init'] = True
 class VignetteManager:
     def __init__(self, user_id):
         self.user_id = user_id
