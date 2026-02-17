@@ -261,6 +261,11 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
         editor_key = f"quill_vignette_{vignette_id}"
         content_key = f"{editor_key}_content"
         
+        # Add a version counter for this editor to force remounting when content changes
+        version_key = f"{editor_key}_version"
+        if version_key not in st.session_state:
+            st.session_state[version_key] = 0
+        
         # Title input
         title = st.text_input(
             "Title", 
@@ -305,20 +310,15 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
         if content_key not in st.session_state:
             st.session_state[content_key] = default_content
         
-        # Timestamp for spell check refresh - EXACTLY like biographer.py
-        spell_check_key = f"{base_key}_spell_timestamp"
-        if spell_check_key not in st.session_state:
-            st.session_state[spell_check_key] = 0
-        
-        # Editor component key with timestamp - EXACTLY like biographer.py
-        editor_component_key = f"quill_editor_{vignette_id}_{st.session_state[spell_check_key]}"
-        
         st.markdown("### 📝 Your Story")
         st.markdown("""
         <div class="image-drop-info">
             📸 <strong>Drag & drop images</strong> directly into the editor.
         </div>
         """, unsafe_allow_html=True)
+        
+        # Editor component key with version - EXACTLY like biographer.py
+        editor_component_key = f"quill_editor_{vignette_id}_v{st.session_state[version_key]}"
         
         # Display Quill editor - EXACT parameters as biographer.py
         content = st_quill(
@@ -335,50 +335,199 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
         st.markdown("---")
         
         # ============================================================================
-        # AI REWRITE SECTION FOR VIGNETTES
+        # BUTTONS ROW - WITH SPELLCHECK AND AI REWRITE (SAME AS BIOGRAPHER.PY)
         # ============================================================================
-        st.markdown("### ✨ AI Rewrite Assistant")
+        col1, col2, col3, col4, col5, col6 = st.columns([1, 1, 1, 1, 1, 2])
         
-        # Check if there's content to rewrite
+        # Spellcheck state management
+        spellcheck_base = f"spell_{editor_key}"
+        spell_result_key = f"{spellcheck_base}_result"
         current_content = st.session_state.get(content_key, "")
         has_content = current_content and current_content != "<p><br></p>" and current_content != "<p>Write your story here...</p>"
+        showing_results = spell_result_key in st.session_state and st.session_state[spell_result_key].get("show", False)
         
-        if has_content:
-            col_ai1, col_ai2, col_ai3 = st.columns([1, 1, 2])
-            
-            with col_ai1:
-                if st.button("✨ AI Rewrite", key=f"{base_key}_ai_rewrite_btn", use_container_width=True):
+        with col1:
+            if st.button("💾 Save Draft", key=f"{base_key}_save_draft", type="primary", use_container_width=True):
+                current_content = st.session_state[content_key]
+                if not current_content or current_content == "<p><br></p>" or current_content == "<p></p>":
+                    st.error("Please write some content")
+                else:
+                    final_title = title.strip() or "Untitled"
+                    
+                    if edit_vignette:
+                        self.update_vignette(edit_vignette["id"], final_title, current_content, theme, mood)
+                        st.success("✅ Draft saved!")
+                        st.session_state.edit_success = True
+                    else:
+                        self.create_vignette(final_title, current_content, theme, mood, is_draft=True)
+                        st.success("✅ Draft saved!")
+                        st.session_state.draft_success = True
+                    
+                    # Clear spellcheck results
+                    if spell_result_key in st.session_state:
+                        del st.session_state[spell_result_key]
+                    
+                    time.sleep(1)
+                    st.session_state.show_vignette_modal = False
+                    st.session_state.show_vignette_manager = True
+                    st.rerun()
+        
+        with col2:
+            if st.button("📢 Publish", key=f"{base_key}_publish", use_container_width=True, type="primary"):
+                current_content = st.session_state[content_key]
+                if not current_content or current_content == "<p><br></p>" or current_content == "<p></p>":
+                    st.error("Please write some content")
+                else:
+                    final_title = title.strip() or "Untitled"
+                    
+                    if edit_vignette:
+                        edit_vignette["is_draft"] = False
+                        edit_vignette["published_at"] = datetime.now().isoformat()
+                        self.update_vignette(edit_vignette["id"], final_title, current_content, theme, mood)
+                        st.success("🎉 Published successfully!")
+                        vignette_data = edit_vignette
+                    else:
+                        v = self.create_vignette(final_title, current_content, theme, mood, is_draft=False)
+                        v["published_at"] = datetime.now().isoformat()
+                        self.update_vignette(v["id"], final_title, current_content, theme, mood)
+                        st.success("🎉 Published successfully!")
+                        vignette_data = v
+                    
+                    # Call on_publish callback if provided
+                    if on_publish:
+                        on_publish(vignette_data)
+                    
+                    # Clear spellcheck results
+                    if spell_result_key in st.session_state:
+                        del st.session_state[spell_result_key]
+                    
+                    time.sleep(1)
+                    st.session_state.show_vignette_modal = False
+                    st.session_state.show_vignette_manager = True
+                    st.rerun()
+        
+        with col3:
+            # Spellcheck Button
+            if has_content and not showing_results:
+                if st.button("🔍 Spell Check", key=f"{base_key}_spell", use_container_width=True):
+                    with st.spinner("Checking spelling and grammar..."):
+                        text_only = re.sub(r'<[^>]+>', '', current_content)
+                        if len(text_only.split()) >= 3:
+                            # Import the auto_correct_text function from biographer
+                            # Note: This assumes biographer.py is in the same directory
+                            try:
+                                from biographer import auto_correct_text
+                                corrected = auto_correct_text(text_only)
+                            except ImportError:
+                                # Fallback if import fails
+                                st.error("Spell check temporarily unavailable")
+                                st.rerun()
+                            
+                            if corrected and corrected != text_only:
+                                st.session_state[spell_result_key] = {
+                                    "original": text_only,
+                                    "corrected": corrected,
+                                    "show": True
+                                }
+                            else:
+                                st.session_state[spell_result_key] = {
+                                    "message": "✅ No spelling or grammar issues found!",
+                                    "show": True
+                                }
+                            st.rerun()
+                        else:
+                            st.warning("Text too short for spell check (minimum 3 words)")
+            else:
+                st.button("🔍 Spell Check", key=f"{base_key}_spell_disabled", disabled=True, use_container_width=True)
+        
+        with col4:
+            # AI Rewrite Button
+            if has_content:
+                if st.button("✨ AI Rewrite", key=f"{base_key}_ai_rewrite", use_container_width=True):
                     st.session_state[f"{base_key}_show_ai_menu"] = True
                     st.rerun()
-            
-            with col_ai2:
-                if st.session_state.get(f"{base_key}_show_ai_menu", False):
-                    person_option = st.selectbox(
-                        "Voice:",
-                        options=["1st", "2nd", "3rd"],
-                        format_func=lambda x: {"1st": "👤 First Person (I)", 
-                                               "2nd": "💬 Second Person (You)", 
-                                               "3rd": "📖 Third Person (He/She)"}[x],
-                        key=f"{base_key}_ai_person",
-                        label_visibility="collapsed"
-                    )
+            else:
+                st.button("✨ AI Rewrite", key=f"{base_key}_ai_disabled", disabled=True, use_container_width=True)
+        
+        with col5:
+            # Person selector dropdown (appears when AI Rewrite is clicked)
+            if st.session_state.get(f"{base_key}_show_ai_menu", False):
+                person_option = st.selectbox(
+                    "Voice:",
+                    options=["1st", "2nd", "3rd"],
+                    format_func=lambda x: {"1st": "👤 First Person", "2nd": "💬 Second Person", "3rd": "📖 Third Person"}[x],
+                    key=f"{base_key}_ai_person",
+                    label_visibility="collapsed"
+                )
+                
+                if st.button("Go", key=f"{base_key}_ai_go", type="primary", use_container_width=True):
+                    with st.spinner(f"Rewriting in {person_option} person..."):
+                        result = self.ai_rewrite_vignette(
+                            current_content, 
+                            person_option, 
+                            title or "Untitled Vignette"
+                        )
+                        
+                        if result.get('success'):
+                            st.session_state[f"{base_key}_ai_result"] = result
+                            st.session_state[f"{base_key}_show_ai_menu"] = False
+                            st.rerun()
+                        else:
+                            st.error(result.get('error', 'Failed to rewrite'))
+            else:
+                # Placeholder to maintain column layout
+                st.markdown("")
+        
+        with col6:
+            # Preview and Cancel buttons
+            nav1, nav2 = st.columns(2)
+            with nav1:
+                if st.button("👁️ Preview", key=f"{base_key}_preview", use_container_width=True):
+                    st.session_state[f"{base_key}_show_preview"] = True
+                    st.rerun()
+            with nav2:
+                if st.button("❌ Cancel", key=f"{base_key}_cancel", use_container_width=True):
+                    # Clear session state
+                    for key in [content_key, version_key, spell_result_key, f"{base_key}_ai_result", f"{base_key}_show_ai_menu", f"{base_key}_show_preview"]:
+                        if key in st.session_state:
+                            try:
+                                del st.session_state[key]
+                            except:
+                                pass
+                    st.session_state.show_vignette_modal = False
+                    st.session_state.editing_vignette_id = None
+                    st.rerun()
+        
+        # Display spellcheck results if they exist (below the button row)
+        if showing_results:
+            result = st.session_state[spell_result_key]
+            if "corrected" in result:
+                st.markdown("---")
+                st.markdown("### ✅ Suggested Corrections:")
+                st.markdown(f'<div style="background-color: #f0f9ff; padding: 15px; border-radius: 8px; border-left: 4px solid #4CAF50;">{result["corrected"]}</div>', unsafe_allow_html=True)
+                
+                col_apply1, col_apply2, col_apply3 = st.columns([1, 1, 1])
+                with col_apply2:
+                    if st.button("📋 Apply Corrections", key=f"{base_key}_apply", type="primary", use_container_width=True):
+                        corrected = result["corrected"]
+                        if not corrected.startswith('<p>'):
+                            corrected = f'<p>{corrected}</p>'
+                        
+                        st.session_state[content_key] = corrected
+                        st.session_state[version_key] += 1  # Increment version to force remount
+                        st.session_state[spell_result_key] = {"show": False}
+                        st.success("✅ Corrections applied!")
+                        st.rerun()
                     
-                    if st.button("Go", key=f"{base_key}_ai_go", type="primary", use_container_width=True):
-                        with st.spinner(f"Rewriting in {person_option} person using your profile..."):
-                            result = self.ai_rewrite_vignette(
-                                current_content, 
-                                person_option, 
-                                title or "Untitled Vignette"
-                            )
-                            
-                            if result.get('success'):
-                                st.session_state[f"{base_key}_ai_result"] = result
-                                st.session_state[f"{base_key}_show_ai_menu"] = False
-                                st.rerun()
-                            else:
-                                st.error(result.get('error', 'Failed to rewrite'))
-        else:
-            st.info("Write some content first to use AI Rewrite")
+                    if st.button("❌ Dismiss", key=f"{base_key}_dismiss", use_container_width=True):
+                        st.session_state[spell_result_key] = {"show": False}
+                        st.rerun()
+            
+            elif "message" in result:
+                st.success(result["message"])
+                if st.button("Dismiss", key=f"{base_key}_dismiss_msg"):
+                    st.session_state[spell_result_key] = {"show": False}
+                    st.rerun()
         
         # Display AI rewrite result if available
         if st.session_state.get(f"{base_key}_ai_result"):
@@ -414,6 +563,7 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                         new_content = f'<p>{new_content}</p>'
                     
                     st.session_state[content_key] = new_content
+                    st.session_state[version_key] += 1  # Increment version to force remount
                     del st.session_state[f"{base_key}_ai_result"]
                     st.session_state[f"{base_key}_show_ai_menu"] = False
                     st.rerun()
@@ -423,161 +573,6 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                     del st.session_state[f"{base_key}_ai_result"]
                     st.session_state[f"{base_key}_show_ai_menu"] = True
                     st.rerun()
-        
-        st.markdown("---")
-        # ============================================================================
-        # END AI REWRITE SECTION
-        # ============================================================================
-        
-        # Image upload section
-        with st.expander("📸 Upload Photos", expanded=False):
-            temp_images_key = f"{base_key}_temp_images"
-            if temp_images_key not in st.session_state:
-                if edit_vignette and edit_vignette.get("images"):
-                    st.session_state[temp_images_key] = edit_vignette["images"].copy()
-                else:
-                    st.session_state[temp_images_key] = []
-            
-            uploaded_file = st.file_uploader(
-                "Choose an image...",
-                type=['jpg', 'jpeg', 'png', 'gif'],
-                key=f"{base_key}_upload",
-                label_visibility="collapsed"
-            )
-            
-            if uploaded_file:
-                col1, col2, col3 = st.columns([2, 2, 1])
-                with col1:
-                    st.image(uploaded_file, width=150)
-                with col2:
-                    caption = st.text_input(
-                        "Caption:", 
-                        key=f"{base_key}_caption",
-                        placeholder="What does this image show?"
-                    )
-                with col3:
-                    if st.button("📥 Add", key=f"{base_key}_add_img"):
-                        img_data = self.save_vignette_image(uploaded_file, vignette_id)
-                        if img_data:
-                            img_data['caption'] = caption
-                            st.session_state[temp_images_key].append(img_data)
-                            st.rerun()
-            
-            if st.session_state[temp_images_key]:
-                st.markdown("**Images to include:**")
-                cols = st.columns(3)
-                for i, img in enumerate(st.session_state[temp_images_key]):
-                    with cols[i % 3]:
-                        if img.get('base64'):
-                            st.image(f"data:image/jpeg;base64,{img['base64']}", use_column_width=True)
-                        if img.get('caption'):
-                            st.caption(img['caption'])
-                        if st.button("❌", key=f"{base_key}_remove_{i}"):
-                            st.session_state[temp_images_key].pop(i)
-                            st.rerun()
-        
-        # Word count
-        if st.session_state[content_key]:
-            text_only = re.sub(r'<[^>]+>', '', st.session_state[content_key])
-            word_count = len(text_only.split())
-            st.caption(f"📝 Word count: {word_count}")
-        
-        st.markdown("---")
-        
-        # Action buttons
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            if st.button("💾 Save Draft", type="primary", use_container_width=True, key=f"{base_key}_save_draft"):
-                current_content = st.session_state[content_key]
-                if not current_content or current_content == "<p><br></p>" or current_content == "<p></p>":
-                    st.error("Please write some content")
-                else:
-                    final_title = title.strip() or "Untitled"
-                    images = st.session_state.get(temp_images_key, [])
-                    
-                    if edit_vignette:
-                        self.update_vignette(edit_vignette["id"], final_title, current_content, theme, mood, images)
-                        st.success("✅ Draft saved!")
-                        st.session_state.edit_success = True
-                    else:
-                        self.create_vignette(final_title, current_content, theme, mood, is_draft=True, images=images)
-                        st.success("✅ Draft saved!")
-                        st.session_state.draft_success = True
-                    
-                    # Clean up session state
-                    for key in [content_key, temp_images_key, spell_check_key, f"{base_key}_ai_result", f"{base_key}_show_ai_menu"]:
-                        if key in st.session_state:
-                            try:
-                                del st.session_state[key]
-                            except:
-                                pass
-                    
-                    time.sleep(1)
-                    st.session_state.show_vignette_modal = False
-                    st.session_state.show_vignette_manager = True
-                    st.rerun()
-        
-        with col2:
-            if st.button("📢 Publish", use_container_width=True, key=f"{base_key}_publish", type="primary"):
-                current_content = st.session_state[content_key]
-                if not current_content or current_content == "<p><br></p>" or current_content == "<p></p>":
-                    st.error("Please write some content")
-                else:
-                    final_title = title.strip() or "Untitled"
-                    images = st.session_state.get(temp_images_key, [])
-                    
-                    if edit_vignette:
-                        # Update existing vignette as published
-                        edit_vignette["is_draft"] = False
-                        edit_vignette["published_at"] = datetime.now().isoformat()
-                        self.update_vignette(edit_vignette["id"], final_title, current_content, theme, mood, images)
-                        st.success("🎉 Published successfully!")
-                        st.session_state.publish_success = True
-                        vignette_data = edit_vignette
-                    else:
-                        # Create new published vignette
-                        v = self.create_vignette(final_title, current_content, theme, mood, is_draft=False, images=images)
-                        v["published_at"] = datetime.now().isoformat()
-                        self.update_vignette(v["id"], final_title, current_content, theme, mood, images)
-                        st.success("🎉 Published successfully!")
-                        st.session_state.publish_success = True
-                        vignette_data = v
-                    
-                    # Call on_publish callback if provided
-                    if on_publish:
-                        on_publish(vignette_data)
-                    
-                    # Clean up session state
-                    for key in [content_key, temp_images_key, spell_check_key, f"{base_key}_ai_result", f"{base_key}_show_ai_menu"]:
-                        if key in st.session_state:
-                            try:
-                                del st.session_state[key]
-                            except:
-                                pass
-                    
-                    time.sleep(1)
-                    st.session_state.show_vignette_modal = False
-                    st.session_state.show_vignette_manager = True
-                    st.rerun()
-        
-        with col3:
-            if st.button("👁️ Preview", use_container_width=True, key=f"{base_key}_preview"):
-                st.session_state[f"{base_key}_show_preview"] = True
-                st.rerun()
-        
-        with col4:
-            if st.button("❌ Cancel", use_container_width=True, key=f"{base_key}_cancel"):
-                # Clean up session state
-                for key in [content_key, temp_images_key, spell_check_key, f"{base_key}_ai_result", f"{base_key}_show_ai_menu"]:
-                    if key in st.session_state:
-                        try:
-                            del st.session_state[key]
-                        except:
-                            pass
-                st.session_state.show_vignette_modal = False
-                st.session_state.editing_vignette_id = None
-                st.rerun()
         
         # Preview section
         if st.session_state.get(f"{base_key}_show_preview", False) and st.session_state[content_key]:
