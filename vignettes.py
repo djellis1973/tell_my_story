@@ -413,16 +413,27 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                     with st.spinner("Checking spelling and grammar..."):
                         text_only = re.sub(r'<[^>]+>', '', current_content)
                         if len(text_only.split()) >= 3:
-                            # Import the auto_correct_text function from biographer
-                            # Note: This assumes biographer.py is in the same directory
-                            try:
-                                from biographer import auto_correct_text
-                                corrected = auto_correct_text(text_only)
-                            except ImportError:
-                                # Fallback if import fails
-                                st.error("Spell check temporarily unavailable")
-                                st.rerun()
+                            # Simple spell check function (copied from biographer.py to avoid circular import)
+                            def simple_spell_check(text):
+                                if not text: 
+                                    return text
+                                try:
+                                    import openai
+                                    client = openai.OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY")))
+                                    resp = client.chat.completions.create(
+                                        model="gpt-4o-mini",
+                                        messages=[
+                                            {"role": "system", "content": "Fix spelling and grammar. Return only corrected text."},
+                                            {"role": "user", "content": text}
+                                        ],
+                                        max_tokens=len(text) + 100, 
+                                        temperature=0.1
+                                    )
+                                    return resp.choices[0].message.content
+                                except: 
+                                    return text
                             
+                            corrected = simple_spell_check(text_only)
                             if corrected and corrected != text_only:
                                 st.session_state[spell_result_key] = {
                                     "original": text_only,
