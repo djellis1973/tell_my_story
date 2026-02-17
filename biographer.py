@@ -3324,7 +3324,9 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Use a unique key for the editor that doesn't change
-editor_component_key = f"quill_editor_{current_session_id}_{hash(current_question_text)}"
+# Add timestamp to force refresh when spell check runs
+timestamp = st.session_state.get('spell_check_timestamp', 0)
+editor_component_key = f"quill_editor_{current_session_id}_{hash(current_question_text)}_{timestamp}"
 
 # Display the editor - it will NOT trigger reruns on typing
 content = st_quill(
