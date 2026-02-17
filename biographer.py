@@ -2364,6 +2364,9 @@ def show_topic_browser():
     )
     
     st.markdown('</div>', unsafe_allow_html=True)
+       st.stop()  # <---- ADD THIS ONE LINE
+
+    
     st.stop()
 
 def show_session_creator():
