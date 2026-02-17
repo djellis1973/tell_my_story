@@ -1,4 +1,4 @@
-# vignettes.py - COMPLETE WORKING VERSION
+# vignettes.py - COMPLETE WORKING VERSION WITH AI REWRITE
 import streamlit as st
 import json
 from datetime import datetime
@@ -8,6 +8,7 @@ import re
 import base64
 import hashlib
 import time
+import openai
 
 from streamlit_quill import st_quill
 
@@ -108,6 +109,144 @@ class VignetteManager:
                 return v
         return None
     
+    def ai_rewrite_vignette(self, original_text, person_option, vignette_title):
+        """Rewrite the vignette in 1st, 2nd, or 3rd person using profile context"""
+        try:
+            # Get OpenAI client
+            client = openai.OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY")))
+            
+            # Get profile context from user account in session state
+            gps_context = ""
+            enhanced_context = ""
+            
+            if st.session_state.get('user_account'):
+                # Narrative GPS context
+                if 'narrative_gps' in st.session_state.user_account:
+                    gps = st.session_state.user_account['narrative_gps']
+                    if gps:
+                        gps_context = "\n\n=== BOOK PROJECT CONTEXT ===\n"
+                        if gps.get('book_title'): gps_context += f"- Book Title: {gps['book_title']}\n"
+                        if gps.get('genre'): 
+                            genre = gps['genre']
+                            if genre == "Other" and gps.get('genre_other'):
+                                genre = gps['genre_other']
+                            gps_context += f"- Genre: {genre}\n"
+                        if gps.get('purposes'): 
+                            gps_context += f"- Purpose: {', '.join(gps['purposes'])}\n"
+                        if gps.get('narrative_voices'): 
+                            gps_context += f"- Narrative Voice: {', '.join(gps['narrative_voices'])}\n"
+                        if gps.get('emotional_tone'): 
+                            gps_context += f"- Emotional Tone: {gps['emotional_tone']}\n"
+                        if gps.get('reader_takeaway'): 
+                            gps_context += f"- Reader Takeaway: {gps['reader_takeaway']}\n"
+                
+                # Enhanced profile context
+                if 'enhanced_profile' in st.session_state.user_account:
+                    ep = st.session_state.user_account['enhanced_profile']
+                    if ep:
+                        enhanced_context = "\n\n=== BIOGRAPHER CONTEXT ===\n"
+                        if ep.get('birth_place'): enhanced_context += f"• Born: {ep['birth_place']}\n"
+                        if ep.get('parents'): enhanced_context += f"• Parents: {ep['parents'][:150]}...\n"
+                        if ep.get('childhood_home'): enhanced_context += f"• Childhood: {ep['childhood_home'][:150]}...\n"
+                        if ep.get('career_path'): enhanced_context += f"• Career: {ep['career_path'][:150]}...\n"
+                        if ep.get('life_lessons'): enhanced_context += f"• Life Philosophy: {ep['life_lessons'][:200]}...\n"
+                        if ep.get('legacy'): enhanced_context += f"• Legacy Hope: {ep['legacy'][:200]}...\n"
+            
+            # Clean the text (remove HTML tags)
+            clean_text = re.sub(r'<[^>]+>', '', original_text)
+            
+            if len(clean_text.split()) < 5:
+                return {"error": "Text too short to rewrite (minimum 5 words)"}
+            
+            # Person-specific instructions
+            person_instructions = {
+                "1st": {
+                    "name": "First Person",
+                    "instruction": "Rewrite this in FIRST PERSON ('I', 'me', 'my', 'we', 'our'). Keep the authentic voice of the author telling their own story.",
+                    "example": "I remember the day clearly. The sun was setting and I felt...",
+                    "emoji": "👤"
+                },
+                "2nd": {
+                    "name": "Second Person",
+                    "instruction": "Rewrite this in SECOND PERSON ('you', 'your') as if speaking directly to the reader. Make it feel like advice, a letter, or a conversation with the reader.",
+                    "example": "You remember that day clearly. The sun was setting and you felt...",
+                    "emoji": "💬"
+                },
+                "3rd": {
+                    "name": "Third Person",
+                    "instruction": "Rewrite this in THIRD PERSON ('he', 'she', 'they', 'the author', the person's name). Write as if telling someone else's story to readers.",
+                    "example": "They remember the day clearly. The sun was setting and they felt...",
+                    "emoji": "📖"
+                }
+            }
+            
+            # Get author's name for 3rd person
+            author_name = ""
+            if st.session_state.get('user_account'):
+                profile = st.session_state.user_account.get('profile', {})
+                first = profile.get('first_name', '')
+                last = profile.get('last_name', '')
+                if first and last:
+                    author_name = f"{first} {last}"
+                elif first:
+                    author_name = first
+            
+            system_prompt = f"""You are an expert writing assistant and ghostwriter. Your task is to rewrite this vignette in {person_instructions[person_option]['name']}.
+
+{person_instructions[person_option]['instruction']}
+
+EXAMPLE STYLE:
+{person_instructions[person_option]['example']}
+
+IMPORTANT GUIDELINES:
+1. Use the profile context below to understand WHO the author is
+2. Preserve all key facts, emotions, and details from the original
+3. Maintain the author's unique voice and personality
+4. Fix any grammar issues naturally
+5. Make it flow better while keeping it authentic
+6. DO NOT add fictional events or details not in the original
+7. If using third person and you know the author's name, use it naturally
+8. Return ONLY the rewritten text, no explanations, no prefixes
+
+PROFILE CONTEXT (Use this to understand the author's voice):
+{gps_context}
+{enhanced_context}
+
+VIGNETTE TITLE: {vignette_title}
+AUTHOR NAME: {author_name if author_name else 'Unknown'}
+
+ORIGINAL VIGNETTE (to rewrite):
+{clean_text}
+
+REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
+
+            response = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": "Please rewrite this vignette in the specified voice."}
+                ],
+                max_tokens=len(clean_text.split()) * 3,
+                temperature=0.7
+            )
+            
+            rewritten = response.choices[0].message.content.strip()
+            
+            # Clean up any markdown or quotes the AI might add
+            rewritten = re.sub(r'^["\']|["\']$', '', rewritten)
+            rewritten = re.sub(r'^Here\'s the rewritten version:?\s*', '', rewritten, flags=re.IGNORECASE)
+            
+            return {
+                "success": True,
+                "original": clean_text,
+                "rewritten": rewritten,
+                "person": person_instructions[person_option]["name"],
+                "emoji": person_instructions[person_option]["emoji"]
+            }
+            
+        except Exception as e:
+            return {"error": str(e)}
+    
     def display_vignette_creator(self, on_publish=None, edit_vignette=None):
         # Create STABLE keys for this vignette
         if edit_vignette:
@@ -195,6 +334,101 @@ class VignetteManager:
         
         st.markdown("---")
         
+        # ============================================================================
+        # AI REWRITE SECTION FOR VIGNETTES
+        # ============================================================================
+        st.markdown("### ✨ AI Rewrite Assistant")
+        
+        # Check if there's content to rewrite
+        current_content = st.session_state.get(content_key, "")
+        has_content = current_content and current_content != "<p><br></p>" and current_content != "<p>Write your story here...</p>"
+        
+        if has_content:
+            col_ai1, col_ai2, col_ai3 = st.columns([1, 1, 2])
+            
+            with col_ai1:
+                if st.button("✨ AI Rewrite", key=f"{base_key}_ai_rewrite_btn", use_container_width=True):
+                    st.session_state[f"{base_key}_show_ai_menu"] = True
+                    st.rerun()
+            
+            with col_ai2:
+                if st.session_state.get(f"{base_key}_show_ai_menu", False):
+                    person_option = st.selectbox(
+                        "Voice:",
+                        options=["1st", "2nd", "3rd"],
+                        format_func=lambda x: {"1st": "👤 First Person (I)", 
+                                               "2nd": "💬 Second Person (You)", 
+                                               "3rd": "📖 Third Person (He/She)"}[x],
+                        key=f"{base_key}_ai_person",
+                        label_visibility="collapsed"
+                    )
+                    
+                    if st.button("Go", key=f"{base_key}_ai_go", type="primary", use_container_width=True):
+                        with st.spinner(f"Rewriting in {person_option} person using your profile..."):
+                            result = self.ai_rewrite_vignette(
+                                current_content, 
+                                person_option, 
+                                title or "Untitled Vignette"
+                            )
+                            
+                            if result.get('success'):
+                                st.session_state[f"{base_key}_ai_result"] = result
+                                st.session_state[f"{base_key}_show_ai_menu"] = False
+                                st.rerun()
+                            else:
+                                st.error(result.get('error', 'Failed to rewrite'))
+        else:
+            st.info("Write some content first to use AI Rewrite")
+        
+        # Display AI rewrite result if available
+        if st.session_state.get(f"{base_key}_ai_result"):
+            result = st.session_state[f"{base_key}_ai_result"]
+            
+            st.markdown("---")
+            st.markdown(f"### {result.get('emoji', '✨')} AI Rewrite Result - {result['person']}")
+            
+            col_res1, col_res2 = st.columns(2)
+            with col_res1:
+                st.markdown("**📝 Original Version:**")
+                with st.container():
+                    st.markdown(f'<div class="original-text-box">{result["original"]}</div>', unsafe_allow_html=True)
+            
+            with col_res2:
+                st.markdown(f"**✨ Rewritten Version ({result['person']}):**")
+                with st.container():
+                    st.markdown(f'<div class="rewritten-text-box">{result["rewritten"]}</div>', unsafe_allow_html=True)
+            
+            st.markdown("---")
+            st.markdown("*This rewrite used your profile information to better capture your authentic voice.*")
+            
+            col_apply1, col_apply2, col_apply3 = st.columns(3)
+            with col_apply1:
+                if st.button("📋 Copy to Clipboard", key=f"{base_key}_ai_copy", use_container_width=True):
+                    st.info("✅ Copied! Select the text above and press Ctrl+C")
+            
+            with col_apply2:
+                if st.button("📝 Replace Original", key=f"{base_key}_ai_replace", type="primary", use_container_width=True):
+                    # Wrap in paragraph tags if not present
+                    new_content = result["rewritten"]
+                    if not new_content.startswith('<p>'):
+                        new_content = f'<p>{new_content}</p>'
+                    
+                    st.session_state[content_key] = new_content
+                    del st.session_state[f"{base_key}_ai_result"]
+                    st.session_state[f"{base_key}_show_ai_menu"] = False
+                    st.rerun()
+            
+            with col_apply3:
+                if st.button("🔄 Try Different Voice", key=f"{base_key}_ai_try_another", use_container_width=True):
+                    del st.session_state[f"{base_key}_ai_result"]
+                    st.session_state[f"{base_key}_show_ai_menu"] = True
+                    st.rerun()
+        
+        st.markdown("---")
+        # ============================================================================
+        # END AI REWRITE SECTION
+        # ============================================================================
+        
         # Image upload section
         with st.expander("📸 Upload Photos", expanded=False):
             temp_images_key = f"{base_key}_temp_images"
@@ -270,7 +504,7 @@ class VignetteManager:
                         st.session_state.draft_success = True
                     
                     # Clean up session state
-                    for key in [content_key, temp_images_key, spell_check_key]:
+                    for key in [content_key, temp_images_key, spell_check_key, f"{base_key}_ai_result", f"{base_key}_show_ai_menu"]:
                         if key in st.session_state:
                             del st.session_state[key]
                     
@@ -304,7 +538,7 @@ class VignetteManager:
                         on_publish(vignette_data)
                     
                     # Clean up session state
-                    for key in [content_key, temp_images_key, spell_check_key]:
+                    for key in [content_key, temp_images_key, spell_check_key, f"{base_key}_ai_result", f"{base_key}_show_ai_menu"]:
                         if key in st.session_state:
                             del st.session_state[key]
                     
@@ -320,7 +554,7 @@ class VignetteManager:
         with col4:
             if st.button("❌ Cancel", use_container_width=True, key=f"{base_key}_cancel"):
                 # Clean up session state
-                for key in [content_key, temp_images_key, spell_check_key]:
+                for key in [content_key, temp_images_key, spell_check_key, f"{base_key}_ai_result", f"{base_key}_show_ai_menu"]:
                     if key in st.session_state:
                         del st.session_state[key]
                 st.session_state.show_vignette_modal = False
