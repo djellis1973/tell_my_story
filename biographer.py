@@ -3387,6 +3387,65 @@ if content is not None and content != st.session_state[content_key]:
 
 st.markdown("---")
 
+# Use a unique key for the editor that doesn't change
+editor_component_key = f"quill_editor_{current_session_id}_{hash(current_question_text)}"
+
+# Display the editor - it will NOT trigger reruns on typing
+content = st_quill(
+    value=st.session_state[content_key],
+    key=editor_component_key,
+    placeholder="Start writing your story here...",
+    html=True  # Ensure HTML content is preserved
+)
+
+# Only update session state when content actually changes
+if content is not None and content != st.session_state[content_key]:
+    st.session_state[content_key] = content
+
+st.markdown("---")
+
+# ============================================================================
+# SPELLCHECK BUTTON - Add this after the Quill editor section
+# ============================================================================
+st.markdown("### 🔍 Spell Check")
+
+# Get current content for spellcheck
+current_content = st.session_state.get(content_key, "")
+has_content = current_content and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>"
+
+col_spell1, col_spell2, col_spell3 = st.columns([1, 3, 1])
+with col_spell2:
+    if has_content:
+        if st.button("📝 Check Spelling & Grammar", key=f"spellcheck_{editor_key}", type="secondary", use_container_width=True):
+            with st.spinner("Checking spelling and grammar..."):
+                # Extract text without HTML tags
+                text_only = re.sub(r'<[^>]+>', '', current_content)
+                if len(text_only.split()) >= 3:
+                    corrected = auto_correct_text(text_only)
+                    if corrected and corrected != text_only:
+                        # Show the corrected version
+                        st.markdown("### ✅ Suggested Corrections:")
+                        st.markdown(f'<div style="background-color: #f0f9ff; padding: 15px; border-radius: 8px; border-left: 4px solid #4CAF50;">{corrected}</div>', unsafe_allow_html=True)
+                        
+                        col_apply1, col_apply2, col_apply3 = st.columns([1, 1, 1])
+                        with col_apply2:
+                            if st.button("📋 Apply Corrections", key=f"apply_spell_{editor_key}", type="primary", use_container_width=True):
+                                # Wrap in paragraph tags if needed
+                                if not corrected.startswith('<p>'):
+                                    corrected = f'<p>{corrected}</p>'
+                                st.session_state[content_key] = corrected
+                                st.success("✅ Corrections applied!")
+                                time.sleep(1)
+                                st.rerun()
+                    else:
+                        st.success("✅ No spelling or grammar issues found!")
+                else:
+                    st.warning("Text too short for spell check (minimum 3 words)")
+    else:
+        st.button("📝 Check Spelling & Grammar", key=f"spellcheck_disabled_{editor_key}", disabled=True, use_container_width=True)
+
+st.markdown("---")
+
 # ============================================================================
 # BUTTONS ROW - WITH AI REWRITE
 # ============================================================================
