@@ -113,13 +113,13 @@ class VignetteManager:
         """Display the vignette creation form matching biographer.py EXACT pattern"""
         
 # Create unique keys for this vignette - MATCHING BIOGRAPHER.PY PATTERN
-if edit_vignette:
-    vignette_id = edit_vignette['id']
-    base_key = f"vignette_{vignette_id}"
-else:
-    # Use a STABLE ID for new vignettes - just 'new' without timestamp
-    vignette_id = "new"
-    base_key = "vignette_new"
+    if edit_vignette:
+        vignette_id = edit_vignette['id']
+        base_key = f"vignette_{vignette_id}"
+    else:
+        # Use a STABLE ID for new vignettes - just 'new' without timestamp
+        vignette_id = "new"
+        base_key = "vignette_new"
         
         # Editor key and content key - EXACTLY like biographer.py
         editor_key = f"quill_vignette_{vignette_id}"
