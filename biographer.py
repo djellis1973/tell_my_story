@@ -3417,7 +3417,7 @@ except Exception as e:
 st.markdown("---")
 
 # ============================================================================
-# SPELLCHECK BUTTON - With unique keys
+# SPELLCHECK BUTTON - Fixed to actually apply changes
 # ============================================================================
 st.markdown("### 🔍 Spell Check")
 
@@ -3447,12 +3447,13 @@ with col_spell2:
                             "corrected": corrected,
                             "show": True
                         }
-                        # Don't rerun immediately to avoid scrolling
+                        st.rerun()  # Force rerun to show results
                     else:
                         st.session_state[spell_result_key] = {
                             "message": "✅ No spelling or grammar issues found!",
                             "show": True
                         }
+                        st.rerun()  # Force rerun to show message
                 else:
                     st.warning("Text too short for spell check (minimum 3 words)")
         
@@ -3471,21 +3472,28 @@ with col_spell2:
                         corrected = result["corrected"]
                         if not corrected.startswith('<p>'):
                             corrected = f'<p>{corrected}</p>'
+                        
+                        # Update the content in session state
                         st.session_state[content_key] = corrected
+                        
+                        # Save the response immediately
+                        save_response(current_session_id, current_question_text, corrected)
+                        
                         # Clear the result
                         st.session_state[spell_result_key] = {"show": False}
+                        
                         st.success("✅ Corrections applied!")
-                        # Don't rerun immediately to avoid scrolling
+                        st.rerun()  # Force rerun to update editor
                     
                     if st.button("❌ Dismiss", key=f"{spellcheck_base}_dismiss", use_container_width=True):
                         st.session_state[spell_result_key] = {"show": False}
-                        # Don't rerun immediately to avoid scrolling
+                        st.rerun()
             
             elif "message" in result:
                 st.success(result["message"])
                 if st.button("Dismiss", key=f"{spellcheck_base}_dismiss_msg"):
                     st.session_state[spell_result_key] = {"show": False}
-                    # Don't rerun immediately to avoid scrolling
+                    st.rerun()
     else:
         st.button("📝 Check Spelling & Grammar", key=f"{spellcheck_base}_disabled", disabled=True, use_container_width=True)
 
