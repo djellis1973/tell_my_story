@@ -1,4 +1,4 @@
-# vignettes.py - COMPLETE WORKING VERSION WITH AI REWRITE AND PUBLISH
+# vignettes.py - COMPLETE WORKING VERSION WITH AI REWRITE AND SPELLCHECK
 import streamlit as st
 import json
 from datetime import datetime
@@ -406,7 +406,7 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                     st.session_state.show_vignette_manager = True
                     st.rerun()
         
-                with col3:
+        with col3:
             # Spellcheck Button
             if has_content and not showing_results:
                 if st.button("🔍 Spell Check", key=f"{base_key}_spell", use_container_width=True):
@@ -415,7 +415,6 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                         if len(text_only.split()) >= 3:
                             # Simple spell check using OpenAI directly
                             try:
-                                import openai
                                 client = openai.OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY")))
                                 resp = client.chat.completions.create(
                                     model="gpt-4o-mini",
