@@ -67,7 +67,7 @@ default_state = {
     "qb_manager": None, "qb_manager_initialized": False, "user_id": None, "logged_in": False,
     "current_session": 0, "current_question": 0, "responses": {}, "editing": False,
     "editing_word_target": False, "confirming_clear": None, "data_loaded": False,
-    "current_question_override": None, "show_vignette_modal": False, "vignette_topic": "",
+    "current_question_override": None, "": False, "vignette_topic": "",
     "vignette_content": "", "selected_vignette_type": "Standard Topic", "current_vignette_list": [],
     "editing_vignette_index": None, "show_vignette_manager": False, "custom_topic_input": "",
     "show_custom_topic_modal": False, "show_topic_browser": False, "show_session_manager": False,
@@ -512,7 +512,7 @@ def logout_user():
     st.session_state.image_handler = None
     keys = ['user_id', 'user_account', 'logged_in', 'show_profile_setup', 'current_session',
             'current_question', 'responses', 'session_conversations', 'data_loaded',
-            'show_vignette_modal', 'vignette_topic', 'vignette_content', 'selected_vignette_type',
+            '', 'vignette_topic', 'vignette_content', 'selected_vignette_type',
             'current_vignette_list', 'editing_vignette_index', 'show_vignette_manager',
             'custom_topic_input', 'show_custom_topic_modal', 'show_topic_browser',
             'show_session_manager', 'show_session_creator', 'editing_custom_session',
@@ -2110,7 +2110,7 @@ def on_vignette_edit(vignette_id):
     st.session_state.editing_vignette_id = vignette_id
     st.session_state.show_vignette_detail = False
     st.session_state.show_vignette_manager = False
-    st.session_state.show_vignette_modal = True
+    st.session_state. = True
     st.rerun()
 
 def on_vignette_delete(vignette_id):
@@ -2126,7 +2126,7 @@ def on_vignette_publish(vignette):
     st.rerun()
 
 # ============================================================================
-# FIXED: show_vignette_modal with Quill support
+# FIXED: show_vignette_modal - ONLY THIS NEEDS TO CHANGE
 # ============================================================================
 def show_vignette_modal():
     if not VignetteManager: 
@@ -2134,187 +2134,50 @@ def show_vignette_modal():
         st.session_state.show_vignette_modal = False; 
         return
     
-    # Don't use modal overlay - render directly at top level
-    st.markdown('<div class="vignette-editor-container">', unsafe_allow_html=True)
+    # NO MODAL OVERLAY - just a simple container
+    st.markdown("""
+    <style>
+        .vignette-container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 10px;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+    </style>
+    """, unsafe_allow_html=True)
     
-    # Header with back button
-    col1, col2, col3 = st.columns([1, 6, 1])
+    st.markdown('<div class="vignette-container">', unsafe_allow_html=True)
+    
+    # Simple back button
+    col1, col2 = st.columns([1, 5])
     with col1:
-        if st.button("← Back", key="vign_modal_back"): 
+        if st.button("← Back", key="vignette_back_btn"): 
             st.session_state.show_vignette_modal = False
             st.session_state.editing_vignette_id = None
-            # Clear any temp images
-            if 'vignette_temp_images' in st.session_state:
-                del st.session_state.vignette_temp_images
             st.rerun()
     with col2:
         st.title("✏️ Edit Vignette" if st.session_state.get('editing_vignette_id') else "✍️ Create Vignette")
-    with col3:
-        st.markdown("")  # Empty for spacing
     
     st.divider()
     
+    # Initialize vignette manager
     if 'vignette_manager' not in st.session_state: 
         st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
     
-    edit = st.session_state.vignette_manager.get_vignette_by_id(st.session_state.editing_vignette_id) if st.session_state.get('editing_vignette_id') else None
+    # Get the vignette being edited (if any)
+    edit_vignette = None
+    if st.session_state.get('editing_vignette_id'):
+        edit_vignette = st.session_state.vignette_manager.get_vignette_by_id(st.session_state.editing_vignette_id)
     
-    # Use a form to prevent auto-reruns
-    with st.form(key="vignette_editor_form", clear_on_submit=False):
-        # Title input
-        title = st.text_input(
-            "Vignette Title", 
-            value=edit.get('title', '') if edit else '',
-            placeholder="Give your vignette a title",
-            key="vignette_title_input"
-        )
-        
-        # Topic selection
-        topic_options = ["Standard Topic", "Custom Topic"]
-        topic_index = 0
-        if edit and edit.get('topic_type') == "Custom Topic":
-            topic_index = 1
-        
-        topic_type = st.selectbox(
-            "Topic Type",
-            options=topic_options,
-            index=topic_index,
-            key="vignette_topic_type"
-        )
-        
-        if topic_type == "Custom Topic":
-            custom_topic = st.text_input(
-                "Enter your custom topic",
-                value=edit.get('custom_topic', '') if edit else '',
-                placeholder="What would you like to write about?",
-                key="vignette_custom_topic"
-            )
-        else:
-            # Standard topics from bank
-            from topic_bank import TopicBank
-            topic_bank = TopicBank(st.session_state.user_id)
-            all_topics = topic_bank.get_all_topics()
-            topic_options = [t["text"] for t in all_topics] if all_topics else []
-            
-            if not topic_options:
-                topic_options = ["Childhood Memory", "Family Tradition", "Life Lesson", 
-                                "Career Moment", "Relationship", "Travel Story", 
-                                "Challenge Overcome", "Proud Achievement"]
-            
-            selected_topic = st.selectbox(
-                "Choose a topic",
-                options=topic_options,
-                index=topic_options.index(edit.get('topic', '')) if edit and edit.get('topic') in topic_options else 0,
-                key="vignette_topic_select"
-            )
-        
-        st.divider()
-        
-        # ============================================================================
-        # QUILL EDITOR FOR VIGNETTE - RENDERED DIRECTLY
-        # ============================================================================
-        st.markdown("### ✍️ Your Vignette")
-        
-        # Create a unique key for this vignette's editor
-        vignette_id = edit.get('id', 'new') if edit else 'new'
-        vignette_editor_key = f"quill_vignette_{vignette_id}"
-        vignette_content_key = f"{vignette_editor_key}_content"
-        
-        # Get existing content or initialize
-        if vignette_content_key not in st.session_state:
-            if edit and edit.get('content'):
-                st.session_state[vignette_content_key] = edit['content']
-            else:
-                st.session_state[vignette_content_key] = "<p>Write your vignette here...</p>"
-        
-        # Display the Quill editor
-        content = st_quill(
-            value=st.session_state[vignette_content_key],
-            key=vignette_editor_key,
-            placeholder="Write your vignette here...",
-            html=True
-        )
-        
-        # Update session state when content changes
-        if content is not None and content != st.session_state[vignette_content_key]:
-            st.session_state[vignette_content_key] = content
-        
-        # Show word count
-        text_only = re.sub(r'<[^>]+>', '', content) if content else ""
-        word_count = len(text_only.split())
-        st.caption(f"Word count: {word_count}")
-        
-        st.divider()
-        
-        # Save/Cancel buttons
-        col1, col2 = st.columns(2)
-        with col1:
-            save_button = st.form_submit_button(
-                "💾 Save Vignette", 
-                type="primary", 
-                use_container_width=True
-            )
-        with col2:
-            cancel_button = st.form_submit_button(
-                "Cancel", 
-                use_container_width=True
-            )
-    
-    # Handle form submission outside the form
-    if save_button:
-        # Get the content from session state
-        vignette_content = st.session_state.get(vignette_content_key, "")
-        
-        # Validate
-        if not title:
-            st.error("Please enter a title")
-        elif not vignette_content or vignette_content == "<p>Write your vignette here...</p>":
-            st.error("Please write some content")
-        else:
-            # Prepare vignette data
-            vignette_data = {
-                "title": title,
-                "content": vignette_content,
-                "topic_type": topic_type,
-                "topic": selected_topic if topic_type == "Standard Topic" else custom_topic,
-                "created": edit.get('created', datetime.now().isoformat()) if edit else datetime.now().isoformat(),
-                "modified": datetime.now().isoformat(),
-                "published": edit.get('published', False) if edit else False
-            }
-            
-            if edit:
-                vignette_data["id"] = edit["id"]
-            
-            # Save via manager
-            if hasattr(st.session_state.vignette_manager, 'save_vignette'):
-                success = st.session_state.vignette_manager.save_vignette(vignette_data)
-            else:
-                success = True  # Fallback
-            
-            if success:
-                st.success("✅ Vignette saved!")
-                # Clean up session state
-                if vignette_content_key in st.session_state:
-                    del st.session_state[vignette_content_key]
-                
-                # Close modal
-                st.session_state.show_vignette_modal = False
-                st.session_state.editing_vignette_id = None
-                time.sleep(1)
-                st.rerun()
-            else:
-                st.error("Failed to save vignette")
-    
-    if cancel_button:
-        # Clean up session state
-        if vignette_content_key in st.session_state:
-            del st.session_state[vignette_content_key]
-        st.session_state.show_vignette_modal = False
-        st.session_state.editing_vignette_id = None
-        st.rerun()
+    # JUST CALL THE EXISTING VIGNETTE FUNCTION - DON'T CHANGE ANYTHING ELSE
+    st.session_state.vignette_manager.display_vignette_creator(
+        on_publish=lambda v: st.session_state.update(published_vignette=v),
+        edit_vignette=edit_vignette
+    )
     
     st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()  # Stop here to prevent main content from rendering
+    st.stop()
 
 # ============================================================================
 # TOPIC BROWSER & SESSION MANAGER
