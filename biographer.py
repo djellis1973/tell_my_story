@@ -1,4 +1,4 @@
-# biographer.py – Tell My Story App (COMPLETE VERSION WITH SPELL CHECK & AI REWRITE)
+# biographer.py – Tell My Story App (COMPLETE VERSION WITH AI REWRITE)
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -81,8 +81,7 @@ default_state = {
     "image_handler": None, "show_image_manager": False,
     "current_rewrite_data": None, "show_ai_rewrite": False, "show_ai_rewrite_menu": False,
     "editor_content": {}, "show_privacy_settings": False, "show_cover_designer": False,
-    "beta_feedback_display": None, "beta_feedback_storage": {},
-    "show_vignette_rewrite_menu": False  # Added for vignette AI rewrite
+    "beta_feedback_display": None, "beta_feedback_storage": {}
 }
 for key, value in default_state.items():
     if key not in st.session_state:
@@ -1468,7 +1467,7 @@ def render_narrative_gps():
                 "Explain your preferred approach:",
                 value=gps.get('involvement_explain', ''),
                 key="gps_involvement_explain"
-        )
+            )
         
         st.markdown("---")
         
@@ -1525,7 +1524,6 @@ def save_user_data(user_id, responses_data):
             "responses": responses_data,
             "vignettes": existing.get("vignettes", []),
             "beta_feedback": existing.get("beta_feedback", {}),
-            "vignette_beta_feedback": existing.get("vignette_beta_feedback", {}),
             "last_saved": datetime.now().isoformat()
         }
         with open(fname, 'w') as f: 
@@ -1622,7 +1620,6 @@ def get_progress_info(session_id):
     }
 
 def auto_correct_text(text):
-    """Fix spelling and grammar using AI"""
     if not text: 
         return text
     text_only = re.sub(r'<[^>]+>', '', text)
@@ -1630,16 +1627,13 @@ def auto_correct_text(text):
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "You are a professional editor. Fix all spelling and grammar errors in the following text. Preserve the original meaning and voice. Return ONLY the corrected text, no explanations."},
+                {"role": "system", "content": "Fix spelling and grammar. Return only corrected text."},
                 {"role": "user", "content": text_only}
             ],
-            max_tokens=len(text_only) + 200, 
-            temperature=0.1
+            max_tokens=len(text_only) + 100, temperature=0.1
         )
-        corrected = resp.choices[0].message.content
-        return corrected
-    except Exception as e:
-        print(f"Spell check error: {e}")
+        return resp.choices[0].message.content
+    except: 
         return text
 
 # ============================================================================
@@ -2126,7 +2120,7 @@ def on_vignette_publish(vignette):
     st.rerun()
 
 # ============================================================================
-# MODIFIED: show_vignette_modal with Spell Check, AI Rewrite and Beta Reader
+# MODIFIED: show_vignette_modal with Beta Reader added
 # ============================================================================
 def show_vignette_modal():
     if not VignetteManager: 
@@ -2144,111 +2138,34 @@ def show_vignette_modal():
     edit = st.session_state.vignette_manager.get_vignette_by_id(st.session_state.editing_vignette_id) if st.session_state.get('editing_vignette_id') else None
     st.session_state.vignette_manager.display_vignette_creator(on_publish=on_vignette_publish, edit_vignette=edit)
     
-    # ============================================================================
-    # ADD VIGNETTE EDITOR TOOLS - SPELL CHECK, AI REWRITE, BETA READER
-    # ============================================================================
+    # ADD BETA READER SECTION FOR EDIT MODE
     if st.session_state.get('editing_vignette_id') and edit:
         st.divider()
-        st.markdown("## ✨ AI Writing Tools")
+        st.markdown("## 🦋 Beta Reader Feedback for This Vignette")
         
-        # Get vignette content
-        vignette_content = edit.get('content', '')
-        clean_vignette = re.sub(r'<[^>]+>', '', vignette_content) if vignette_content else ""
+        tab1, tab2 = st.tabs(["📝 Get Feedback", "📚 Feedback History"])
         
-        if clean_vignette and len(clean_vignette.split()) >= 3:
-            col1, col2, col3 = st.columns(3)
-            
+        with tab1:
+            col1, col2 = st.columns([2, 1])
             with col1:
-                # SPELL CHECK BUTTON
-                if st.button("🔍 Spell Check", key=f"vign_spell_{edit['id']}", use_container_width=True, type="primary"):
-                    with st.spinner("Checking spelling and grammar..."):
-                        corrected = auto_correct_text(clean_vignette)
-                        if corrected and corrected != clean_vignette:
-                            new_content = f"<p>{corrected}</p>"
-                            edit['content'] = new_content
-                            
-                            saved = False
-                            if hasattr(st.session_state.vignette_manager, 'save_vignette'):
-                                saved = st.session_state.vignette_manager.save_vignette(edit)
-                            elif hasattr(st.session_state.vignette_manager, 'update'):
-                                saved = st.session_state.vignette_manager.update(edit)
-                            else:
-                                saved = True
-                            
-                            if saved:
-                                st.session_state.vignette_spellcheck_timestamp = time.time()
-                                st.success("✅ Spelling and grammar corrected!")
-                                time.sleep(1)
-                                st.rerun()
-                            else:
-                                st.warning("⚠️ Could not auto-save. Please copy this corrected text:")
-                                st.text_area("Corrected text:", corrected, height=150)
-                        elif corrected:
-                            st.info("✓ No spelling or grammar issues found!")
-                        else:
-                            st.error("Spell check failed")
-            
-            with col2:
-                # AI REWRITE BUTTON
-                if st.button("✨ AI Rewrite", key=f"vign_rewrite_{edit['id']}", use_container_width=True):
-                    st.session_state[f"show_vign_rewrite_menu_{edit['id']}"] = True
-                    st.rerun()
-            
-            with col3:
-                # PERSON SELECTOR (appears when AI Rewrite is clicked)
-                if st.session_state.get(f"show_vign_rewrite_menu_{edit['id']}", False):
-                    person_option = st.selectbox(
-                        "Voice:",
-                        options=["1st", "2nd", "3rd"],
-                        format_func=lambda x: {"1st": "👤 First Person", 
-                                               "2nd": "💬 Second Person", 
-                                               "3rd": "📖 Third Person"}[x],
-                        key=f"vign_person_{edit['id']}",
-                        label_visibility="collapsed"
-                    )
-                    
-                    if st.button("Go", key=f"vign_go_{edit['id']}", type="primary", use_container_width=True):
-                        with st.spinner(f"Rewriting in {person_option} person..."):
-                            result = ai_rewrite_answer(
-                                vignette_content, 
-                                person_option, 
-                                f"Vignette: {edit['title']}", 
-                                "Vignette"
-                            )
-                            
-                            if result.get('success'):
-                                st.session_state.current_rewrite_data = result
-                                st.session_state.show_ai_rewrite = True
-                                st.session_state[f"show_vign_rewrite_menu_{edit['id']}"] = False
-                                st.rerun()
-                            else:
-                                st.error(result.get('error', 'Failed to rewrite'))
-            
-            st.markdown(f"**Current word count:** {len(clean_vignette.split())}")
-            
-            st.divider()
-            st.markdown("## 🦋 Beta Reader Feedback")
-            
-            col_fb1, col_fb2 = st.columns([2, 1])
-            with col_fb1:
                 fb_type = st.selectbox(
                     "Feedback Type", 
                     ["comprehensive", "concise", "developmental"], 
-                    key=f"beta_vignette_type_{edit['id']}"
+                    key=f"beta_vignette_edit_type_{edit['id']}"
                 )
-            with col_fb2:
-                if st.button("🦋 Get Beta Read", key=f"beta_vignette_btn_{edit['id']}", type="primary", use_container_width=True):
+            with col2:
+                if st.button("🦋 Get Beta Read", key=f"beta_vignette_edit_btn_{edit['id']}", type="primary", use_container_width=True):
                     with st.spinner("Beta Reader is analyzing your vignette with profile context..."):
                         if beta_reader:
-                            text_only = re.sub(r'<[^>]+>', '', vignette_content)
-                            if text_only and len(text_only.split()) > 50:
+                            vignette_text = edit.get('content', '')
+                            if vignette_text and len(vignette_text.strip()) > 50:
                                 fb = generate_beta_reader_feedback(
                                     f"Vignette: {edit['title']}", 
-                                    vignette_content,
+                                    vignette_text,
                                     fb_type
                                 )
                                 if "error" not in fb: 
-                                    st.session_state[f"beta_vignette_{edit['id']}"] = fb
+                                    st.session_state[f"beta_vignette_edit_{edit['id']}"] = fb
                                     st.rerun()
                                 else: 
                                     st.error(f"Failed: {fb['error']}")
@@ -2257,11 +2174,12 @@ def show_vignette_modal():
                         else:
                             st.error("Beta reader not available")
             
-            if f"beta_vignette_{edit['id']}" in st.session_state:
-                fb = st.session_state[f"beta_vignette_{edit['id']}"]
+            if f"beta_vignette_edit_{edit['id']}" in st.session_state:
+                fb = st.session_state[f"beta_vignette_edit_{edit['id']}"]
                 st.markdown("---")
                 st.markdown("### 📋 Beta Reader Results")
                 
+                # Show what profile information was used
                 if fb.get('profile_sections_used'):
                     with st.expander("📋 **PROFILE INFORMATION ACCESSED**", expanded=True):
                         st.markdown("The Beta Reader used these profile sections to personalize this feedback:")
@@ -2269,13 +2187,14 @@ def show_vignette_modal():
                         for i, section in enumerate(fb['profile_sections_used']):
                             cols[i % 3].markdown(f"✅ **{section}**")
                 
-                if st.button("💾 Save to History", key=f"save_vignette_fb_{edit['id']}"):
+                if st.button("💾 Save to History", key=f"save_vignette_edit_fb_{edit['id']}"):
                     if save_vignette_beta_feedback(st.session_state.user_id, edit['id'], fb, edit['title']):
                         st.success("✅ Saved!")
                         st.rerun()
                 
                 st.markdown("---")
                 
+                # Display feedback with profile highlights
                 if 'feedback' in fb and fb['feedback']:
                     feedback_text = fb['feedback']
                     parts = re.split(r'(\[PROFILE:.*?\])', feedback_text)
@@ -2295,9 +2214,9 @@ def show_vignette_modal():
                     if 'areas_for_improvement' in fb:
                         for a in fb['areas_for_improvement']:
                             st.markdown(f"📝 {a}")
-            
-            st.divider()
-            st.markdown("### 📚 Saved Feedback")
+        
+        with tab2:
+            st.markdown("### Saved Feedback")
             user_data = load_user_data(st.session_state.user_id) if st.session_state.user_id else {}
             vignette_feedback = user_data.get("vignette_beta_feedback", {})
             this_vignette_feedback = vignette_feedback.get(str(edit['id']), [])
@@ -2306,19 +2225,186 @@ def show_vignette_modal():
                 st.info("No saved feedback yet")
             else:
                 for i, fb in enumerate(this_vignette_feedback):
-                    with st.expander(f"Feedback from {fb.get('generated_at', 'Unknown')[:10]}"):
-                        if st.button(f"Delete", key=f"del_vignette_fb_{i}"):
+                    with st.expander(f"Feedback {i+1}"):
+                        if st.button(f"Delete", key=f"del_vignette_edit_fb_{i}"):
                             this_vignette_feedback.pop(i)
                             user_data["vignette_beta_feedback"] = vignette_feedback
                             save_user_data(st.session_state.user_id, user_data.get("responses", {}))
                             st.rerun()
                         if 'feedback' in fb:
                             st.markdown(fb['feedback'])
-        else:
-            st.info("Write at least 3 words to use AI writing tools.")
-        
-            
+    
     st.markdown('</div>', unsafe_allow_html=True)
+
+def show_vignette_manager():
+    if not VignetteManager: 
+        st.error("Vignette module not available"); 
+        st.session_state.show_vignette_manager = False; 
+        return
+    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
+    if st.button("←", key="vign_mgr_back"): 
+        st.session_state.show_vignette_manager = False; 
+        st.rerun()
+    st.title("📚 Your Vignettes")
+    if 'vignette_manager' not in st.session_state: 
+        st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
+    filter_map = {"All Stories": "all", "Published": "published", "Drafts": "drafts"}
+    filter_option = st.radio("Show:", ["All Stories", "Published", "Drafts"], horizontal=True, key="vign_filter")
+    st.session_state.vignette_manager.display_vignette_gallery(
+        filter_by=filter_map.get(filter_option, "all"),
+        on_select=on_vignette_select, 
+        on_edit=on_vignette_edit, 
+        on_delete=on_vignette_delete
+    )
+    st.divider()
+    if st.button("➕ Create New Vignette", type="primary", width='stretch'):
+        st.session_state.show_vignette_manager = False; 
+        st.session_state.show_vignette_modal = True; 
+        st.session_state.editing_vignette_id = None; 
+        st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+
+def show_vignette_detail():
+    if not VignetteManager or not st.session_state.get('selected_vignette_id'): 
+        st.session_state.show_vignette_detail = False
+        return
+    
+    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
+    
+    col1, col2 = st.columns([6, 1])
+    with col1:
+        st.title("📖 Read Vignette")
+    with col2:
+        if st.button("✕", key="close_vignette_detail"):
+            st.session_state.show_vignette_detail = False
+            st.session_state.selected_vignette_id = None
+            st.rerun()
+    
+    if 'vignette_manager' not in st.session_state: 
+        st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
+    
+    vignette = st.session_state.vignette_manager.get_vignette_by_id(st.session_state.selected_vignette_id)
+    if not vignette: 
+        st.error("Vignette not found")
+        st.session_state.show_vignette_detail = False
+        return
+    
+    # Display the vignette
+    st.session_state.vignette_manager.display_full_vignette(
+        st.session_state.selected_vignette_id,
+        on_back=lambda: st.session_state.update(show_vignette_detail=False, selected_vignette_id=None),
+        on_edit=on_vignette_edit
+    )
+    
+    st.divider()
+    
+    # Beta Reader section
+    st.markdown("## 🦋 Beta Reader Feedback for This Vignette")
+    
+    tab1, tab2 = st.tabs(["📝 Get Feedback", "📚 Feedback History"])
+    
+    with tab1:
+        col1, col2 = st.columns([2, 1])
+        with col1:
+            fb_type = st.selectbox(
+                "Feedback Type", 
+                ["comprehensive", "concise", "developmental"], 
+                key=f"beta_vignette_type_{vignette['id']}"
+            )
+        with col2:
+            if st.button("🦋 Get Beta Read", key=f"beta_vignette_btn_{vignette['id']}", type="primary", use_container_width=True):
+                with st.spinner("Beta Reader is analyzing your vignette with profile context..."):
+                    if beta_reader:
+                        vignette_text = vignette.get('content', '')
+                        if vignette_text and len(vignette_text.strip()) > 50:
+                            fb = generate_beta_reader_feedback(
+                                f"Vignette: {vignette['title']}", 
+                                vignette_text,
+                                fb_type
+                            )
+                            if "error" not in fb: 
+                                st.session_state[f"beta_vignette_{vignette['id']}"] = fb
+                                st.rerun()
+                            else: 
+                                st.error(f"Failed: {fb['error']}")
+                        else:
+                            st.warning("Vignette too short for feedback (minimum 50 words)")
+                    else:
+                        st.error("Beta reader not available")
+        
+        if f"beta_vignette_{vignette['id']}" in st.session_state:
+            fb = st.session_state[f"beta_vignette_{vignette['id']}"]
+            st.markdown("---")
+            st.markdown("### 📋 Beta Reader Results")
+            
+            # Show what profile information was used
+            if fb.get('profile_sections_used'):
+                with st.expander("📋 **PROFILE INFORMATION ACCESSED**", expanded=True):
+                    st.markdown("The Beta Reader used these profile sections to personalize this feedback:")
+                    cols = st.columns(3)
+                    for i, section in enumerate(fb['profile_sections_used']):
+                        cols[i % 3].markdown(f"✅ **{section}**")
+            
+            if st.button("💾 Save to History", key=f"save_vignette_fb_{vignette['id']}"):
+                if save_vignette_beta_feedback(st.session_state.user_id, vignette['id'], fb, vignette['title']):
+                    st.success("✅ Saved!")
+                    st.rerun()
+            
+            st.markdown("---")
+            
+            # Display feedback with profile highlights
+            if 'feedback' in fb and fb['feedback']:
+                feedback_text = fb['feedback']
+                parts = re.split(r'(\[PROFILE:.*?\])', feedback_text)
+                formatted_feedback = ""
+                for part in parts:
+                    if part.startswith('[PROFILE:') and part.endswith(']'):
+                        formatted_feedback += f'<span style="background-color: #e8f4fd; color: #0366d6; font-weight: bold; padding: 2px 6px; border-radius: 4px; border-left: 3px solid #0366d6;">{part}</span>'
+                    else:
+                        formatted_feedback += part
+                st.markdown(formatted_feedback, unsafe_allow_html=True)
+            else:
+                if 'summary' in fb:
+                    st.info(fb['summary'])
+                if 'strengths' in fb:
+                    for s in fb['strengths']:
+                        st.markdown(f"✅ {s}")
+                if 'areas_for_improvement' in fb:
+                    for a in fb['areas_for_improvement']:
+                        st.markdown(f"📝 {a}")
+    
+    with tab2:
+        st.markdown("### Saved Feedback")
+        user_data = load_user_data(st.session_state.user_id) if st.session_state.user_id else {}
+        vignette_feedback = user_data.get("vignette_beta_feedback", {})
+        this_vignette_feedback = vignette_feedback.get(str(vignette['id']), [])
+        
+        if not this_vignette_feedback:
+            st.info("No saved feedback yet")
+        else:
+            for i, fb in enumerate(this_vignette_feedback):
+                with st.expander(f"Feedback {i+1}"):
+                    if st.button(f"Delete", key=f"del_vignette_fb_{i}"):
+                        this_vignette_feedback.pop(i)
+                        user_data["vignette_beta_feedback"] = vignette_feedback
+                        save_user_data(st.session_state.user_id, user_data.get("responses", {}))
+                        st.rerun()
+                    if 'feedback' in fb:
+                        st.markdown(fb['feedback'])
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
+def switch_to_vignette(vignette_topic, content=""):
+    st.session_state.current_question_override = f"Vignette: {vignette_topic}"
+    if content:
+        save_response(st.session_state.current_question_bank[st.session_state.current_session]["id"], 
+                     f"Vignette: {vignette_topic}", content)
+    st.rerun()
+
+def switch_to_custom_topic(topic_text):
+    st.session_state.current_question_override = topic_text
+    st.rerun()
 
 # ============================================================================
 # TOPIC BROWSER & SESSION MANAGER
@@ -2883,70 +2969,6 @@ if st.session_state.get('show_profile_setup', False):
     
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
-# ============================================================================
-# VIGNETTE MANAGER FUNCTIONS - ADD THESE HERE
-# ============================================================================
-def show_vignette_manager():
-    if not VignetteManager: 
-        st.error("Vignette module not available"); 
-        st.session_state.show_vignette_manager = False; 
-        return
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    if st.button("←", key="vign_mgr_back"): 
-        st.session_state.show_vignette_manager = False; 
-        st.rerun()
-    st.title("📚 Your Vignettes")
-    if 'vignette_manager' not in st.session_state: 
-        st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
-    filter_map = {"All Stories": "all", "Published": "published", "Drafts": "drafts"}
-    filter_option = st.radio("Show:", ["All Stories", "Published", "Drafts"], horizontal=True, key="vign_filter")
-    st.session_state.vignette_manager.display_vignette_gallery(
-        filter_by=filter_map.get(filter_option, "all"),
-        on_select=on_vignette_select, 
-        on_edit=on_vignette_edit, 
-        on_delete=on_vignette_delete
-    )
-    st.divider()
-    if st.button("➕ Create New Vignette", type="primary", width='stretch'):
-        st.session_state.show_vignette_manager = False; 
-        st.session_state.show_vignette_modal = True; 
-        st.session_state.editing_vignette_id = None; 
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def show_vignette_detail():
-    if not VignetteManager or not st.session_state.get('selected_vignette_id'): 
-        st.session_state.show_vignette_detail = False
-        return
-    
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([6, 1])
-    with col1:
-        st.title("📖 Read Vignette")
-    with col2:
-        if st.button("✕", key="close_vignette_detail"):
-            st.session_state.show_vignette_detail = False
-            st.session_state.selected_vignette_id = None
-            st.rerun()
-    
-    if 'vignette_manager' not in st.session_state: 
-        st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
-    
-    vignette = st.session_state.vignette_manager.get_vignette_by_id(st.session_state.selected_vignette_id)
-    if not vignette: 
-        st.error("Vignette not found")
-        st.session_state.show_vignette_detail = False
-        return
-    
-    st.session_state.vignette_manager.display_full_vignette(
-        st.session_state.selected_vignette_id,
-        on_back=lambda: st.session_state.update(show_vignette_detail=False, selected_vignette_id=None),
-        on_edit=on_vignette_edit
-    )
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
 
 # ============================================================================
 # MODAL HANDLING
@@ -3349,9 +3371,7 @@ st.markdown("""
 """, unsafe_allow_html=True)
 
 # Use a unique key for the editor that doesn't change
-# Add timestamp to force refresh when spell check runs
-timestamp = st.session_state.get('spell_check_timestamp', 0)
-editor_component_key = f"quill_editor_{current_session_id}_{hash(current_question_text)}_{timestamp}"
+editor_component_key = f"quill_editor_{current_session_id}_{hash(current_question_text)}"
 
 # Display the editor - it will NOT trigger reruns on typing
 content = st_quill(
@@ -3368,9 +3388,9 @@ if content is not None and content != st.session_state[content_key]:
 st.markdown("---")
 
 # ============================================================================
-# BUTTONS ROW - WITH SPELL CHECK AND AI REWRITE
+# BUTTONS ROW - WITH AI REWRITE
 # ============================================================================
-col1, col2, col3, col4, col5, col6 = st.columns([1, 1, 1, 1, 1, 2])
+col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 2])
 
 with col1:
     if st.button("💾 Save", key=f"save_btn_{editor_key}", type="primary", use_container_width=True):
@@ -3397,42 +3417,10 @@ with col2:
         st.button("🗑️", key=f"del_disabled_{editor_key}", disabled=True, use_container_width=True)
 
 with col3:
-    # SPELL CHECK BUTTON
+    # AI Rewrite Button - Only enabled if there's content
     current_content = st.session_state.get(content_key, "")
     has_content = current_content and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>"
     
-    if has_content:
-        if st.button("🔍 Spell Check", key=f"spell_btn_{editor_key}", use_container_width=True):
-            with st.spinner("Checking spelling and grammar..."):
-                # Extract text without HTML
-                text_only = re.sub(r'<[^>]+>', '', current_content)
-                st.write(f"DEBUG - Original: {text_only}")
-                
-                if text_only and len(text_only.split()) >= 3:
-                    corrected = auto_correct_text(text_only)
-                    st.write(f"DEBUG - Corrected: {corrected}")
-                    
-                    if corrected and corrected != text_only:
-                        # Update session state
-                        st.session_state[content_key] = corrected
-                        
-                        # Save to database
-                        save_response(current_session_id, current_question_text, corrected)
-                        
-                        # Force a full page rerun with a timestamp to force Quill to refresh
-                        st.session_state['spell_check_timestamp'] = time.time()
-                        
-                        st.success("✅ Spelling and grammar corrected!")
-                        st.rerun()
-                    elif corrected:
-                        st.info("✓ No spelling or grammar issues found!")
-                    else:
-                        st.error("Spell check failed")
-    else:
-        st.button("🔍 Spell Check", key=f"spell_disabled_{editor_key}", disabled=True, use_container_width=True)
-   
-with col4:
-    # AI REWRITE BUTTON
     if has_content:
         if st.button("✨ AI Rewrite", key=f"rewrite_btn_{editor_key}", use_container_width=True):
             st.session_state.show_ai_rewrite_menu = True
@@ -3440,21 +3428,21 @@ with col4:
     else:
         st.button("✨ AI Rewrite", key=f"rewrite_disabled_{editor_key}", disabled=True, use_container_width=True)
 
-with col5:
-    # PERSON SELECTOR (appears when AI Rewrite is clicked)
+with col4:
+    # Person selector dropdown (appears when AI Rewrite is clicked)
     if st.session_state.get('show_ai_rewrite_menu', False):
         person_option = st.selectbox(
             "Voice:",
             options=["1st", "2nd", "3rd"],
-            format_func=lambda x: {"1st": "👤 First Person", 
-                                   "2nd": "💬 Second Person", 
-                                   "3rd": "📖 Third Person"}[x],
+            format_func=lambda x: {"1st": "👤 First Person (I)", 
+                                   "2nd": "💬 Second Person (You)", 
+                                   "3rd": "📖 Third Person (He/She)"}[x],
             key=f"person_select_{editor_key}",
             label_visibility="collapsed"
         )
         
         if st.button("Go", key=f"go_rewrite_{editor_key}", type="primary", use_container_width=True):
-            with st.spinner(f"Rewriting in {person_option} person..."):
+            with st.spinner(f"Rewriting in {person_option} person using your profile..."):
                 current_content = st.session_state[content_key]
                 result = ai_rewrite_answer(
                     current_content, 
@@ -3474,7 +3462,7 @@ with col5:
         # Placeholder to maintain column layout
         st.markdown("")
 
-with col6:
+with col5:
     nav1, nav2 = st.columns(2)
     with nav1: 
         prev_disabled = st.session_state.current_question == 0
@@ -3482,7 +3470,7 @@ with col6:
             if not prev_disabled:
                 st.session_state.current_question -= 1
                 st.session_state.current_question_override = None
-                st.session_state.show_ai_rewrite_menu = False
+                st.session_state.show_ai_rewrite_menu = False  # Close menu when navigating
                 st.rerun()
     with nav2:
         next_disabled = st.session_state.current_question >= len(current_session["questions"]) - 1
@@ -3490,7 +3478,7 @@ with col6:
             if not next_disabled:
                 st.session_state.current_question += 1
                 st.session_state.current_question_override = None
-                st.session_state.show_ai_rewrite_menu = False
+                st.session_state.show_ai_rewrite_menu = False  # Close menu when navigating
                 st.rerun()
 
 st.divider()
@@ -3759,5 +3747,8 @@ if st.session_state.user_account:
     st.caption(f"Tell My Story Timeline • 👤 {profile['first_name']} {profile['last_name']} • 📅 Account Age: {age} days • 📚 Bank: {st.session_state.get('current_bank_name', 'None')}")
 else: 
     st.caption(f"Tell My Story Timeline • User: {st.session_state.user_id}")
+
+
+
 
 
