@@ -3373,16 +3373,12 @@ st.markdown("""
 </div>
 """, unsafe_allow_html=True)
 
-# Create a truly unique key using a counter that persists in session state
-if 'quill_counter' not in st.session_state:
-    st.session_state.quill_counter = 0
+# Create a truly unique key using timestamp to avoid scrolling issues
+import time
+unique_suffix = int(time.time() * 1000) % 10000  # Use milliseconds mod 10000 for uniqueness
 
-# Generate a unique key for this editor instance
 question_text_safe = "".join(c for c in current_question_text if c.isalnum() or c.isspace()).replace(" ", "_")[:20]
-editor_component_key = f"quill_editor_{current_session_id}_{question_text_safe}_{st.session_state.quill_counter}"
-
-# Increment counter for next potential editor
-st.session_state.quill_counter += 1
+editor_component_key = f"quill_editor_{current_session_id}_{question_text_safe}_{unique_suffix}"
 
 # Debug: Print the key being used (remove this in production)
 print(f"Creating Quill editor with key: {editor_component_key}")
@@ -3399,8 +3395,6 @@ try:
     # Only update session state when content actually changes
     if content is not None and content != st.session_state[content_key]:
         st.session_state[content_key] = content
-        # Also update the response immediately for autosave? (optional)
-        # save_response(current_session_id, current_question_text, content)
         
 except Exception as e:
     st.error(f"Error loading editor: {str(e)}")
@@ -3426,8 +3420,8 @@ st.markdown("### 🔍 Spell Check")
 current_content = st.session_state.get(content_key, "")
 has_content = current_content and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>"
 
-# Create a unique base for spellcheck keys
-spellcheck_base = f"spell_{current_session_id}_{current_question_text[:20]}"
+# Create a unique base for spellcheck keys using editor_base_key
+spellcheck_base = f"spell_{editor_base_key}"
 
 col_spell1, col_spell2, col_spell3 = st.columns([1, 3, 1])
 with col_spell2:
@@ -3448,13 +3442,12 @@ with col_spell2:
                             "corrected": corrected,
                             "show": True
                         }
-                        st.rerun()
+                        # Don't rerun immediately to avoid scrolling
                     else:
                         st.session_state[spell_result_key] = {
                             "message": "✅ No spelling or grammar issues found!",
                             "show": True
                         }
-                        st.rerun()
                 else:
                     st.warning("Text too short for spell check (minimum 3 words)")
         
@@ -3477,23 +3470,115 @@ with col_spell2:
                         # Clear the result
                         st.session_state[spell_result_key] = {"show": False}
                         st.success("✅ Corrections applied!")
-                        time.sleep(1)
-                        st.rerun()
+                        # Don't rerun immediately to avoid scrolling
                     
                     if st.button("❌ Dismiss", key=f"{spellcheck_base}_dismiss", use_container_width=True):
                         st.session_state[spell_result_key] = {"show": False}
-                        st.rerun()
+                        # Don't rerun immediately to avoid scrolling
             
             elif "message" in result:
                 st.success(result["message"])
                 if st.button("Dismiss", key=f"{spellcheck_base}_dismiss_msg"):
                     st.session_state[spell_result_key] = {"show": False}
-                    st.rerun()
+                    # Don't rerun immediately to avoid scrolling
     else:
         st.button("📝 Check Spelling & Grammar", key=f"{spellcheck_base}_disabled", disabled=True, use_container_width=True)
 
 st.markdown("---")
 
+# ============================================================================
+# BUTTONS ROW - WITH AI REWRITE
+# ============================================================================
+col1, col2, col3, col4, col5 = st.columns([1, 1, 1, 1, 2])
+
+with col1:
+    if st.button("💾 Save", key=f"save_btn_{editor_base_key}", type="primary", use_container_width=True):
+        current_content = st.session_state[content_key]
+        if current_content and current_content.strip() and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>":
+            with st.spinner("Saving your story..."):
+                if save_response(current_session_id, current_question_text, current_content):
+                    st.success("✅ Saved!")
+                    time.sleep(0.5)
+                    st.rerun()
+                else: 
+                    st.error("Failed to save")
+        else: 
+            st.warning("Please write something!")
+
+with col2:
+    if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
+        if st.button("🗑️ Delete", key=f"del_btn_{editor_base_key}", use_container_width=True):
+            if delete_response(current_session_id, current_question_text):
+                st.session_state[content_key] = "<p>Start writing your story here...</p>"
+                st.success("✅ Deleted!")
+                st.rerun()
+    else: 
+        st.button("🗑️", key=f"del_disabled_{editor_base_key}", disabled=True, use_container_width=True)
+
+with col3:
+    # AI Rewrite Button - Only enabled if there's content
+    current_content = st.session_state.get(content_key, "")
+    has_content = current_content and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>"
+    
+    if has_content:
+        if st.button("✨ AI Rewrite", key=f"rewrite_btn_{editor_base_key}", use_container_width=True):
+            st.session_state.show_ai_rewrite_menu = True
+            st.rerun()
+    else:
+        st.button("✨ AI Rewrite", key=f"rewrite_disabled_{editor_base_key}", disabled=True, use_container_width=True)
+
+with col4:
+    # Person selector dropdown (appears when AI Rewrite is clicked)
+    if st.session_state.get('show_ai_rewrite_menu', False):
+        person_option = st.selectbox(
+            "Voice:",
+            options=["1st", "2nd", "3rd"],
+            format_func=lambda x: {"1st": "👤 First Person (I)", 
+                                   "2nd": "💬 Second Person (You)", 
+                                   "3rd": "📖 Third Person (He/She)"}[x],
+            key=f"person_select_{editor_base_key}",
+            label_visibility="collapsed"
+        )
+        
+        if st.button("Go", key=f"go_rewrite_{editor_base_key}", type="primary", use_container_width=True):
+            with st.spinner(f"Rewriting in {person_option} person using your profile..."):
+                current_content = st.session_state[content_key]
+                result = ai_rewrite_answer(
+                    current_content, 
+                    person_option, 
+                    current_question_text, 
+                    current_session['title']
+                )
+                
+                if result.get('success'):
+                    st.session_state.current_rewrite_data = result
+                    st.session_state.show_ai_rewrite = True
+                    st.session_state.show_ai_rewrite_menu = False
+                    st.rerun()
+                else:
+                    st.error(result.get('error', 'Failed to rewrite'))
+    else:
+        # Placeholder to maintain column layout
+        st.markdown("")
+
+with col5:
+    nav1, nav2 = st.columns(2)
+    with nav1: 
+        prev_disabled = st.session_state.current_question == 0
+        if st.button("← Previous", disabled=prev_disabled, key=f"prev_{editor_base_key}", use_container_width=True):
+            if not prev_disabled:
+                st.session_state.current_question -= 1
+                st.session_state.current_question_override = None
+                st.session_state.show_ai_rewrite_menu = False  # Close menu when navigating
+                st.rerun()
+    with nav2:
+        next_disabled = st.session_state.current_question >= len(current_session["questions"]) - 1
+        if st.button("Next →", disabled=next_disabled, key=f"next_{editor_base_key}", use_container_width=True):
+            if not next_disabled:
+                st.session_state.current_question += 1
+                st.session_state.current_question_override = None
+                st.session_state.show_ai_rewrite_menu = False  # Close menu when navigating
+                st.rerun()
 # ============================================================================
 # BUTTONS ROW - WITH AI REWRITE
 # ============================================================================
