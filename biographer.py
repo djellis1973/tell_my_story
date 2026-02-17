@@ -3379,34 +3379,28 @@ with col3:
             with st.spinner("Checking spelling and grammar..."):
                 # Extract text without HTML
                 text_only = re.sub(r'<[^>]+>', '', current_content)
-                st.write(f"DEBUG - Original text: {text_only}")  # DEBUG
                 
                 if text_only and len(text_only.split()) >= 3:
                     corrected = auto_correct_text(text_only)
-                    st.write(f"DEBUG - Corrected text: {corrected}")  # DEBUG
                     
                     if corrected and corrected != text_only:
-                        # Preserve HTML formatting
-                        if current_content.startswith('<p>'):
-                            new_content = f'<p>{corrected}</p>'
-                        else:
-                            new_content = f'<p>{corrected}</p>'
+                        # Get the current HTML structure
+                        import html
+                        escaped_text = html.escape(corrected)
                         
-                        st.write(f"DEBUG - New content: {new_content}")  # DEBUG
+                        # Check if the current content has paragraph tags
+                        if current_content.startswith('<p>'):
+                            new_content = f'<p>{escaped_text}</p>'
+                        else:
+                            new_content = f'<p>{escaped_text}</p>'
                         
                         # Update session state
                         st.session_state[content_key] = new_content
                         
-                        # Save to database
-                        save_result = save_response(current_session_id, current_question_text, new_content)
-                        st.write(f"DEBUG - Save result: {save_result}")  # DEBUG
-                        
-                        if save_result:
-                            st.success("✅ Spelling and grammar corrected!")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Failed to save changes")
+                        # Force a rerun to show the updated content
+                        st.success("✅ Spelling and grammar corrected!")
+                        time.sleep(1)
+                        st.rerun()
                     elif corrected:
                         st.info("✓ No spelling or grammar issues found!")
                     else:
