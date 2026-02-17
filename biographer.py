@@ -3379,31 +3379,33 @@ with col3:
             with st.spinner("Checking spelling and grammar..."):
                 # Extract text without HTML
                 text_only = re.sub(r'<[^>]+>', '', current_content)
-                print(f"Original text: {text_only}")  # Debug
                 
-                corrected = auto_correct_text(text_only)
-                print(f"Corrected text: {corrected}")  # Debug
-                
-                if corrected and corrected != text_only:
-                    # Preserve any HTML structure that was there (like paragraphs)
-                    if current_content.startswith('<p>') and not corrected.startswith('<p>'):
-                        corrected = f'<p>{corrected}</p>'
-                    elif not corrected.startswith('<p>'):
-                        corrected = f'<p>{corrected}</p>'
+                if text_only and len(text_only.split()) >= 3:
+                    corrected = auto_correct_text(text_only)
                     
-                    # Update session state
-                    st.session_state[content_key] = corrected
-                    
-                    # Force save to database
-                    save_response(current_session_id, current_question_text, corrected)
-                    
-                    st.success("✅ Spelling and grammar corrected!")
-                    time.sleep(1)
-                    st.rerun()
-                elif corrected:
-                    st.info("✓ No spelling or grammar issues found!")
+                    if corrected and corrected != text_only:
+                        # Preserve HTML formatting
+                        if current_content.startswith('<p>'):
+                            new_content = f'<p>{corrected}</p>'
+                        else:
+                            new_content = f'<p>{corrected}</p>'
+                        
+                        # Update session state
+                        st.session_state[content_key] = new_content
+                        
+                        # Save to database
+                        if save_response(current_session_id, current_question_text, new_content):
+                            st.success("✅ Spelling and grammar corrected!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Failed to save changes")
+                    elif corrected:
+                        st.info("✓ No spelling or grammar issues found!")
+                    else:
+                        st.error("Spell check failed")
                 else:
-                    st.error("Spell check failed - no response from AI")
+                    st.warning("Need at least 3 words to check")
     else:
         st.button("🔍 Spell Check", key=f"spell_disabled_{editor_key}", disabled=True, use_container_width=True)
 
