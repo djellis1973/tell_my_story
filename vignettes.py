@@ -1,4 +1,4 @@
-# vignettes.py - COMPLETE WORKING VERSION WITH FILE IMPORT
+# vignettes.py - COMPLETE WORKING VERSION WITH FILE IMPORT AND CLEAR CONTENT FIX
 import streamlit as st
 import json
 from datetime import datetime
@@ -458,19 +458,32 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
         if edit_vignette:
             vignette_id = edit_vignette['id']
             base_key = f"vignette_{vignette_id}"
+            is_new = False
         else:
-            # Use a completely stable ID for new vignettes
-            vignette_id = "new_vignette"
-            base_key = "vignette_new"
+            # For NEW vignette, use a timestamp to ensure unique keys
+            import time
+            vignette_id = f"new_{int(time.time())}"
+            base_key = f"vignette_{vignette_id}"
+            is_new = True
         
-        # Editor key and content key - EXACTLY like biographer.py
+        # Editor key and content key
         editor_key = f"quill_vignette_{vignette_id}"
         content_key = f"{editor_key}_content"
         
-        # Add a version counter for this editor to force remounting when content changes
+        # Add a version counter for this editor
         version_key = f"{editor_key}_version"
         if version_key not in st.session_state:
             st.session_state[version_key] = 0
+        
+        # IMPORTANT: For NEW vignettes, clear any previous content
+        if is_new:
+            # Check if this is a brand new vignette (no previous state)
+            if f"{base_key}_initialized" not in st.session_state:
+                # Clear any existing content for this key
+                if content_key in st.session_state:
+                    del st.session_state[content_key]
+                # Set initialized flag
+                st.session_state[f"{base_key}_initialized"] = True
         
         # Title input
         title = st.text_input(
@@ -507,7 +520,7 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
             else:
                 mood = st.selectbox("Mood/Tone", mood_options, key=f"{base_key}_mood")
         
-        # Initialize content in session state - EXACTLY like biographer.py
+        # Initialize content in session state
         if edit_vignette and edit_vignette.get("content"):
             default_content = edit_vignette["content"]
         else:
@@ -523,10 +536,10 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
         </div>
         """, unsafe_allow_html=True)
         
-        # Editor component key with version - EXACTLY like biographer.py
+        # Editor component key with version
         editor_component_key = f"quill_editor_{vignette_id}_v{st.session_state[version_key]}"
         
-        # Display Quill editor - EXACT parameters as biographer.py
+        # Display Quill editor
         content = st_quill(
             value=st.session_state[content_key],
             key=editor_component_key,
@@ -686,8 +699,12 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                     st.rerun()
             with nav2:
                 if st.button("❌ Cancel", key=f"{base_key}_cancel", use_container_width=True):
-                    for key in [content_key, version_key, spell_result_key, f"{base_key}_ai_result", 
-                               f"{base_key}_show_ai_menu", f"{base_key}_show_preview", import_key]:
+                    # Clear all session state for this vignette
+                    keys_to_clear = [content_key, version_key, spell_result_key, 
+                                    f"{base_key}_ai_result", f"{base_key}_show_ai_menu", 
+                                    f"{base_key}_show_preview", import_key,
+                                    f"{import_key}_pending", f"{import_key}_show_options"]
+                    for key in keys_to_clear:
                         if key in st.session_state:
                             try:
                                 del st.session_state[key]
@@ -731,12 +748,13 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                         with st.spinner("Importing file..."):
                             imported_html = self.import_text_file(uploaded_file)
                             if imported_html:
-                                # Append to existing content or replace?
+                                # Check if there's existing content
                                 current = st.session_state.get(content_key, "")
                                 if current and current != "<p>Write your story here...</p>" and current != "<p><br></p>":
                                     # Ask user what to do
                                     st.session_state[f"{import_key}_pending"] = imported_html
                                     st.session_state[f"{import_key}_show_options"] = True
+                                    st.rerun()
                                 else:
                                     # No existing content, just replace
                                     st.session_state[content_key] = imported_html
@@ -781,7 +799,7 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                             st.rerun()
                     
                     with col_opt3:
-                        if st.button("❌ Cancel Import", key=f"{base_key}_import_cancel", use_container_width=True):
+                        if st.button("❌ Cancel Import", key=f"{base_key}_import_cancel_options", use_container_width=True):
                             st.session_state[f"{import_key}_pending"] = None
                             st.session_state[f"{import_key}_show_options"] = False
                             st.rerun()
