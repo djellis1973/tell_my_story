@@ -1,4 +1,4 @@
-# vignettes.py - COMPLETE WORKING VERSION WITH AI REWRITE
+# vignettes.py - COMPLETE WORKING VERSION WITH AI REWRITE AND PUBLISH
 import streamlit as st
 import json
 from datetime import datetime
@@ -38,7 +38,7 @@ class VignetteManager:
     
     def _save(self):
         with open(self.file, 'w') as f:
-            json.dump(self.vignettes, f)
+            json.dump(self.vignettes, f, indent=2)
     
     def save_vignette_image(self, uploaded_file, vignette_id):
         try:
@@ -391,12 +391,12 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
             with col_res1:
                 st.markdown("**📝 Original Version:**")
                 with st.container():
-                    st.markdown(f'<div class="original-text-box">{result["original"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="background-color: #f0f0f0; padding: 15px; border-radius: 5px; border-left: 4px solid #ccc;">{result["original"]}</div>', unsafe_allow_html=True)
             
             with col_res2:
                 st.markdown(f"**✨ Rewritten Version ({result['person']}):**")
                 with st.container():
-                    st.markdown(f'<div class="rewritten-text-box">{result["rewritten"]}</div>', unsafe_allow_html=True)
+                    st.markdown(f'<div style="background-color: #e8f4fd; padding: 15px; border-radius: 5px; border-left: 4px solid #4a90e2;">{result["rewritten"]}</div>', unsafe_allow_html=True)
             
             st.markdown("---")
             st.markdown("*This rewrite used your profile information to better capture your authentic voice.*")
@@ -498,22 +498,28 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                     
                     if edit_vignette:
                         self.update_vignette(edit_vignette["id"], final_title, current_content, theme, mood, images)
+                        st.success("✅ Draft saved!")
                         st.session_state.edit_success = True
                     else:
                         self.create_vignette(final_title, current_content, theme, mood, is_draft=True, images=images)
+                        st.success("✅ Draft saved!")
                         st.session_state.draft_success = True
                     
                     # Clean up session state
                     for key in [content_key, temp_images_key, spell_check_key, f"{base_key}_ai_result", f"{base_key}_show_ai_menu"]:
                         if key in st.session_state:
-                            del st.session_state[key]
+                            try:
+                                del st.session_state[key]
+                            except:
+                                pass
                     
+                    time.sleep(1)
                     st.session_state.show_vignette_modal = False
                     st.session_state.show_vignette_manager = True
                     st.rerun()
         
         with col2:
-            if st.button("📢 Publish", use_container_width=True, key=f"{base_key}_publish"):
+            if st.button("📢 Publish", use_container_width=True, key=f"{base_key}_publish", type="primary"):
                 current_content = st.session_state[content_key]
                 if not current_content or current_content == "<p><br></p>" or current_content == "<p></p>":
                     st.error("Please write some content")
@@ -522,26 +528,35 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                     images = st.session_state.get(temp_images_key, [])
                     
                     if edit_vignette:
+                        # Update existing vignette as published
                         edit_vignette["is_draft"] = False
                         edit_vignette["published_at"] = datetime.now().isoformat()
                         self.update_vignette(edit_vignette["id"], final_title, current_content, theme, mood, images)
+                        st.success("🎉 Published successfully!")
                         st.session_state.publish_success = True
                         vignette_data = edit_vignette
                     else:
+                        # Create new published vignette
                         v = self.create_vignette(final_title, current_content, theme, mood, is_draft=False, images=images)
                         v["published_at"] = datetime.now().isoformat()
                         self.update_vignette(v["id"], final_title, current_content, theme, mood, images)
+                        st.success("🎉 Published successfully!")
                         st.session_state.publish_success = True
                         vignette_data = v
                     
+                    # Call on_publish callback if provided
                     if on_publish:
                         on_publish(vignette_data)
                     
                     # Clean up session state
                     for key in [content_key, temp_images_key, spell_check_key, f"{base_key}_ai_result", f"{base_key}_show_ai_menu"]:
                         if key in st.session_state:
-                            del st.session_state[key]
+                            try:
+                                del st.session_state[key]
+                            except:
+                                pass
                     
+                    time.sleep(1)
                     st.session_state.show_vignette_modal = False
                     st.session_state.show_vignette_manager = True
                     st.rerun()
@@ -556,7 +571,10 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                 # Clean up session state
                 for key in [content_key, temp_images_key, spell_check_key, f"{base_key}_ai_result", f"{base_key}_show_ai_menu"]:
                     if key in st.session_state:
-                        del st.session_state[key]
+                        try:
+                            del st.session_state[key]
+                        except:
+                            pass
                 st.session_state.show_vignette_modal = False
                 st.session_state.editing_vignette_id = None
                 st.rerun()
@@ -584,21 +602,22 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
         
         vs.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
         
+        # Display success messages
         if st.session_state.get("publish_success"):
-            st.success("🎉 Published!")
+            st.success("🎉 Published successfully!")
             del st.session_state.publish_success
         if st.session_state.get("draft_success"):
-            st.success("💾 Draft saved!")
+            st.success("💾 Draft saved successfully!")
             del st.session_state.draft_success
         if st.session_state.get("edit_success"):
-            st.success("✅ Saved!")
+            st.success("✅ Changes saved successfully!")
             del st.session_state.edit_success
         if st.session_state.get("delete_success"):
-            st.success("🗑️ Deleted!")
+            st.success("🗑️ Deleted successfully!")
             del st.session_state.delete_success
         
         if not vs:
-            st.info("No vignettes yet.")
+            st.info("No vignettes yet. Click 'Create New Vignette' to start writing.")
             return
         
         for v in vs:
@@ -607,7 +626,8 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                 
                 with col1:
                     status_emoji = "📢" if not v.get("is_draft") else "📝"
-                    st.markdown(f"### {status_emoji} {v['title']}")
+                    status_text = "Published" if not v.get("is_draft") else "Draft"
+                    st.markdown(f"### {status_emoji} {v['title']}  `{status_text}`")
                     st.markdown(f"*{v['theme']}*")
                     
                     content_preview = re.sub(r'<[^>]+>', '', v['content'])
@@ -616,7 +636,7 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                     st.markdown(content_preview)
                     
                     date_str = datetime.fromisoformat(v.get('updated_at', v.get('created_at', ''))).strftime('%b %d, %Y')
-                    st.caption(f"📝 {v['word_count']} words • {date_str}")
+                    st.caption(f"📝 {v['word_count']} words • Last updated: {date_str}")
                     if v.get('images'):
                         st.caption(f"📸 {len(v['images'])} image(s)")
                 
@@ -661,7 +681,7 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
             st.caption(f"📝 **{v['word_count']} words**")
         with col4:
             created = datetime.fromisoformat(v.get('created_at', '')).strftime('%b %d, %Y')
-            st.caption(f"📅 **{created}**")
+            st.caption(f"📅 **Created: {created}**")
         
         st.markdown("---")
         st.markdown(f"# {v['title']}")
@@ -692,15 +712,19 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
         
         with col2:
             if v.get("is_draft"):
-                if st.button("📢 Publish", use_container_width=True):
+                if st.button("📢 Publish Now", use_container_width=True):
                     v["is_draft"] = False
                     v["published_at"] = datetime.now().isoformat()
                     self.update_vignette(v["id"], v["title"], v["content"], v["theme"], v.get("mood"), v.get("images"))
+                    st.success("🎉 Published!")
+                    time.sleep(1)
                     st.rerun()
             else:
                 if st.button("📝 Unpublish", use_container_width=True):
                     v["is_draft"] = True
                     self.update_vignette(v["id"], v["title"], v["content"], v["theme"], v.get("mood"), v.get("images"))
+                    st.success("📝 Unpublished")
+                    time.sleep(1)
                     st.rerun()
         
         with col3:
