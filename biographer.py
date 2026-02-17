@@ -2164,35 +2164,36 @@ def show_vignette_modal():
                 col1, col2, col3 = st.columns(3)
                 
                 with col1:
-    # SPELL CHECK BUTTON
-    if st.button("🔍 Spell Check", key=f"vign_spell_{edit['id']}", use_container_width=True, type="primary"):
-        with st.spinner("Checking spelling and grammar..."):
-            corrected = auto_correct_text(clean_vignette)
-            if corrected and corrected != clean_vignette:
-                # Simple update - just set the content
-                new_content = f"<p>{corrected}</p>"
-                edit['content'] = new_content
-                
-                # Try the most likely save method
-                if hasattr(st.session_state.vignette_manager, 'save_vignette'):
-                    saved = st.session_state.vignette_manager.save_vignette(edit)
-                elif hasattr(st.session_state.vignette_manager, 'update'):
-                    saved = st.session_state.vignette_manager.update(edit)
-                else:
-                    # If no save method, just update the session and rely on the user to save manually
-                    saved = True
-                
-                if saved:
-                    st.success("✅ Spelling and grammar corrected!")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.warning("⚠️ Could not auto-save. Please copy this corrected text:")
-                    st.text_area("Corrected text:", corrected, height=150)
-            elif corrected:
-                st.info("✓ No spelling or grammar issues found!")
-            else:
-                st.error("Spell check failed")
+                with col1:
+                    # SPELL CHECK BUTTON
+                    if st.button("🔍 Spell Check", key=f"vign_spell_{edit['id']}", use_container_width=True, type="primary"):
+                        with st.spinner("Checking spelling and grammar..."):
+                            corrected = auto_correct_text(clean_vignette)
+                            if corrected and corrected != clean_vignette:
+                                # Simple update - just set the content
+                                new_content = f"<p>{corrected}</p>"
+                                edit['content'] = new_content
+                                
+                                # Try the most likely save method
+                                if hasattr(st.session_state.vignette_manager, 'save_vignette'):
+                                    saved = st.session_state.vignette_manager.save_vignette(edit)
+                                elif hasattr(st.session_state.vignette_manager, 'update'):
+                                    saved = st.session_state.vignette_manager.update(edit)
+                                else:
+                                    # If no save method, just update the session and rely on the user to save manually
+                                    saved = True
+                                
+                                if saved:
+                                    st.success("✅ Spelling and grammar corrected!")
+                                    time.sleep(1)
+                                    st.rerun()
+                                else:
+                                    st.warning("⚠️ Could not auto-save. Please copy this corrected text:")
+                                    st.text_area("Corrected text:", corrected, height=150)
+                            elif corrected:
+                                st.info("✓ No spelling or grammar issues found!")
+                            else:
+                                st.error("Spell check failed")
                 
                 with col2:
                     # AI REWRITE BUTTON
