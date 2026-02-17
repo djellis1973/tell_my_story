@@ -1,4 +1,4 @@
-# vignettes.py - WITH QUILL RICH TEXT EDITOR SUPPORT
+# vignettes.py - MATCHING BIOGRAPHER.PY PATTERN
 import streamlit as st
 import json
 from datetime import datetime
@@ -9,19 +9,13 @@ import base64
 import hashlib
 import time
 
-try:
-    from streamlit_quill import st_quill
-    QUILL_AVAILABLE = True
-except ImportError:
-    QUILL_AVAILABLE = False
-    st_quill = None
+from streamlit_quill import st_quill
 
 class VignetteManager:
     def __init__(self, user_id):
         self.user_id = user_id
         self.file = f"user_vignettes/{user_id}_vignettes.json"
         os.makedirs("user_vignettes", exist_ok=True)
-        # Create images directory for vignette images
         os.makedirs(f"user_vignettes/{user_id}_images", exist_ok=True)
         self.standard_themes = [
             "Life Lesson", "Achievement", "Work Experience", "Loss of Life",
@@ -48,17 +42,14 @@ class VignetteManager:
     def save_vignette_image(self, uploaded_file, vignette_id):
         """Save an image for a vignette and return base64"""
         try:
-            # Create a unique filename
             file_ext = uploaded_file.name.split('.')[-1].lower()
             image_id = hashlib.md5(f"{vignette_id}{uploaded_file.name}{datetime.now()}".encode()).hexdigest()[:12]
             filename = f"{image_id}.{file_ext}"
             filepath = f"user_vignettes/{self.user_id}_images/{filename}"
             
-            # Save the file
             with open(filepath, 'wb') as f:
                 f.write(uploaded_file.getbuffer())
             
-            # Also return base64 for embedding
             img_bytes = uploaded_file.getvalue()
             img_base64 = base64.b64encode(img_bytes).decode()
             
@@ -73,30 +64,32 @@ class VignetteManager:
             st.error(f"Error saving image: {e}")
             return None
     
-    def create_vignette(self, title, content, theme, is_draft=False, images=None):
+    def create_vignette(self, title, content, theme, mood="Reflective", is_draft=False, images=None):
         v = {
             "id": str(uuid.uuid4())[:8],
             "title": title,
-            "content": content,  # This now contains HTML from Quill
+            "content": content,
             "theme": theme,
+            "mood": mood,
             "word_count": len(re.sub(r'<[^>]+>', '', content).split()),
             "created_at": datetime.now().isoformat(),
             "updated_at": datetime.now().isoformat(),
             "is_draft": is_draft,
             "is_published": not is_draft,
-            "images": images or []  # Store references to uploaded images
+            "images": images or []
         }
         self.vignettes.append(v)
         self._save()
         return v
     
-    def update_vignette(self, id, title, content, theme, images=None):
+    def update_vignette(self, id, title, content, theme, mood=None, images=None):
         for v in self.vignettes:
             if v["id"] == id:
                 v.update({
                     "title": title, 
                     "content": content, 
                     "theme": theme, 
+                    "mood": mood or v.get("mood", "Reflective"),
                     "word_count": len(re.sub(r'<[^>]+>', '', content).split()), 
                     "updated_at": datetime.now().isoformat(),
                     "images": images or v.get("images", [])
@@ -117,120 +110,94 @@ class VignetteManager:
         return None
     
     def display_vignette_creator(self, on_publish=None, edit_vignette=None):
-        """Display the vignette creation form with Quill rich text editor"""
+        """Display the vignette creation form matching biographer.py pattern"""
         
-        st.markdown("""
-        <style>
-        .vignette-editor-container {
-            border-radius: 8px;
-            margin-bottom: 20px;
-        }
-        .vignette-toolbar {
-            background-color: #f8f9fa;
-            padding: 10px;
-            border-radius: 8px 8px 0 0;
-            border: 1px solid #ddd;
-            border-bottom: none;
-        }
-        .image-upload-info {
-            background-color: #e8f4fd;
-            padding: 10px 15px;
-            border-radius: 8px;
-            border-left: 4px solid #0066cc;
-            margin: 15px 0;
-            font-size: 0.9em;
-        }
-        </style>
-        """, unsafe_allow_html=True)
-        
+        # Create unique keys for this vignette
         if edit_vignette:
-            st.subheader("✏️ Edit Vignette")
+            vignette_id = edit_vignette['id']
+            base_key = f"vignette_{vignette_id}"
         else:
-            st.subheader("✨ Create New Vignette")
+            vignette_id = f"new_{int(time.time())}"
+            base_key = f"vignette_new"
         
-        # Theme selection
-        col1, col2 = st.columns(2)
-        with col1:
-            if edit_vignette:
-                # For editing, show the current theme
-                theme_options = self.standard_themes + ["Custom"]
-                current_theme = edit_vignette.get("theme", "Life Lesson")
-                
-                if current_theme in self.standard_themes:
-                    theme_index = self.standard_themes.index(current_theme) if current_theme in self.standard_themes else 0
-                    theme = st.selectbox("Theme", theme_options, index=theme_index)
-                else:
-                    theme = st.selectbox("Theme", theme_options, index=len(theme_options)-1)
-                    if theme == "Custom":
-                        theme = st.text_input("Custom Theme", value=current_theme)
-            else:
-                theme = st.selectbox("Theme", self.standard_themes + ["Custom"])
-                if theme == "Custom":
-                    theme = st.text_input("Custom Theme")
-        
-        with col2:
-            # Mood/Tone selector (new feature)
-            mood_options = ["Reflective", "Joyful", "Bittersweet", "Humorous", "Serious", "Inspiring", "Nostalgic"]
-            if edit_vignette:
-                current_mood = edit_vignette.get("mood", "Reflective")
-                mood_index = mood_options.index(current_mood) if current_mood in mood_options else 0
-                mood = st.selectbox("Mood/Tone", mood_options, index=mood_index, key="vignette_mood")
-            else:
-                mood = st.selectbox("Mood/Tone", mood_options, key="vignette_mood")
+        content_key = f"{base_key}_content"
+        timestamp_key = f"{base_key}_timestamp"
         
         # Title input
         title = st.text_input(
             "Title", 
             value=edit_vignette.get("title", "") if edit_vignette else "",
             placeholder="Give your vignette a meaningful title",
-            key="vignette_title"
+            key=f"{base_key}_title"
         )
         
-        # Content area with Quill editor
-        st.markdown("### 📝 Your Story")
-        
-        if not QUILL_AVAILABLE or st_quill is None:
-            st.warning("⚠️ Rich text editor not available. Using plain text area. Please install: pip install streamlit-quill")
-            content = st.text_area(
-                "Story", 
-                value=re.sub(r'<[^>]+>', '', edit_vignette.get("content", "")) if edit_vignette else "",
-                height=400,
-                placeholder="Write your story here...",
-                key="vignette_content_text"
-            )
-            # Wrap in paragraph tags for consistency
-            if content and not content.startswith('<p>'):
-                content = f'<p>{content}</p>'
-        else:
-            # Get existing content or default
-            if edit_vignette and edit_vignette.get("content"):
-                default_content = edit_vignette["content"]
+        # Theme and mood in columns
+        col1, col2 = st.columns(2)
+        with col1:
+            theme_options = self.standard_themes + ["Custom"]
+            if edit_vignette and edit_vignette.get("theme"):
+                current_theme = edit_vignette["theme"]
+                if current_theme in self.standard_themes:
+                    theme_index = self.standard_themes.index(current_theme)
+                    theme = st.selectbox("Theme", theme_options, index=theme_index, key=f"{base_key}_theme")
+                else:
+                    theme = st.selectbox("Theme", theme_options, index=len(theme_options)-1, key=f"{base_key}_theme")
+                    if theme == "Custom":
+                        theme = st.text_input("Custom Theme", value=current_theme, key=f"{base_key}_custom_theme")
             else:
-                default_content = "<p>Write your story here... You can format text and drag & drop images directly into the editor.</p>"
-            
-            # Create a unique key for the editor
-            vignette_id = edit_vignette.get('id', 'new') if edit_vignette else 'new'
-            editor_key = f"quill_vignette_{vignette_id}_{int(time.time())}"
-            
-            # Display Quill editor
-            st.markdown('<div class="image-upload-info">📸 <strong>Drag & drop images</strong> directly into the editor. You can also use the image upload section below.</div>', unsafe_allow_html=True)
-            
-            content = st_quill(
-                value=default_content,
-                key=editor_key,
-                placeholder="Write your story here... You can format text and add images by dragging them in.",
-                html=True,
-                height=400
-            )
+                theme = st.selectbox("Theme", theme_options, key=f"{base_key}_theme")
+                if theme == "Custom":
+                    theme = st.text_input("Custom Theme", key=f"{base_key}_custom_theme")
+        
+        with col2:
+            mood_options = ["Reflective", "Joyful", "Bittersweet", "Humorous", "Serious", "Inspiring", "Nostalgic"]
+            if edit_vignette:
+                current_mood = edit_vignette.get("mood", "Reflective")
+                mood_index = mood_options.index(current_mood) if current_mood in mood_options else 0
+                mood = st.selectbox("Mood/Tone", mood_options, index=mood_index, key=f"{base_key}_mood")
+            else:
+                mood = st.selectbox("Mood/Tone", mood_options, key=f"{base_key}_mood")
+        
+        # Initialize content in session state - EXACTLY like biographer.py
+        if edit_vignette and edit_vignette.get("content"):
+            default_content = edit_vignette["content"]
+        else:
+            default_content = "<p>Write your story here...</p>"
+        
+        if content_key not in st.session_state:
+            st.session_state[content_key] = default_content
+        
+        # Use timestamp to force refresh when needed
+        if timestamp_key not in st.session_state:
+            st.session_state[timestamp_key] = 0
+        
+        # Editor component key - matches biographer.py pattern
+        editor_component_key = f"quill_editor_{vignette_id}_{st.session_state[timestamp_key]}"
+        
+        st.markdown("### 📝 Your Story")
+        st.markdown("""
+        <div class="image-drop-info">
+            📸 <strong>Drag & drop images</strong> directly into the editor.
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Display Quill editor - EXACT parameters as biographer.py
+        content = st_quill(
+            value=st.session_state[content_key],
+            key=editor_component_key,
+            placeholder="Write your story here...",
+            html=True
+        )
+        
+        # Update session state when content changes
+        if content is not None and content != st.session_state[content_key]:
+            st.session_state[content_key] = content
         
         st.markdown("---")
         
-        # Image upload section (separate from Quill's drag-and-drop)
-        with st.expander("📸 Upload Photos (optional - these will be added to your vignette)", expanded=False):
-            st.markdown("**Add images to your vignette:**")
-            
-            # Initialize session state for temporary images if not exists
-            temp_images_key = f"vignette_temp_images_{edit_vignette.get('id', 'new')}"
+        # Image upload section
+        with st.expander("📸 Upload Photos", expanded=False):
+            temp_images_key = f"{base_key}_temp_images"
             if temp_images_key not in st.session_state:
                 if edit_vignette and edit_vignette.get("images"):
                     st.session_state[temp_images_key] = edit_vignette["images"].copy()
@@ -240,7 +207,7 @@ class VignetteManager:
             uploaded_file = st.file_uploader(
                 "Choose an image...",
                 type=['jpg', 'jpeg', 'png', 'gif'],
-                key=f"vignette_upload_{edit_vignette.get('id', 'new')}",
+                key=f"{base_key}_upload",
                 label_visibility="collapsed"
             )
             
@@ -250,21 +217,18 @@ class VignetteManager:
                     st.image(uploaded_file, width=150)
                 with col2:
                     caption = st.text_input(
-                        "Caption (optional):", 
-                        key=f"vignette_cap_{edit_vignette.get('id', 'new')}",
+                        "Caption:", 
+                        key=f"{base_key}_caption",
                         placeholder="What does this image show?"
                     )
                 with col3:
-                    if st.button("📥 Add", key=f"add_img_{edit_vignette.get('id', 'new')}"):
-                        # Save the image
-                        img_data = self.save_vignette_image(uploaded_file, edit_vignette.get('id', 'new') if edit_vignette else 'new')
+                    if st.button("📥 Add", key=f"{base_key}_add_img"):
+                        img_data = self.save_vignette_image(uploaded_file, vignette_id)
                         if img_data:
                             img_data['caption'] = caption
                             st.session_state[temp_images_key].append(img_data)
-                            st.success("✅ Image added!")
                             st.rerun()
             
-            # Display temporary images
             if st.session_state[temp_images_key]:
                 st.markdown("**Images to include:**")
                 cols = st.columns(3)
@@ -272,19 +236,15 @@ class VignetteManager:
                     with cols[i % 3]:
                         if img.get('base64'):
                             st.image(f"data:image/jpeg;base64,{img['base64']}", use_column_width=True)
-                        elif img.get('path') and os.path.exists(img['path']):
-                            st.image(img['path'], use_column_width=True)
-                        
                         if img.get('caption'):
                             st.caption(img['caption'])
-                        
-                        if st.button("❌ Remove", key=f"remove_img_{i}_{edit_vignette.get('id', 'new')}"):
+                        if st.button("❌", key=f"{base_key}_remove_{i}"):
                             st.session_state[temp_images_key].pop(i)
                             st.rerun()
         
-        # Word count display
-        if content:
-            text_only = re.sub(r'<[^>]+>', '', content)
+        # Word count
+        if st.session_state[content_key]:
+            text_only = re.sub(r'<[^>]+>', '', st.session_state[content_key])
             word_count = len(text_only.split())
             st.caption(f"📝 Word count: {word_count}")
         
@@ -294,115 +254,95 @@ class VignetteManager:
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
-            if st.button("💾 Save Draft", type="primary", use_container_width=True):
-                if not content or content == "<p><br></p>" or content == "<p></p>":
+            if st.button("💾 Save Draft", type="primary", use_container_width=True, key=f"{base_key}_save_draft"):
+                current_content = st.session_state[content_key]
+                if not current_content or current_content == "<p><br></p>" or current_content == "<p></p>":
                     st.error("Please write some content")
                 else:
-                    # Use title or default
                     final_title = title.strip() or "Untitled"
-                    
-                    # Get images from session state
-                    images = st.session_state.get(temp_images_key, []) if temp_images_key in st.session_state else []
+                    images = st.session_state.get(temp_images_key, [])
                     
                     if edit_vignette:
-                        # Update existing
-                        self.update_vignette(edit_vignette["id"], final_title, content, theme, images)
+                        self.update_vignette(edit_vignette["id"], final_title, current_content, theme, mood, images)
                         st.session_state.edit_success = True
                     else:
-                        # Create new draft
-                        self.create_vignette(final_title, content, theme, is_draft=True, images=images)
+                        self.create_vignette(final_title, current_content, theme, mood, is_draft=True, images=images)
                         st.session_state.draft_success = True
                     
-                    # Clear temp images
-                    if temp_images_key in st.session_state:
-                        del st.session_state[temp_images_key]
+                    # Clean up session state
+                    for key in [content_key, timestamp_key, temp_images_key]:
+                        if key in st.session_state:
+                            del st.session_state[key]
                     
                     st.session_state.show_vignette_modal = False
                     st.session_state.show_vignette_manager = True
                     st.rerun()
         
         with col2:
-            if st.button("📢 Publish Now", use_container_width=True):
-                if not content or content == "<p><br></p>" or content == "<p></p>":
+            if st.button("📢 Publish", use_container_width=True, key=f"{base_key}_publish"):
+                current_content = st.session_state[content_key]
+                if not current_content or current_content == "<p><br></p>" or current_content == "<p></p>":
                     st.error("Please write some content")
                 else:
                     final_title = title.strip() or "Untitled"
-                    images = st.session_state.get(temp_images_key, []) if temp_images_key in st.session_state else []
+                    images = st.session_state.get(temp_images_key, [])
                     
                     if edit_vignette:
-                        # Update and publish
                         edit_vignette["is_draft"] = False
-                        edit_vignette["is_published"] = True
                         edit_vignette["published_at"] = datetime.now().isoformat()
-                        self.update_vignette(edit_vignette["id"], final_title, content, theme, images)
+                        self.update_vignette(edit_vignette["id"], final_title, current_content, theme, mood, images)
                         st.session_state.publish_success = True
+                        vignette_data = edit_vignette
                     else:
-                        # Create new published
-                        v = self.create_vignette(final_title, content, theme, is_draft=False, images=images)
+                        v = self.create_vignette(final_title, current_content, theme, mood, is_draft=False, images=images)
                         v["published_at"] = datetime.now().isoformat()
-                        self.update_vignette(v["id"], final_title, content, theme, images)
+                        self.update_vignette(v["id"], final_title, current_content, theme, mood, images)
                         st.session_state.publish_success = True
+                        vignette_data = v
                     
-                    # Call on_publish callback if provided
                     if on_publish:
-                        vignette_data = edit_vignette if edit_vignette else v
                         on_publish(vignette_data)
                     
-                    # Clear temp images
-                    if temp_images_key in st.session_state:
-                        del st.session_state[temp_images_key]
+                    # Clean up session state
+                    for key in [content_key, timestamp_key, temp_images_key]:
+                        if key in st.session_state:
+                            del st.session_state[key]
                     
                     st.session_state.show_vignette_modal = False
                     st.session_state.show_vignette_manager = True
                     st.rerun()
         
         with col3:
-            if st.button("👁️ Preview", use_container_width=True):
-                if content and content != "<p><br></p>":
-                    st.session_state[f"preview_{edit_vignette.get('id', 'new')}"] = True
-                    st.rerun()
+            if st.button("👁️ Preview", use_container_width=True, key=f"{base_key}_preview"):
+                st.session_state[f"{base_key}_show_preview"] = True
+                st.rerun()
         
         with col4:
-            if st.button("❌ Cancel", use_container_width=True):
-                # Clear temp images
-                if temp_images_key in st.session_state:
-                    del st.session_state[temp_images_key]
+            if st.button("❌ Cancel", use_container_width=True, key=f"{base_key}_cancel"):
+                # Clean up session state
+                for key in [content_key, timestamp_key, temp_images_key]:
+                    if key in st.session_state:
+                        del st.session_state[key]
                 st.session_state.show_vignette_modal = False
                 st.session_state.editing_vignette_id = None
                 st.rerun()
         
         # Preview section
-        preview_key = f"preview_{edit_vignette.get('id', 'new')}"
-        if st.session_state.get(preview_key, False) and content and content != "<p><br></p>":
+        if st.session_state.get(f"{base_key}_show_preview", False) and st.session_state[content_key]:
             st.markdown("---")
             st.markdown("### 👁️ Preview")
-            
-            # Create a preview card
             st.markdown(f"## {title or 'Untitled'}")
             st.markdown(f"**Theme:** {theme}  |  **Mood:** {mood}")
             st.markdown("---")
-            st.markdown(content, unsafe_allow_html=True)
+            st.markdown(st.session_state[content_key], unsafe_allow_html=True)
             
-            # Show images in preview
-            temp_images_key = f"vignette_temp_images_{edit_vignette.get('id', 'new')}"
-            if temp_images_key in st.session_state and st.session_state[temp_images_key]:
-                st.markdown("### 📸 Images")
-                cols = st.columns(3)
-                for i, img in enumerate(st.session_state[temp_images_key]):
-                    with cols[i % 3]:
-                        if img.get('base64'):
-                            st.image(f"data:image/jpeg;base64,{img['base64']}", use_column_width=True)
-                        if img.get('caption'):
-                            st.caption(img['caption'])
-            
-            if st.button("✕ Close Preview", key=f"close_preview_{edit_vignette.get('id', 'new')}"):
-                st.session_state[preview_key] = False
+            if st.button("✕ Close Preview", key=f"{base_key}_close_preview"):
+                st.session_state[f"{base_key}_show_preview"] = False
                 st.rerun()
     
     def display_vignette_gallery(self, filter_by="all", on_select=None, on_edit=None, on_delete=None):
         """Display vignettes in a gallery view"""
         
-        # Filter vignettes
         if filter_by == "published":
             vs = [v for v in self.vignettes if not v.get("is_draft", True)]
         elif filter_by == "drafts":
@@ -410,29 +350,27 @@ class VignetteManager:
         else:
             vs = self.vignettes
         
-        # Sort by updated_at (newest first)
         vs.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
         
         # Show success messages
         if st.session_state.get("publish_success"):
-            st.success("🎉 Published successfully!")
+            st.success("🎉 Published!")
             del st.session_state.publish_success
         if st.session_state.get("draft_success"):
             st.success("💾 Draft saved!")
             del st.session_state.draft_success
         if st.session_state.get("edit_success"):
-            st.success("✅ Changes saved!")
+            st.success("✅ Saved!")
             del st.session_state.edit_success
         if st.session_state.get("delete_success"):
             st.success("🗑️ Deleted!")
             del st.session_state.delete_success
         
         if not vs:
-            st.info("No vignettes yet. Click 'Create New Vignette' to start writing!")
+            st.info("No vignettes yet.")
             return
         
-        # Display as cards
-        for i, v in enumerate(vs):
+        for v in vs:
             with st.container():
                 col1, col2, col3, col4 = st.columns([3, 1, 1, 1])
                 
@@ -441,17 +379,13 @@ class VignetteManager:
                     st.markdown(f"### {status_emoji} {v['title']}")
                     st.markdown(f"*{v['theme']}*")
                     
-                    # Show a preview of content (strip HTML)
                     content_preview = re.sub(r'<[^>]+>', '', v['content'])
                     if len(content_preview) > 100:
                         content_preview = content_preview[:100] + "..."
                     st.markdown(content_preview)
                     
-                    # Show metadata
                     date_str = datetime.fromisoformat(v.get('updated_at', v.get('created_at', ''))).strftime('%b %d, %Y')
-                    st.caption(f"📝 {v['word_count']} words • Last updated: {date_str}")
-                    
-                    # Show image count if any
+                    st.caption(f"📝 {v['word_count']} words • {date_str}")
                     if v.get('images'):
                         st.caption(f"📸 {len(v['images'])} image(s)")
                 
@@ -477,17 +411,14 @@ class VignetteManager:
         """Display a full vignette with HTML rendering"""
         v = self.get_vignette_by_id(id)
         if not v:
-            st.error("Vignette not found")
             return
         
-        # Back button
         col1, col2 = st.columns([1, 5])
         with col1:
             if st.button("← Back", use_container_width=True):
                 if on_back:
                     on_back()
         
-        # Status and metadata
         status_emoji = "📢" if not v.get("is_draft") else "📝"
         status_text = "Published" if not v.get("is_draft") else "Draft"
         
@@ -503,17 +434,11 @@ class VignetteManager:
             st.caption(f"📅 **{created}**")
         
         st.markdown("---")
-        
-        # Title
         st.markdown(f"# {v['title']}")
         st.markdown(f"*Theme: {v['theme']}*")
-        
         st.markdown("---")
-        
-        # Content - render as HTML
         st.markdown(v['content'], unsafe_allow_html=True)
         
-        # Display images if any
         if v.get('images'):
             st.markdown("---")
             st.markdown("### 📸 Images")
@@ -524,35 +449,28 @@ class VignetteManager:
                         st.image(f"data:image/jpeg;base64,{img['base64']}", use_column_width=True)
                     elif img.get('path') and os.path.exists(img['path']):
                         st.image(img['path'], use_column_width=True)
-                    
                     if img.get('caption'):
                         st.caption(img['caption'])
         
         st.markdown("---")
         
-        # Action buttons
         col1, col2, col3 = st.columns(3)
-        
         with col1:
-            if st.button("✏️ Edit This Vignette", use_container_width=True, type="primary"):
+            if st.button("✏️ Edit", use_container_width=True, type="primary"):
                 if on_edit:
                     on_edit(v['id'])
         
         with col2:
             if v.get("is_draft"):
-                if st.button("📢 Publish Now", use_container_width=True):
+                if st.button("📢 Publish", use_container_width=True):
                     v["is_draft"] = False
-                    v["is_published"] = True
                     v["published_at"] = datetime.now().isoformat()
-                    self.update_vignette(v["id"], v["title"], v["content"], v["theme"], v.get("images"))
-                    st.success("✅ Published!")
+                    self.update_vignette(v["id"], v["title"], v["content"], v["theme"], v.get("mood"), v.get("images"))
                     st.rerun()
             else:
                 if st.button("📝 Unpublish", use_container_width=True):
                     v["is_draft"] = True
-                    v["is_published"] = False
-                    self.update_vignette(v["id"], v["title"], v["content"], v["theme"], v.get("images"))
-                    st.success("📝 Moved to drafts")
+                    self.update_vignette(v["id"], v["title"], v["content"], v["theme"], v.get("mood"), v.get("images"))
                     st.rerun()
         
         with col3:
@@ -562,4 +480,3 @@ class VignetteManager:
                 if on_back:
                     on_back()
                 st.rerun()
-
