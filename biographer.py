@@ -2126,22 +2126,31 @@ def on_vignette_publish(vignette):
     st.rerun()
 
 # ============================================================================
-# MODIFIED: show_vignette_modal with Spell Check, AI Rewrite and Beta Reader
+# MODIFIED: show_vignette_modal with Quill support
 # ============================================================================
 def show_vignette_modal():
     if not VignetteManager: 
         st.error("Vignette module not available"); 
         st.session_state.show_vignette_modal = False; 
         return
+    
     st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
+    
     if st.button("←", key="vign_modal_back"): 
-        st.session_state.show_vignette_modal = False; 
-        st.session_state.editing_vignette_id = None; 
+        st.session_state.show_vignette_modal = False
+        st.session_state.editing_vignette_id = None
+        # Clear any temp images
+        if 'vignette_temp_images' in st.session_state:
+            del st.session_state.vignette_temp_images
         st.rerun()
+    
     st.title("✏️ Edit Vignette" if st.session_state.get('editing_vignette_id') else "✍️ Create Vignette")
+    
     if 'vignette_manager' not in st.session_state: 
         st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
+    
     edit = st.session_state.vignette_manager.get_vignette_by_id(st.session_state.editing_vignette_id) if st.session_state.get('editing_vignette_id') else None
+    
     st.session_state.vignette_manager.display_vignette_creator(on_publish=on_vignette_publish, edit_vignette=edit)
     
     # ============================================================================
