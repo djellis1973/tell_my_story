@@ -3084,14 +3084,31 @@ with st.sidebar:
                 st.rerun()
     
     st.divider()
-    st.header("✨ Vignettes")
-    if st.button("📝 New Vignette", width='stretch'): 
-        st.session_state.show_vignette_modal = True; 
-        st.session_state.editing_vignette_id = None; 
-        st.rerun()
-    if st.button("📖 View All Vignettes", width='stretch'): 
-        st.session_state.show_vignette_manager = True; 
-        st.rerun()
+st.header("✨ Vignettes")
+if st.button("📝 New Vignette", width='stretch'): 
+    # Create a REAL vignette in the database immediately
+    import uuid
+    new_id = str(uuid.uuid4())[:8]
+    
+    # Initialize vignette manager if needed
+    if 'vignette_manager' not in st.session_state:
+        from vignettes import VignetteManager
+        st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
+    
+    # Create the vignette with a permanent ID
+    st.session_state.vignette_manager.create_vignette_with_id(
+        id=new_id,
+        title="Untitled Vignette",
+        content="<p>Write your story here...</p>",
+        theme="Life Lesson",
+        mood="Reflective",
+        is_draft=True
+    )
+    
+    # Now open it for editing - it's an EXISTING vignette!
+    st.session_state.editing_vignette_id = new_id
+    st.session_state.show_vignette_modal = True
+    st.rerun()
     
     st.divider()
     st.header("📖 Session Management")
