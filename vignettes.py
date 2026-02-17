@@ -475,6 +475,11 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
         if version_key not in st.session_state:
             st.session_state[version_key] = 0
         
+        # Import state management - initialize for all vignettes
+        import_key = f"import_{editor_key}"
+        if import_key not in st.session_state:
+            st.session_state[import_key] = False
+        
         # IMPORTANT: For NEW vignettes, clear any previous content
         if is_new:
             # Check if this is a brand new vignette (no previous state)
@@ -482,6 +487,13 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                 # Clear any existing content for this key
                 if content_key in st.session_state:
                     del st.session_state[content_key]
+                # Reset import state for new vignette
+                st.session_state[import_key] = False
+                # Clear any pending import data
+                if f"{import_key}_pending" in st.session_state:
+                    del st.session_state[f"{import_key}_pending"]
+                if f"{import_key}_show_options" in st.session_state:
+                    del st.session_state[f"{import_key}_show_options"]
                 # Set initialized flag
                 st.session_state[f"{base_key}_initialized"] = True
         
@@ -565,8 +577,7 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
         has_content = current_content and current_content != "<p><br></p>" and current_content != "<p>Write your story here...</p>"
         showing_results = spell_result_key in st.session_state and st.session_state[spell_result_key].get("show", False)
         
-        # Import state management
-        import_key = f"import_{editor_key}"
+        # Get current import state
         show_import = st.session_state.get(import_key, False)
         
         with col1:
