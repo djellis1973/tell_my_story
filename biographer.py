@@ -1630,13 +1630,16 @@ def auto_correct_text(text):
         resp = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Fix spelling and grammar. Return only corrected text."},
+                {"role": "system", "content": "You are a professional editor. Fix all spelling and grammar errors in the following text. Preserve the original meaning and voice. Return ONLY the corrected text, no explanations."},
                 {"role": "user", "content": text_only}
             ],
-            max_tokens=len(text_only) + 100, temperature=0.1
+            max_tokens=len(text_only) + 200, 
+            temperature=0.1
         )
-        return resp.choices[0].message.content
-    except: 
+        corrected = resp.choices[0].message.content
+        return corrected
+    except Exception as e:
+        print(f"Spell check error: {e}")
         return text
 
 # ============================================================================
