@@ -1,4 +1,4 @@
-# vignettes.py - COMPLETE WORKING VERSION WITH AI REWRITE AND SPELLCHECK
+# vignettes.py - COMPLETE WORKING VERSION WITH SPELLCHECK AND AI REWRITE
 import streamlit as st
 import json
 from datetime import datetime
@@ -108,6 +108,26 @@ class VignetteManager:
             if v["id"] == id:
                 return v
         return None
+    
+    def check_spelling(self, text):
+        """Check spelling and grammar using OpenAI"""
+        if not text: 
+            return text
+        try:
+            client = openai.OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY")))
+            resp = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[
+                    {"role": "system", "content": "Fix spelling and grammar. Return only corrected text."},
+                    {"role": "user", "content": text}
+                ],
+                max_tokens=len(text) + 100, 
+                temperature=0.1
+            )
+            return resp.choices[0].message.content
+        except Exception as e:
+            st.error(f"Spell check failed: {e}")
+            return text
     
     def ai_rewrite_vignette(self, original_text, person_option, vignette_title):
         """Rewrite the vignette in 1st, 2nd, or 3rd person using profile context"""
@@ -335,7 +355,7 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
         st.markdown("---")
         
         # ============================================================================
-        # BUTTONS ROW - WITH SPELLCHECK AND AI REWRITE (SAME AS BIOGRAPHER.PY)
+        # BUTTONS ROW - WITH SPELLCHECK AND AI REWRITE
         # ============================================================================
         col1, col2, col3, col4, col5, col6 = st.columns([1, 1, 1, 1, 1, 2])
         
@@ -406,27 +426,15 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                     st.session_state.show_vignette_manager = True
                     st.rerun()
         
-               with col3:
-            # Spellcheck Button
+        with col3:
+            # Spellcheck Button - USING THE CLASS METHOD
             if has_content and not showing_results:
                 if st.button("🔍 Spell Check", key=f"{base_key}_spell", use_container_width=True):
                     with st.spinner("Checking spelling and grammar..."):
                         text_only = re.sub(r'<[^>]+>', '', current_content)
                         if len(text_only.split()) >= 3:
-                            # Import auto_correct_text from biographer at runtime (not at module level)
-                            # This avoids the circular import issue
-                            import sys
-                            import importlib
-                            
-                            # Force reload biographer to get the latest function
-                            if 'biographer' in sys.modules:
-                                biographer = sys.modules['biographer']
-                                # Reload to get the latest version
-                                biographer = importlib.reload(biographer)
-                            else:
-                                import biographer
-                            
-                            corrected = biographer.auto_correct_text(text_only)
+                            # Use the class method for spell checking
+                            corrected = self.check_spelling(text_only)
                             
                             if corrected and corrected != text_only:
                                 st.session_state[spell_result_key] = {
@@ -444,6 +452,15 @@ REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
                             st.warning("Text too short for spell check (minimum 3 words)")
             else:
                 st.button("🔍 Spell Check", key=f"{base_key}_spell_disabled", disabled=True, use_container_width=True)
+        
+        with col4:
+            # AI Rewrite Button
+            if has_content:
+                if st.button("✨ AI Rewrite", key=f"{base_key}_ai_rewrite", use_container_width=True):
+                    st.session_state[f"{base_key}_show_ai_menu"] = True
+                    st.rerun()
+            else:
+                st.button("✨ AI Rewrite", key=f"{base_key}_ai_disabled", disabled=True, use_container_width=True)
         
         with col5:
             # Person selector dropdown (appears when AI Rewrite is clicked)
