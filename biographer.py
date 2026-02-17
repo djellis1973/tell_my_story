@@ -1,4 +1,4 @@
-# biographer.py – Tell My Story App (COMPLETE VERSION WITH AI REWRITE)
+# biographer.py – Tell My Story App (COMPLETE VERSION WITH AI REWRITE AND IMPORT)
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -3435,9 +3435,113 @@ except Exception as e:
 st.markdown("---")
 
 # ============================================================================
-# BUTTONS ROW - WITH SPELLCHECK AND AI REWRITE
+# FILE IMPORT FUNCTION FOR MAIN EDITOR
 # ============================================================================
-col1, col2, col3, col4, col5, col6 = st.columns([1, 1, 1, 1, 1, 2])
+def import_text_file_main(uploaded_file):
+    """Import text from common document formats into the main editor"""
+    try:
+        file_extension = uploaded_file.name.split('.')[-1].lower()
+        file_content = ""
+        file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
+        
+        st.info(f"📄 Importing: {uploaded_file.name} ({file_size_mb:.1f}MB)")
+        
+        # Supported formats
+        if file_extension == 'txt':
+            file_content = uploaded_file.read().decode('utf-8', errors='ignore')
+        
+        elif file_extension == 'docx':
+            try:
+                import io
+                from docx import Document
+                docx_bytes = io.BytesIO(uploaded_file.getvalue())
+                doc = Document(docx_bytes)
+                paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
+                file_content = '\n\n'.join(paragraphs)
+            except ImportError:
+                st.error("Please install: pip install python-docx")
+                return None
+        
+        elif file_extension == 'rtf':
+            try:
+                from striprtf.striprtf import rtf_to_text
+                rtf_content = uploaded_file.read().decode('utf-8', errors='ignore')
+                file_content = rtf_to_text(rtf_content)
+            except ImportError:
+                st.warning("RTF support needs: pip install striprtf")
+                return None
+        
+        elif file_extension in ['vtt', 'srt']:
+            file_content = uploaded_file.read().decode('utf-8', errors='ignore')
+            lines = file_content.split('\n')
+            clean_lines = [line.strip() for line in lines if '-->' not in line and not line.strip().isdigit() and line.strip()]
+            file_content = ' '.join(clean_lines)
+        
+        elif file_extension == 'json':
+            try:
+                import json
+                data = json.loads(uploaded_file.read().decode('utf-8'))
+                if isinstance(data, dict):
+                    file_content = data.get('text', data.get('transcript', str(data)))
+                else:
+                    file_content = str(data)
+            except Exception as e:
+                st.error(f"Error parsing JSON: {e}")
+                return None
+        
+        elif file_extension == 'md':
+            file_content = uploaded_file.read().decode('utf-8', errors='ignore')
+            file_content = re.sub(r'#{1,6}\s*', '', file_content)
+            file_content = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', file_content)
+        
+        else:
+            st.error(f"Unsupported format: .{file_extension}")
+            st.info("Supported: .txt, .docx, .rtf, .vtt, .srt, .json, .md")
+            return None
+        
+        if not file_content or not file_content.strip():
+            st.warning("File is empty")
+            return None
+        
+        # Check file size warning
+        if file_size_mb > 10:
+            st.warning(f"⚠️ Large file ({file_size_mb:.1f}MB) - processing may be slow")
+        
+        # Clean and format
+        file_content = re.sub(r'\s+', ' ', file_content)
+        sentences = re.split(r'[.!?]+', file_content)
+        paragraphs = []
+        current_para = []
+        
+        for sentence in sentences:
+            if sentence.strip():
+                current_para.append(sentence.strip() + '.')
+                if len(current_para) >= 4:
+                    paragraphs.append(' '.join(current_para))
+                    current_para = []
+        
+        if current_para:
+            paragraphs.append(' '.join(current_para))
+        
+        if not paragraphs:
+            paragraphs = [file_content]
+        
+        html_content = ''
+        for para in paragraphs:
+            if para.strip():
+                para = para.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                html_content += f'<p>{para.strip()}</p>'
+        
+        return html_content
+        
+    except Exception as e:
+        st.error(f"Import error: {str(e)}")
+        return None
+
+# ============================================================================
+# BUTTONS ROW - WITH SPELLCHECK, AI REWRITE, AND IMPORT
+# ============================================================================
+col1, col2, col3, col4, col5, col6, col7 = st.columns([1, 1, 1, 1, 1, 1, 2])
 
 # Spellcheck state management
 spellcheck_base = f"spell_{editor_base_key}"
@@ -3445,6 +3549,12 @@ spell_result_key = f"{spellcheck_base}_result"
 current_content = st.session_state.get(content_key, "")
 has_content = current_content and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>"
 showing_results = spell_result_key in st.session_state and st.session_state[spell_result_key].get("show", False)
+
+# Import state management
+import_key = f"import_{editor_base_key}"
+if import_key not in st.session_state:
+    st.session_state[import_key] = False
+show_import = st.session_state[import_key]
 
 with col1:
     if st.button("💾 Save", key=f"save_btn_{editor_base_key}", type="primary", use_container_width=True):
@@ -3505,6 +3615,13 @@ with col4:
         st.button("✨ AI Rewrite", key=f"rewrite_disabled_{editor_base_key}", disabled=True, use_container_width=True)
 
 with col5:
+    # IMPORT BUTTON
+    button_label = "📂 Close Import" if show_import else "📂 Import File"
+    if st.button(button_label, key=f"import_btn_{editor_base_key}", use_container_width=True):
+        st.session_state[import_key] = not show_import
+        st.rerun()
+
+with col6:
     # Person selector dropdown (appears when AI Rewrite is clicked)
     if st.session_state.get('show_ai_rewrite_menu', False):
         person_option = st.selectbox(
@@ -3536,7 +3653,7 @@ with col5:
         # Placeholder to maintain column layout
         st.markdown("")
 
-with col6:
+with col7:
     nav1, nav2 = st.columns(2)
     with nav1: 
         prev_disabled = st.session_state.current_question == 0
@@ -3586,6 +3703,96 @@ if showing_results:
         if st.button("Dismiss", key=f"{spellcheck_base}_dismiss_msg"):
             st.session_state[spell_result_key] = {"show": False}
             st.rerun()
+
+# Display import section if toggled
+if show_import:
+    st.markdown("---")
+    st.markdown("### 📂 Import Text File")
+    
+    # Show supported formats table
+    with st.expander("📋 Supported File Formats", expanded=True):
+        st.markdown("""
+        | Format | Description |
+        |--------|-------------|
+        | **.txt** | Plain text |
+        | **.docx** | Microsoft Word |
+        | **.rtf** | Rich Text Format |
+        | **.vtt/.srt** | Subtitle files |
+        | **.json** | Transcription JSON |
+        | **.md** | Markdown |
+        
+        **Maximum file size:** 50MB
+        """)
+    
+    uploaded_file = st.file_uploader(
+        "Choose a file to import",
+        type=['txt', 'docx', 'rtf', 'vtt', 'srt', 'json', 'md'],
+        key=f"file_uploader_{editor_base_key}",
+        help="Select a file from your computer to import into this topic"
+    )
+    
+    if uploaded_file:
+        col_imp1, col_imp2, col_imp3 = st.columns([1, 1, 2])
+        with col_imp1:
+            if st.button("📥 Import", key=f"do_import_{editor_base_key}", type="primary", use_container_width=True):
+                with st.spinner("Importing file..."):
+                    imported_html = import_text_file_main(uploaded_file)
+                    if imported_html:
+                        # Check if there's existing content
+                        current = st.session_state.get(content_key, "")
+                        if current and current != "<p>Start writing your story here...</p>" and current != "<p><br></p>":
+                            # Ask user what to do
+                            st.session_state[f"{import_key}_pending"] = imported_html
+                            st.session_state[f"{import_key}_show_options"] = True
+                            st.rerun()
+                        else:
+                            # No existing content, just replace
+                            st.session_state[content_key] = imported_html
+                            st.session_state[version_key] += 1
+                            st.session_state[import_key] = False
+                            st.success("✅ File imported successfully!")
+                            st.rerun()
+        
+        with col_imp2:
+            if st.button("❌ Cancel", key=f"cancel_import_{editor_base_key}", use_container_width=True):
+                st.session_state[import_key] = False
+                st.rerun()
+        
+        # Show import options if needed
+        if st.session_state.get(f"{import_key}_show_options", False):
+            st.markdown("---")
+            st.markdown("**This topic already has content. What would you like to do?**")
+            
+            col_opt1, col_opt2, col_opt3 = st.columns(3)
+            with col_opt1:
+                if st.button("📝 Replace Current", key=f"import_replace_{editor_base_key}", use_container_width=True):
+                    st.session_state[content_key] = st.session_state[f"{import_key}_pending"]
+                    st.session_state[version_key] += 1
+                    st.session_state[import_key] = False
+                    st.session_state[f"{import_key}_pending"] = None
+                    st.session_state[f"{import_key}_show_options"] = False
+                    st.success("✅ File imported (replaced current content)!")
+                    st.rerun()
+            
+            with col_opt2:
+                if st.button("➕ Append to Current", key=f"import_append_{editor_base_key}", use_container_width=True):
+                    current = st.session_state.get(content_key, "")
+                    # Remove closing tags if any
+                    current = current.replace('</p>', '')
+                    new_content = current + st.session_state[f"{import_key}_pending"]
+                    st.session_state[content_key] = new_content
+                    st.session_state[version_key] += 1
+                    st.session_state[import_key] = False
+                    st.session_state[f"{import_key}_pending"] = None
+                    st.session_state[f"{import_key}_show_options"] = False
+                    st.success("✅ File imported (appended to current content)!")
+                    st.rerun()
+            
+            with col_opt3:
+                if st.button("❌ Cancel Import", key=f"import_cancel_options_{editor_base_key}", use_container_width=True):
+                    st.session_state[f"{import_key}_pending"] = None
+                    st.session_state[f"{import_key}_show_options"] = False
+                    st.rerun()
 
 st.markdown("---")
 # ============================================================================
