@@ -1,4 +1,4 @@
-# vignettes.py - MATCHING BIOGRAPHER.PY EXACT PATTERN
+# vignettes.py - COMPLETE WORKING VERSION
 import streamlit as st
 import json
 from datetime import datetime
@@ -40,7 +40,6 @@ class VignetteManager:
             json.dump(self.vignettes, f)
     
     def save_vignette_image(self, uploaded_file, vignette_id):
-        """Save an image for a vignette and return base64"""
         try:
             file_ext = uploaded_file.name.split('.')[-1].lower()
             image_id = hashlib.md5(f"{vignette_id}{uploaded_file.name}{datetime.now()}".encode()).hexdigest()[:12]
@@ -110,22 +109,16 @@ class VignetteManager:
         return None
     
     def display_vignette_creator(self, on_publish=None, edit_vignette=None):
-        """Display the vignette creation form matching biographer.py EXACT pattern"""
+        if edit_vignette:
+            vignette_id = edit_vignette['id']
+            base_key = f"vignette_{vignette_id}"
+        else:
+            vignette_id = "new"
+            base_key = "vignette_new"
         
-# Create unique keys for this vignette - MATCHING BIOGRAPHER.PY PATTERN
-    if edit_vignette:
-        vignette_id = edit_vignette['id']
-        base_key = f"vignette_{vignette_id}"
-    else:
-        # Use a STABLE ID for new vignettes - just 'new' without timestamp
-        vignette_id = "new"
-        base_key = "vignette_new"
-        
-        # Editor key and content key - EXACTLY like biographer.py
         editor_key = f"quill_vignette_{vignette_id}"
         content_key = f"{editor_key}_content"
         
-        # Title input
         title = st.text_input(
             "Title", 
             value=edit_vignette.get("title", "") if edit_vignette else "",
@@ -133,7 +126,6 @@ class VignetteManager:
             key=f"{base_key}_title"
         )
         
-        # Theme and mood in columns
         col1, col2 = st.columns(2)
         with col1:
             theme_options = self.standard_themes + ["Custom"]
@@ -160,7 +152,6 @@ class VignetteManager:
             else:
                 mood = st.selectbox("Mood/Tone", mood_options, key=f"{base_key}_mood")
         
-        # Initialize content in session state - EXACTLY like biographer.py
         if edit_vignette and edit_vignette.get("content"):
             default_content = edit_vignette["content"]
         else:
@@ -169,12 +160,10 @@ class VignetteManager:
         if content_key not in st.session_state:
             st.session_state[content_key] = default_content
         
-        # Timestamp for spell check refresh - EXACTLY like biographer.py
         spell_check_key = f"{base_key}_spell_timestamp"
         if spell_check_key not in st.session_state:
             st.session_state[spell_check_key] = 0
         
-        # Editor component key with timestamp - EXACTLY like biographer.py
         editor_component_key = f"quill_editor_{vignette_id}_{st.session_state[spell_check_key]}"
         
         st.markdown("### 📝 Your Story")
@@ -184,7 +173,6 @@ class VignetteManager:
         </div>
         """, unsafe_allow_html=True)
         
-        # Display Quill editor - EXACT parameters as biographer.py
         content = st_quill(
             value=st.session_state[content_key],
             key=editor_component_key,
@@ -192,13 +180,11 @@ class VignetteManager:
             html=True
         )
         
-        # Update session state when content changes
         if content is not None and content != st.session_state[content_key]:
             st.session_state[content_key] = content
         
         st.markdown("---")
         
-        # Image upload section
         with st.expander("📸 Upload Photos", expanded=False):
             temp_images_key = f"{base_key}_temp_images"
             if temp_images_key not in st.session_state:
@@ -245,7 +231,6 @@ class VignetteManager:
                             st.session_state[temp_images_key].pop(i)
                             st.rerun()
         
-        # Word count
         if st.session_state[content_key]:
             text_only = re.sub(r'<[^>]+>', '', st.session_state[content_key])
             word_count = len(text_only.split())
@@ -253,7 +238,6 @@ class VignetteManager:
         
         st.markdown("---")
         
-        # Action buttons
         col1, col2, col3, col4 = st.columns(4)
         
         with col1:
@@ -272,7 +256,6 @@ class VignetteManager:
                         self.create_vignette(final_title, current_content, theme, mood, is_draft=True, images=images)
                         st.session_state.draft_success = True
                     
-                    # Clean up session state
                     for key in [content_key, temp_images_key, spell_check_key]:
                         if key in st.session_state:
                             del st.session_state[key]
@@ -306,7 +289,6 @@ class VignetteManager:
                     if on_publish:
                         on_publish(vignette_data)
                     
-                    # Clean up session state
                     for key in [content_key, temp_images_key, spell_check_key]:
                         if key in st.session_state:
                             del st.session_state[key]
@@ -322,7 +304,6 @@ class VignetteManager:
         
         with col4:
             if st.button("❌ Cancel", use_container_width=True, key=f"{base_key}_cancel"):
-                # Clean up session state
                 for key in [content_key, temp_images_key, spell_check_key]:
                     if key in st.session_state:
                         del st.session_state[key]
@@ -330,7 +311,6 @@ class VignetteManager:
                 st.session_state.editing_vignette_id = None
                 st.rerun()
         
-        # Preview section
         if st.session_state.get(f"{base_key}_show_preview", False) and st.session_state[content_key]:
             st.markdown("---")
             st.markdown("### 👁️ Preview")
@@ -344,8 +324,6 @@ class VignetteManager:
                 st.rerun()
     
     def display_vignette_gallery(self, filter_by="all", on_select=None, on_edit=None, on_delete=None):
-        """Display vignettes in a gallery view"""
-        
         if filter_by == "published":
             vs = [v for v in self.vignettes if not v.get("is_draft", True)]
         elif filter_by == "drafts":
@@ -355,7 +333,6 @@ class VignetteManager:
         
         vs.sort(key=lambda x: x.get("updated_at", ""), reverse=True)
         
-        # Show success messages
         if st.session_state.get("publish_success"):
             st.success("🎉 Published!")
             del st.session_state.publish_success
@@ -411,7 +388,6 @@ class VignetteManager:
                 st.divider()
     
     def display_full_vignette(self, id, on_back=None, on_edit=None):
-        """Display a full vignette with HTML rendering"""
         v = self.get_vignette_by_id(id)
         if not v:
             return
