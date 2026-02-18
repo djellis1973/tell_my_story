@@ -620,10 +620,22 @@ def show_cover_designer():
         default_author = f"{st.session_state.user_account.get('profile', {}).get('first_name', '')} {st.session_state.user_account.get('profile', {}).get('last_name', '')}".strip()
         author = st.text_input("Author Name", value=saved_cover.get('author', default_author if default_author else "Author Name"))
         
-        cover_type = st.selectbox("Cover Style", ["Simple", "Elegant", "Modern", "Classic", "Vintage"], 
-                                 index=["Simple", "Elegant", "Modern", "Classic", "Vintage"].index(saved_cover.get('cover_type', 'Simple')))
-        title_font = st.selectbox("Title Font", ["Georgia", "Arial", "Times New Roman", "Helvetica", "Calibri"],
-                                 index=["Georgia", "Arial", "Times New Roman", "Helvetica", "Calibri"].index(saved_cover.get('title_font', 'Georgia')))
+        # Cover style options with safe indexing
+        cover_options = ["Simple", "Elegant", "Modern", "Classic", "Vintage"]
+        cover_index = 0
+        saved_cover_type = saved_cover.get('cover_type', 'Simple')
+        if saved_cover_type in cover_options:
+            cover_index = cover_options.index(saved_cover_type)
+        cover_type = st.selectbox("Cover Style", cover_options, index=cover_index)
+        
+        # Font options with safe indexing
+        font_options = ["Georgia", "Arial", "Times New Roman", "Helvetica", "Calibri"]
+        font_index = 0
+        saved_font = saved_cover.get('title_font', 'Georgia')
+        if saved_font in font_options:
+            font_index = font_options.index(saved_font)
+        title_font = st.selectbox("Title Font", font_options, index=font_index)
+        
         title_color = st.color_picker("Title Color", value=saved_cover.get('title_color', '#000000'))
         background_color = st.color_picker("Background Color", value=saved_cover.get('background_color', '#FFFFFF'))
         
@@ -653,6 +665,7 @@ def show_cover_designer():
             use_image = True
         else:
             use_image = False
+            img_bytes = None
         
         # Build the COMPLETE cover HTML (includes text on top of image)
         if use_image:
@@ -742,39 +755,31 @@ def show_cover_designer():
                 import io
                 
                 # Create a blank image with the correct aspect ratio (6:9 = 2:3)
-                # Use high resolution for print quality (300 DPI would be 1800x2700, but let's use a reasonable size)
+                # Use high resolution for print quality
                 img_width = 1200
                 img_height = 1800
                 
-                if use_image:
+                if use_image and img_bytes:
                     # Use uploaded/saved image as background
                     background = Image.open(io.BytesIO(img_bytes))
                     # Resize background to fit
                     background = background.resize((img_width, img_height), Image.Resampling.LANCZOS)
-                    img = background
+                    img = background.convert('RGBA')
+                    
+                    # Add semi-transparent overlay
+                    overlay = Image.new('RGBA', (img_width, img_height), (0, 0, 0, 77))  # 30% opacity
+                    img = Image.alpha_composite(img, overlay)
                 else:
                     # Create solid color background
                     bg_rgb = tuple(int(background_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-                    img = Image.new('RGB', (img_width, img_height), bg_rgb)
+                    img = Image.new('RGBA', (img_width, img_height), bg_rgb + (255,))
                 
                 # Create drawing context
                 draw = ImageDraw.Draw(img)
                 
-                # Add semi-transparent overlay if using background image
-                if use_image:
-                    overlay = Image.new('RGBA', (img_width, img_height), (0, 0, 0, 77))  # 30% opacity
-                    img = Image.alpha_composite(img.convert('RGBA'), overlay)
-                    draw = ImageDraw.Draw(img)
-                
-                # Try to load fonts, fall back to default
+                # Use default font (simpler, less error-prone)
                 try:
-                    # Try to use a nice font if available
-                    title_font_size = 80
-                    subtitle_font_size = 40
-                    author_font_size = 40
-                    
-                    # You might need to adjust font paths for your system
-                    # This is a simplified version - in production you'd want proper font handling
+                    # Try to use a slightly larger default font
                     title_font = ImageFont.load_default()
                     subtitle_font = ImageFont.load_default()
                     author_font = ImageFont.load_default()
@@ -783,48 +788,41 @@ def show_cover_designer():
                     subtitle_font = ImageFont.load_default()
                     author_font = ImageFont.load_default()
                 
-                # Calculate text positions (centered)
-                title_bbox = draw.textbbox((0, 0), title, font=title_font)
-                title_width = title_bbox[2] - title_bbox[0]
-                title_x = (img_width - title_width) // 2
+                # Text color - white for image backgrounds, selected color for solid
+                if use_image:
+                    text_color = (255, 255, 255, 255)
+                else:
+                    text_color = tuple(int(title_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) + (255,)
+                
+                # Calculate text positions (centered approximately)
+                # Title at 1/3 down
                 title_y = img_height // 3
+                draw.text((img_width//2, title_y), title, fill=text_color, font=title_font, anchor="mm")
                 
-                # Draw title
-                text_color = tuple(int(title_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4)) if not use_image else (255, 255, 255)
-                draw.text((title_x, title_y), title, fill=text_color, font=title_font)
-                
-                # Draw subtitle if exists
+                # Subtitle if exists
                 if subtitle:
-                    subtitle_bbox = draw.textbbox((0, 0), subtitle, font=subtitle_font)
-                    subtitle_width = subtitle_bbox[2] - subtitle_bbox[0]
-                    subtitle_x = (img_width - subtitle_width) // 2
-                    subtitle_y = title_y + 60
-                    draw.text((subtitle_x, subtitle_y), subtitle, fill=text_color, font=subtitle_font)
+                    subtitle_y = title_y + 80
+                    draw.text((img_width//2, subtitle_y), subtitle, fill=text_color, font=subtitle_font, anchor="mm")
                 
-                # Draw author
+                # Author at bottom
                 author_text = f"by {author}"
-                author_bbox = draw.textbbox((0, 0), author_text, font=author_font)
-                author_width = author_bbox[2] - author_bbox[0]
-                author_x = (img_width - author_width) // 2
                 author_y = img_height - 200
-                draw.text((author_x, author_y), author_text, fill=text_color, font=author_font)
+                draw.text((img_width//2, author_y), author_text, fill=text_color, font=author_font, anchor="mm")
                 
                 # Save the complete cover image
                 cover_filename = f"uploads/covers/{st.session_state.user_id}_cover_complete.jpg"
                 os.makedirs("uploads/covers", exist_ok=True)
                 
-                # Convert back to RGB if we were using RGBA
-                if img.mode == 'RGBA':
-                    rgb_img = Image.new('RGB', img.size, (255, 255, 255))
-                    rgb_img.paste(img, mask=img.split()[3])  # Use alpha as mask
-                    rgb_img.save(cover_filename, 'JPEG', quality=95)
-                else:
-                    img.save(cover_filename, 'JPEG', quality=95)
+                # Convert to RGB for saving as JPEG
+                rgb_img = Image.new('RGB', img.size, (255, 255, 255))
+                rgb_img.paste(img, mask=img.split()[3])  # Use alpha as mask
+                rgb_img.save(cover_filename, 'JPEG', quality=95)
                 
                 # Also save a thumbnail for preview
                 thumb_filename = f"uploads/covers/{st.session_state.user_id}_cover_thumb.jpg"
-                img.thumbnail((300, 450), Image.Resampling.LANCZOS)
-                img.save(thumb_filename, 'JPEG', quality=85)
+                thumbnail = rgb_img.copy()
+                thumbnail.thumbnail((300, 450), Image.Resampling.LANCZOS)
+                thumbnail.save(thumb_filename, 'JPEG', quality=85)
                 
                 # Update user account with cover design data
                 if 'cover_design' not in st.session_state.user_account:
@@ -848,7 +846,7 @@ def show_cover_designer():
                 st.rerun()
                 
             except Exception as e:
-                st.error(f"Error generating cover: {e}")
+                st.error(f"Error generating cover: {str(e)}")
                 # Fallback to just saving the data
                 if 'cover_design' not in st.session_state.user_account:
                     st.session_state.user_account['cover_design'] = {}
