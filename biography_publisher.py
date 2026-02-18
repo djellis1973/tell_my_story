@@ -46,7 +46,6 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
             author_run.font.size = Pt(16)
             author_run.font.italic = True
         except Exception as e:
-            st.warning(f"Could not add cover image: {e}")
             # Fallback to simple title
             title_para = doc.add_paragraph()
             title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -66,7 +65,6 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
         title_run = title_para.add_run(title)
         title_run.font.size = Pt(28)
         title_run.font.bold = True
-        title_run.font.color.rgb = RGBColor(0, 0, 0)
         
         author_para = doc.add_paragraph()
         author_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -316,7 +314,7 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
                 <p class="author">by {author}</p>
             </div>
             ''')
-        except Exception as e:
+        except Exception:
             # Fallback to simple cover
             html_parts.append(f'''
             <div class="simple-cover">
