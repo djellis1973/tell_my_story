@@ -2949,183 +2949,91 @@ with st.sidebar:
         st.session_state.show_session_creator = True
         st.rerun()
     
-    st.divider()
-    st.subheader("📤 Publish Your Book")
+# In biographer.py - Replace the entire export section in the sidebar with this:
 
-    if st.session_state.logged_in and st.session_state.user_id:
-        # Prepare export data
-        export_data = []
-        for session in SESSIONS:
-            sid = session["id"]
-            sdata = st.session_state.responses.get(sid, {})
-            for q, a in sdata.get("questions", {}).items():
-                images_with_data = []
-                if a.get("images"):
-                    for img_ref in a.get("images", []):
-                        img_id = img_ref.get("id")
-                        b64 = st.session_state.image_handler.get_image_base64(img_id) if st.session_state.image_handler else None
-                        caption = img_ref.get("caption", "")
-                        if b64:
-                            images_with_data.append({
-                                "id": img_id, "base64": b64, "caption": caption
-                            })
-                
-                export_item = {
-                    "question": q, 
-                    "answer_text": re.sub(r'<[^>]+>', '', a.get("answer", "")),
-                    "timestamp": a.get("timestamp", ""), 
-                    "session_id": sid, 
-                    "session_title": session["title"],
-                    "has_images": a.get("has_images", False), 
-                    "image_count": a.get("image_count", 0),
-                    "images": images_with_data
-                }
-                export_data.append(export_item)
+# ============================================================================
+# IN THE SIDEBAR - Replace the old export section with just a link to publisher
+# ============================================================================
+
+st.divider()
+st.subheader("📤 Publish Your Book")
+
+if st.session_state.logged_in and st.session_state.user_id:
+    # Prepare export data for the publisher
+    export_data = []
+    for session in SESSIONS:
+        sid = session["id"]
+        sdata = st.session_state.responses.get(sid, {})
+        for q, a in sdata.get("questions", {}).items():
+            images_with_data = []
+            if a.get("images"):
+                for img_ref in a.get("images", []):
+                    img_id = img_ref.get("id")
+                    b64 = st.session_state.image_handler.get_image_base64(img_id) if st.session_state.image_handler else None
+                    caption = img_ref.get("caption", "")
+                    if b64:
+                        images_with_data.append({
+                            "id": img_id, "base64": b64, "caption": caption
+                        })
+            
+            export_item = {
+                "question": q, 
+                "answer_text": re.sub(r'<[^>]+>', '', a.get("answer", "")),
+                "timestamp": a.get("timestamp", ""), 
+                "session_id": sid, 
+                "session_title": session["title"],
+                "has_images": a.get("has_images", False), 
+                "image_count": a.get("image_count", 0),
+                "images": images_with_data
+            }
+            export_data.append(export_item)
+    
+    if export_data:
+        # Save export data to session state for the publisher
+        complete_data = {
+            "user": st.session_state.user_id, 
+            "user_profile": st.session_state.user_account.get('profile', {}),
+            "narrative_gps": st.session_state.user_account.get('narrative_gps', {}),
+            "enhanced_profile": st.session_state.user_account.get('enhanced_profile', {}),
+            "cover_design": st.session_state.user_account.get('cover_design', {}),
+            "stories": export_data, 
+            "export_date": datetime.now().isoformat(),
+            "summary": {
+                "total_stories": len(export_data), 
+                "total_sessions": len(set(s['session_id'] for s in export_data))
+            }
+        }
         
-        if export_data:
-            # Book details
-            first_name = st.session_state.user_account.get('profile', {}).get('first_name', 'My')
-            last_name = st.session_state.user_account.get('profile', {}).get('last_name', '')
-            default_author = f"{first_name} {last_name}".strip()
-            
-            book_title = st.text_input("Book Title", value=f"{first_name}'s Story", key="publish_title")
-            author_name = st.text_input("Author Name", value=default_author, key="publish_author")
-            
-            # Cover Type Selection
-            st.markdown("### 🎨 Cover Design")
-            
-            has_custom_cover = st.session_state.user_account and 'cover_design' in st.session_state.user_account
-            
-            cover_options = ["Simple Gradient"]
-            cover_option_index = 0
-            
-            if has_custom_cover:
-                cover_options.append("My Custom Cover")
-                cover_option_index = 1 if st.session_state.get('selected_cover_type') == "custom" else 0
-            
-            selected_cover = st.radio(
-                "Choose cover style:",
-                cover_options,
-                index=cover_option_index,
-                key="cover_selector"
+        # Save to a temp file and store path in session state
+        temp_file = f"temp_export_{st.session_state.user_id}.json"
+        with open(temp_file, 'w') as f:
+            json.dump(complete_data, f)
+        
+        # Store in session state for the publisher
+        st.session_state.publisher_data = complete_data
+        st.session_state.publisher_data_path = temp_file
+        
+        # Button to open publisher in new tab/page
+        if st.button("📚 Open Book Publisher", type="primary", use_container_width=True):
+            # Save the current page state
+            st.session_state.return_to_main = True
+            st.session_state.show_publisher = True
+            st.rerun()
+        
+        # Optional: Keep JSON backup
+        with st.expander("📦 JSON Backup", expanded=False):
+            json_data = json.dumps(complete_data, indent=2)
+            st.download_button(
+                label="📥 Download JSON Backup", 
+                data=json_data,
+                file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
+                mime="application/json", 
+                use_container_width=True
             )
-            
-            cover_type = "custom" if selected_cover == "My Custom Cover" else "simple"
-            
-            # Show custom cover preview if selected
-            if cover_type == "custom" and has_custom_cover:
-                cover_design = st.session_state.user_account['cover_design']
-                with st.expander("🎨 Your Custom Cover Preview", expanded=True):
-                    col1, col2 = st.columns([1, 2])
-                    with col1:
-                        if cover_design.get('cover_image') and os.path.exists(cover_design['cover_image']):
-                            st.image(cover_design['cover_image'], width=150)
-                        else:
-                            st.markdown(f"**Background:** {cover_design.get('background_color', '#FFFFFF')}")
-                    with col2:
-                        st.markdown(f"**Title:** {cover_design.get('title', book_title)}")
-                        if cover_design.get('subtitle'):
-                            st.markdown(f"**Subtitle:** {cover_design['subtitle']}")
-                        st.markdown(f"**Author:** {cover_design.get('author', author_name)}")
-                        st.markdown(f"**Style:** {cover_design.get('cover_type', 'Simple')}")
-            
-            # Format options
-            st.markdown("### 📝 Format Options")
-            format_style = st.selectbox(
-                "Format Style", 
-                ["interview", "biography", "memoir"], 
-                format_func=lambda x: {"interview": "📝 Interview Q&A", 
-                                     "biography": "📖 Continuous Biography", 
-                                     "memoir": "📚 Chapter-based Memoir"}[x],
-                key="publish_format"
-            )
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                include_toc = st.checkbox("Table of Contents", value=True, key="publish_toc")
-            with col2:
-                include_dates = st.checkbox("Include Dates", value=False, key="publish_dates")
-            
-            # Generate buttons
-            st.markdown("### 🖨️ Generate")
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                if st.button("📊 DOCX", type="primary", use_container_width=True):
-                    with st.spinner("Creating Word document with images..."):
-                        custom_cover = st.session_state.user_account.get('cover_design') if cover_type == "custom" else None
-                        
-                        docx_bytes = publisher_generate_docx(
-                            book_title,
-                            author_name,
-                            export_data,
-                            format_style,
-                            include_toc,
-                            include_dates,
-                            cover_type,
-                            custom_cover
-                        )
-                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
-                        st.download_button(
-                            label="📥 Download DOCX", 
-                            data=docx_bytes, 
-                            file_name=filename, 
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
-                            use_container_width=True,
-                            key="docx_download"
-                        )
-            
-            with col2:
-                if st.button("📕 PDF", type="primary", use_container_width=True):
-                    with st.spinner("Creating PDF with images..."):
-                        custom_cover = st.session_state.user_account.get('cover_design') if cover_type == "custom" else None
-                        
-                        pdf_bytes = publisher_generate_pdf(
-                            book_title,
-                            author_name,
-                            export_data,
-                            format_style,
-                            include_toc,
-                            include_dates,
-                            cover_type,
-                            custom_cover
-                        )
-                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
-                        st.download_button(
-                            label="📥 Download PDF", 
-                            data=pdf_bytes, 
-                            file_name=filename, 
-                            mime="application/pdf", 
-                            use_container_width=True,
-                            key="pdf_download"
-                        )
-            
-            with st.expander("📦 JSON Backup (for data portability)", expanded=False):
-                complete_data = {
-                    "user": st.session_state.user_id, 
-                    "user_profile": st.session_state.user_account.get('profile', {}),
-                    "narrative_gps": st.session_state.user_account.get('narrative_gps', {}),
-                    "enhanced_profile": st.session_state.user_account.get('enhanced_profile', {}),
-                    "stories": export_data, 
-                    "export_date": datetime.now().isoformat(),
-                    "summary": {
-                        "total_stories": len(export_data), 
-                        "total_sessions": len(set(s['session_id'] for s in export_data))
-                    }
-                }
-                json_data = json.dumps(complete_data, indent=2)
-                
-                st.download_button(
-                    label="📥 Download JSON Backup", 
-                    data=json_data,
-                    file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
-                    mime="application/json", 
-                    use_container_width=True
-                )
-        else: 
-            st.warning("No stories yet! Start writing to publish.")
     else: 
-        st.warning("Please log in to export your data.")
+        st.warning("No stories yet! Start writing to publish.")
+else: 
+    st.warning("Please log in to export your data.")
     
     st.divider()
     st.subheader("⚠️ Clear Data")
@@ -3182,7 +3090,195 @@ with st.sidebar:
                     st.info(f"... and {len(results)-10} more matches")
         else: 
             st.info("No matches found")
-
+# ============================================================================
+# PUBLISHER PAGE (Full screen, not in sidebar)
+# ============================================================================
+if st.session_state.get('show_publisher', False):
+    # Hide the main header and show publisher full screen
+    st.markdown("""
+    <style>
+        .main-header { display: none; }
+        .sidebar-header { display: none; }
+    </style>
+    """, unsafe_allow_html=True)
+    
+    # Import publisher functions
+    from biography_publisher import generate_pdf, generate_docx, generate_html, show_celebration
+    
+    st.markdown("""
+    <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin: -1rem -1rem 2rem -1rem; border-radius: 0 0 20px 20px; color: white;">
+        <h1>📚 Book Publisher</h1>
+        <p>Transform your stories into a beautifully formatted book</p>
+    </div>
+    """, unsafe_allow_html=True)
+    
+    # Back button
+    col1, col2, col3 = st.columns([1, 6, 1])
+    with col1:
+        if st.button("← Back to Writing", use_container_width=True):
+            st.session_state.show_publisher = False
+            st.rerun()
+    
+    # Get data from session state
+    if st.session_state.get('publisher_data'):
+        data = st.session_state.publisher_data
+        stories = data.get('stories', [])
+        user_profile = data.get('user_profile', {})
+        cover_design = data.get('cover_design', {})
+        
+        # Book details
+        col1, col2 = st.columns(2)
+        with col1:
+            default_title = f"{user_profile.get('first_name', 'My')}'s Story"
+            book_title = st.text_input("Book Title", value=cover_design.get('title', default_title))
+        with col2:
+            default_author = f"{user_profile.get('first_name', '')} {user_profile.get('last_name', '')}".strip()
+            book_author = st.text_input("Author Name", value=cover_design.get('author', default_author))
+        
+        # Cover preview if custom cover exists
+        if cover_design:
+            with st.expander("🎨 Your Custom Cover Preview", expanded=False):
+                col1, col2 = st.columns([1, 2])
+                with col1:
+                    if cover_design.get('cover_image') and os.path.exists(cover_design['cover_image']):
+                        st.image(cover_design['cover_image'], width=200)
+                    else:
+                        st.markdown(f"**Background:** {cover_design.get('background_color', '#667eea')}")
+                with col2:
+                    st.markdown(f"**Title:** {cover_design.get('title', book_title)}")
+                    if cover_design.get('subtitle'):
+                        st.markdown(f"**Subtitle:** {cover_design['subtitle']}")
+                    st.markdown(f"**Author:** {cover_design.get('author', book_author)}")
+        
+        # Format options
+        st.markdown("---")
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            format_style = st.radio(
+                "📝 Format Style",
+                ["interview", "biography"],
+                format_func=lambda x: {
+                    "interview": "Show Questions & Answers", 
+                    "biography": "Just Answers (Biography Style)"
+                }[x],
+                horizontal=True
+            )
+        with col2:
+            include_toc = st.checkbox("📖 Table of Contents", value=True)
+        with col3:
+            cover_type = st.radio(
+                "🎨 Cover",
+                ["simple", "custom"],
+                format_func=lambda x: "Gradient" if x == "simple" else "My Design",
+                horizontal=True,
+                disabled=not bool(cover_design)
+            )
+        
+        # Summary stats
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
+            st.metric("Total Stories", len(stories))
+        with col2:
+            st.metric("Sessions", data.get('summary', {}).get('total_sessions', 1))
+        with col3:
+            total_images = sum(len(s.get('images', [])) for s in stories)
+            st.metric("Images", total_images)
+        with col4:
+            total_words = sum(len(s.get('answer_text', '').split()) for s in stories)
+            st.metric("Words", f"{total_words:,}")
+        
+        # Preview section
+        with st.expander("📖 Preview First 3 Stories", expanded=False):
+            for i, story in enumerate(stories[:3]):
+                st.markdown(f"**{'Q: ' + story.get('question', '') if format_style == 'interview' else story.get('session_title', 'Session')}**")
+                st.markdown(f"{story.get('answer_text', '')[:300]}...")
+                if story.get('images'):
+                    st.caption(f"📸 {len(story['images'])} image(s)")
+                st.divider()
+        
+        # Generate buttons
+        st.markdown("---")
+        st.markdown("### 🖨️ Generate Your Book")
+        
+        col1, col2, col3 = st.columns(3)
+        
+        with col1:
+            if st.button("📊 Generate DOCX", type="primary", use_container_width=True):
+                with st.spinner("Creating Word document with images..."):
+                    docx_bytes = generate_docx(
+                        book_title,
+                        book_author,
+                        stories,
+                        format_style,
+                        include_toc,
+                        False,
+                        cover_type,
+                        cover_design if cover_type == "custom" else None
+                    )
+                    filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
+                    st.download_button(
+                        "📥 Download DOCX", 
+                        data=docx_bytes, 
+                        file_name=filename, 
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                        use_container_width=True,
+                        key="docx_download"
+                    )
+                    show_celebration()
+        
+        with col2:
+            if st.button("📕 Generate PDF", type="primary", use_container_width=True):
+                with st.spinner("Creating PDF with images..."):
+                    pdf_bytes = generate_pdf(
+                        book_title,
+                        book_author,
+                        stories,
+                        format_style,
+                        include_toc,
+                        False,
+                        cover_type,
+                        cover_design if cover_type == "custom" else None
+                    )
+                    filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
+                    st.download_button(
+                        "📥 Download PDF", 
+                        data=pdf_bytes, 
+                        file_name=filename, 
+                        mime="application/pdf", 
+                        use_container_width=True,
+                        key="pdf_download"
+                    )
+                    show_celebration()
+        
+        with col3:
+            if st.button("🌐 Generate HTML", type="primary", use_container_width=True):
+                with st.spinner("Creating HTML page..."):
+                    html_content = generate_html(
+                        book_title,
+                        book_author,
+                        stories,
+                        format_style,
+                        include_toc
+                    )
+                    filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
+                    st.download_button(
+                        "📥 Download HTML", 
+                        data=html_content, 
+                        file_name=filename, 
+                        mime="text/html", 
+                        use_container_width=True,
+                        key="html_download"
+                    )
+                    show_celebration()
+    
+    else:
+        st.warning("No story data found. Please return to the main app and export your stories first.")
+        if st.button("← Return to Main App"):
+            st.session_state.show_publisher = False
+            st.rerun()
+    
+    # Stop here so we don't show the main content
+    st.stop()
 # ============================================================================
 # MAIN CONTENT AREA
 # ============================================================================
