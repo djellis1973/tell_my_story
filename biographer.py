@@ -532,7 +532,8 @@ def logout_user():
             'current_beta_feedback', 'current_question_bank', 'current_bank_name',
             'current_bank_type', 'current_bank_id', 'show_bank_manager', 'show_bank_editor',
             'editing_bank_id', 'editing_bank_name', 'show_image_manager', 'editor_content',
-            'current_rewrite_data', 'show_ai_rewrite', 'show_ai_rewrite_menu']
+            'current_rewrite_data', 'show_ai_rewrite', 'show_ai_rewrite_menu',
+            'show_publisher']  # <-- ADD THIS
     for key in keys:
         if key in st.session_state: 
             del st.session_state[key]
