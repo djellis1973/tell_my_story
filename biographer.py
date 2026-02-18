@@ -589,11 +589,12 @@ def show_privacy_settings():
     st.stop()
 
 # ============================================================================
-# PERFECT COVER DESIGNER - Preview and saved image are IDENTICAL
+# PERFECT COVER DESIGNER - EXPORTS HTML (what you see is what you get)
 # ============================================================================
 def show_cover_designer():
     st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
     st.title("🎨 Cover Designer")
+    st.success("✅ Exports as HTML - Preview matches export exactly!")
     
     if st.button("← Back", key="cover_back"):
         st.session_state.show_cover_designer = False
@@ -639,33 +640,27 @@ def show_cover_designer():
         title_color = st.color_picker("Title Color", value=saved_cover.get('title_color', '#000000'))
         background_color = st.color_picker("Background Color", value=saved_cover.get('background_color', '#FFFFFF'))
         
-        # Show saved image if exists
-        if saved_cover.get('cover_image') and os.path.exists(saved_cover['cover_image']):
-            st.markdown("**Current Cover Image:**")
-            st.image(saved_cover['cover_image'], width=250)
+        # Show saved HTML if exists
+        if saved_cover.get('cover_html') and os.path.exists(saved_cover['cover_html']):
+            st.markdown("**Current Cover HTML:**")
+            with open(saved_cover['cover_html'], 'r') as f:
+                html_content = f.read()
+            st.download_button(
+                label="📥 Download Current Cover HTML",
+                data=html_content,
+                file_name="my_cover.html",
+                mime="text/html",
+                use_container_width=True
+            )
             st.markdown("---")
             st.markdown("**Upload New Image (optional):**")
         
         uploaded_cover = st.file_uploader("Upload Cover Image (optional)", type=['jpg', 'jpeg', 'png'])
         if uploaded_cover:
             st.image(uploaded_cover, caption="New cover image", width=250)
-        
-        # Add export button to verify saved cover
-        if saved_cover.get('cover_image') and os.path.exists(saved_cover['cover_image']):
-            st.markdown("---")
-            st.markdown("**📤 Export Cover to Verify**")
-            with open(saved_cover['cover_image'], 'rb') as f:
-                img_bytes = f.read()
-            st.download_button(
-                label="📥 Download Saved Cover Image",
-                data=img_bytes,
-                file_name=f"my_cover_{datetime.now().strftime('%Y%m%d')}.jpg",
-                mime="image/jpeg",
-                use_container_width=True
-            )
     
     with col2:
-        st.markdown("**Preview (6\" x 9\" portrait)**")
+        st.markdown("**Preview (6\" x 9\" portrait) - This EXACT HTML will be saved**")
         
         # Create the complete cover HTML with ALL elements
         if uploaded_cover:
@@ -758,95 +753,158 @@ def show_cover_designer():
         from streamlit.components.v1 import html
         html(cover_html, height=800)
         
-        st.caption("6\" wide × 9\" tall (portrait format) - Preview matches saved cover exactly")
+        st.caption("6\" wide × 9\" tall (portrait format) - This EXACT HTML will be saved")
     
-    # Save button
-    if st.button("💾 Save Cover Design", type="primary", use_container_width=True):
-        with st.spinner("🎨 Generating perfect cover image..."):
+    # Save button - NOW SAVES HTML instead of JPG
+    if st.button("💾 Save Cover Design (as HTML)", type="primary", use_container_width=True):
+        with st.spinner("💾 Saving cover HTML..."):
             try:
-                # Create a high-resolution image using PIL with proper scaling
-                from PIL import Image, ImageDraw, ImageFont
-                
-                # High resolution for print (300 DPI would be 1800x2700, but we'll use 1200x1800)
-                img_width = 1200
-                img_height = 1800
-                
-                if use_image and img_bytes:
-                    # Use uploaded image as background
-                    background = Image.open(io.BytesIO(img_bytes))
-                    background = background.resize((img_width, img_height), Image.Resampling.LANCZOS)
-                    img = background.convert('RGBA')
+                # Create the complete HTML document
+                if use_image:
+                    subtitle_html_saved = f'<h2 style="font-family:{title_font}, sans-serif; color:white; font-size:32px; margin:20px 0 0 0; text-shadow:3px 3px 6px black; font-weight:normal;">{subtitle}</h2>' if subtitle else ''
                     
-                    # Add semi-transparent overlay
-                    overlay = Image.new('RGBA', (img_width, img_height), (0, 0, 0, 64))  # 25% opacity
-                    img = Image.alpha_composite(img, overlay)
-                    text_color = (255, 255, 255)  # White text for images
+                    full_html = f'''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Book Cover - {title}</title>
+    <style>
+        body {{ margin:0; padding:0; display:flex; justify-content:center; align-items:center; min-height:100vh; background:#f0f0f0; }}
+        .cover-container {{ width:600px; height:900px; position:relative; }}
+        .cover {{
+            width:100%;
+            height:100%;
+            background-image:url('data:image/jpeg;base64,{img_base64}');
+            background-size:cover;
+            background-position:center;
+            border:2px solid #333;
+            border-radius:10px;
+            overflow:hidden;
+            position:relative;
+            box-shadow:0 10px 20px rgba(0,0,0,0.3);
+        }}
+        .overlay {{
+            position:absolute;
+            top:0;
+            left:0;
+            width:100%;
+            height:100%;
+            background:rgba(0,0,0,0.25);
+            display:flex;
+            flex-direction:column;
+            justify-content:space-between;
+            padding:50px 30px;
+            box-sizing:border-box;
+        }}
+        .title {{
+            font-family:{title_font}, sans-serif;
+            color:white;
+            font-size:72px;
+            margin:0;
+            text-shadow:4px 4px 8px black;
+            line-height:1.2;
+            text-align:center;
+        }}
+        .subtitle {{
+            font-family:{title_font}, sans-serif;
+            color:white;
+            font-size:32px;
+            margin:20px 0 0 0;
+            text-shadow:3px 3px 6px black;
+            font-weight:normal;
+            text-align:center;
+        }}
+        .author {{
+            font-family:{title_font}, sans-serif;
+            color:white;
+            font-size:36px;
+            margin:0;
+            text-shadow:3px 3px 6px black;
+            text-align:center;
+        }}
+    </style>
+</head>
+<body>
+    <div class="cover-container">
+        <div class="cover">
+            <div class="overlay">
+                <div>
+                    <div class="title">{title}</div>
+                    {subtitle_html_saved}
+                </div>
+                <div class="author">by {author}</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>'''
                 else:
-                    # Solid color background
-                    bg_rgb = tuple(int(background_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-                    img = Image.new('RGB', (img_width, img_height), bg_rgb)
-                    text_color = tuple(int(title_color.lstrip('#')[i:i+2], 16) for i in (0, 2, 4))
-                
-                # Create drawing context
-                draw = ImageDraw.Draw(img)
-                
-                # Try to load fonts with appropriate sizes
-                try:
-                    # Scale fonts proportionally to image size
-                    title_font_size = int(img_width * 0.1)  # 10% of width
-                    subtitle_font_size = int(img_width * 0.05)  # 5% of width
-                    author_font_size = int(img_width * 0.06)  # 6% of width
+                    subtitle_html_saved = f'<div class="subtitle">{subtitle}</div>' if subtitle else ''
                     
-                    # Try to load the selected font
-                    title_font_obj = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf", title_font_size)
-                    subtitle_font_obj = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf", subtitle_font_size)
-                    author_font_obj = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSerif-Regular.ttf", author_font_size)
-                except:
-                    # Fallback to default font
-                    title_font_obj = ImageFont.load_default()
-                    subtitle_font_obj = ImageFont.load_default()
-                    author_font_obj = ImageFont.load_default()
+                    full_html = f'''<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>Book Cover - {title}</title>
+    <style>
+        body {{ margin:0; padding:0; display:flex; justify-content:center; align-items:center; min-height:100vh; background:#f0f0f0; }}
+        .cover-container {{ width:600px; height:900px; position:relative; }}
+        .cover {{
+            width:100%;
+            height:100%;
+            background-color:{background_color};
+            border:2px solid #333;
+            border-radius:10px;
+            display:flex;
+            flex-direction:column;
+            justify-content:space-between;
+            padding:50px 30px;
+            box-sizing:border-box;
+            box-shadow:0 10px 20px rgba(0,0,0,0.3);
+        }}
+        .title {{
+            font-family:{title_font}, sans-serif;
+            color:{title_color};
+            font-size:72px;
+            margin:0;
+            line-height:1.2;
+            text-align:center;
+        }}
+        .subtitle {{
+            font-family:{title_font}, sans-serif;
+            color:{title_color};
+            font-size:32px;
+            margin:20px 0 0 0;
+            font-weight:normal;
+            text-align:center;
+        }}
+        .author {{
+            font-family:{title_font}, sans-serif;
+            color:{title_color};
+            font-size:36px;
+            margin:0;
+            text-align:center;
+        }}
+    </style>
+</head>
+<body>
+    <div class="cover-container">
+        <div class="cover">
+            <div>
+                <div class="title">{title}</div>
+                {subtitle_html_saved}
+            </div>
+            <div class="author">by {author}</div>
+        </div>
+    </div>
+</body>
+</html>'''
                 
-                # Draw title (centered, top third)
-                bbox = draw.textbbox((0, 0), title, font=title_font_obj)
-                title_width = bbox[2] - bbox[0]
-                title_x = (img_width - title_width) // 2
-                title_y = img_height // 3 - 50
-                draw.text((title_x, title_y), title, fill=text_color, font=title_font_obj)
-                
-                # Draw subtitle if exists
-                if subtitle:
-                    bbox = draw.textbbox((0, 0), subtitle, font=subtitle_font_obj)
-                    subtitle_width = bbox[2] - bbox[0]
-                    subtitle_x = (img_width - subtitle_width) // 2
-                    subtitle_y = title_y + 100
-                    draw.text((subtitle_x, subtitle_y), subtitle, fill=text_color, font=subtitle_font_obj)
-                
-                # Draw author (centered, near bottom)
-                author_text = f"by {author}"
-                bbox = draw.textbbox((0, 0), author_text, font=author_font_obj)
-                author_width = bbox[2] - bbox[0]
-                author_x = (img_width - author_width) // 2
-                author_y = img_height - 200
-                draw.text((author_x, author_y), author_text, fill=text_color, font=author_font_obj)
-                
-                # Save the complete cover image
-                cover_filename = f"uploads/covers/{st.session_state.user_id}_cover_complete.jpg"
+                # Save HTML file
+                html_filename = f"uploads/covers/{st.session_state.user_id}_cover.html"
                 os.makedirs("uploads/covers", exist_ok=True)
-                
-                # Convert to RGB if needed and save
-                if img.mode == 'RGBA':
-                    rgb_img = Image.new('RGB', img.size, (255, 255, 255))
-                    rgb_img.paste(img, mask=img.split()[3])
-                    rgb_img.save(cover_filename, 'JPEG', quality=95)
-                else:
-                    img.save(cover_filename, 'JPEG', quality=95)
-                
-                # Create thumbnail
-                thumb_filename = f"uploads/covers/{st.session_state.user_id}_cover_thumb.jpg"
-                thumbnail = Image.open(cover_filename)
-                thumbnail.thumbnail((300, 450), Image.Resampling.LANCZOS)
-                thumbnail.save(thumb_filename, 'JPEG', quality=85)
+                with open(html_filename, 'w') as f:
+                    f.write(full_html)
                 
                 # Update user account with cover design data
                 if 'cover_design' not in st.session_state.user_account:
@@ -860,46 +918,37 @@ def show_cover_designer():
                     "title_font": title_font,
                     "title_color": title_color,
                     "background_color": background_color,
-                    "cover_image": cover_filename,
-                    "cover_thumbnail": thumb_filename,
+                    "cover_html": html_filename,
                     "last_updated": datetime.now().isoformat()
                 })
                 
+                # Also save the background image if uploaded
+                if uploaded_cover:
+                    img_path = f"uploads/covers/{st.session_state.user_id}_cover_bg.jpg"
+                    with open(img_path, 'wb') as f:
+                        f.write(uploaded_cover.getbuffer())
+                    st.session_state.user_account['cover_design']['cover_image'] = img_path
+                
                 save_account_data(st.session_state.user_account)
                 
-                st.success("✅ Cover design saved successfully!")
+                # Success message with download button
+                st.success("✅ Cover HTML saved successfully!")
+                
+                # Offer immediate download to verify
+                st.download_button(
+                    label="📥 Download Cover HTML (open in browser to verify)",
+                    data=full_html,
+                    file_name=f"my_cover_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
+                    mime="text/html",
+                    use_container_width=True
+                )
+                
                 st.balloons()
                 time.sleep(2)
                 st.rerun()
                 
             except Exception as e:
-                st.error(f"Error generating cover: {str(e)}")
-                # Fallback to saving just the data
-                if 'cover_design' not in st.session_state.user_account:
-                    st.session_state.user_account['cover_design'] = {}
-                
-                st.session_state.user_account['cover_design'].update({
-                    "title": title,
-                    "subtitle": subtitle,
-                    "author": author,
-                    "cover_type": cover_type,
-                    "title_font": title_font,
-                    "title_color": title_color,
-                    "background_color": background_color,
-                    "last_updated": datetime.now().isoformat()
-                })
-                
-                if uploaded_cover:
-                    cover_path = f"uploads/covers/{st.session_state.user_id}_cover_bg.jpg"
-                    os.makedirs("uploads/covers", exist_ok=True)
-                    with open(cover_path, 'wb') as f:
-                        f.write(uploaded_cover.getbuffer())
-                    st.session_state.user_account['cover_design']['cover_image'] = cover_path
-                
-                save_account_data(st.session_state.user_account)
-                st.warning("Cover data saved (image generation had issues)")
-                time.sleep(2)
-                st.rerun()
+                st.error(f"Error saving cover: {str(e)}")
     
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
