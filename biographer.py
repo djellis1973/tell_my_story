@@ -2805,6 +2805,10 @@ if st.session_state.get('show_profile_setup', False):
 # ============================================================================
 # MODAL HANDLING
 # ============================================================================
+if st.session_state.get('show_publisher', False):
+    # The publisher page handles itself, we just need to let it run
+    pass  # This will be handled by the publisher section above
+
 if st.session_state.show_ai_rewrite and st.session_state.current_rewrite_data:
     show_ai_rewrite_modal()
     st.stop()
