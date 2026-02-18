@@ -23,11 +23,6 @@ from fpdf import FPDF
 import zipfile
 
 # ============================================================================
-# IMPORT FROM PUBLISHER FOR COVER DESIGNER
-# ============================================================================
-from biography_publisher import show_cover_designer, cover_selection_dialog, generate_docx_with_cover, generate_html_with_cover, generate_zip_with_cover
-
-# ============================================================================
 # IMPORT QUILL RICH TEXT EDITOR
 # ============================================================================
 try:
@@ -85,7 +80,7 @@ default_state = {
     "confirm_delete": None, "user_account": None, "show_profile_setup": False,
     "image_handler": None, "show_image_manager": False,
     "current_rewrite_data": None, "show_ai_rewrite": False, "show_ai_rewrite_menu": False,
-    "editor_content": {}, "show_privacy_settings": False,
+    "editor_content": {}, "show_privacy_settings": False, "show_cover_designer": False,
     "beta_feedback_display": None, "beta_feedback_storage": {}
 }
 for key, value in default_state.items():
@@ -575,6 +570,183 @@ def show_privacy_settings():
     if st.button("💾 Save Privacy Settings", type="primary", width='stretch'):
         save_account_data(st.session_state.user_account)
         st.success("Privacy settings saved!")
+        time.sleep(1)
+        st.rerun()
+    
+    st.markdown('</div>', unsafe_allow_html=True)
+    st.stop()
+
+# ============================================================================
+# SIMPLE COVER DESIGNER - Loads saved cover when opened
+# ============================================================================
+def show_cover_designer():
+    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
+    st.title("🎨 Cover Designer")
+    
+    if st.button("← Back", key="cover_back"):
+        st.session_state.show_cover_designer = False
+        st.rerun()
+    
+    st.markdown("### Design your book cover - Portrait format (6\" x 9\")")
+    
+    # Load existing cover design if it exists
+    saved_cover = st.session_state.user_account.get('cover_design', {}) if st.session_state.user_account else {}
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.markdown("**Cover Options**")
+        
+        # Editable title - load saved value if exists
+        default_title = f"{st.session_state.user_account.get('profile', {}).get('first_name', 'My')}'s Story"
+        title = st.text_input("Book Title", value=saved_cover.get('title', default_title))
+        
+        # Editable subtitle - load saved value if exists
+        subtitle = st.text_input("Subtitle (optional)", value=saved_cover.get('subtitle', ''), placeholder="A brief subtitle or tagline")
+        
+        # Editable author name - load saved value if exists
+        default_author = f"{st.session_state.user_account.get('profile', {}).get('first_name', '')} {st.session_state.user_account.get('profile', {}).get('last_name', '')}".strip()
+        author = st.text_input("Author Name", value=saved_cover.get('author', default_author if default_author else "Author Name"))
+        
+        cover_type = st.selectbox("Cover Style", ["Simple", "Elegant", "Modern", "Classic", "Vintage"], 
+                                 index=["Simple", "Elegant", "Modern", "Classic", "Vintage"].index(saved_cover.get('cover_type', 'Simple')))
+        title_font = st.selectbox("Title Font", ["Georgia", "Arial", "Times New Roman", "Helvetica", "Calibri"],
+                                 index=["Georgia", "Arial", "Times New Roman", "Helvetica", "Calibri"].index(saved_cover.get('title_font', 'Georgia')))
+        title_color = st.color_picker("Title Color", value=saved_cover.get('title_color', '#000000'))
+        background_color = st.color_picker("Background Color", value=saved_cover.get('background_color', '#FFFFFF'))
+        
+        # Show saved image if exists
+        if saved_cover.get('cover_image') and os.path.exists(saved_cover['cover_image']):
+            st.markdown("**Current Cover Image:**")
+            st.image(saved_cover['cover_image'], width=250)
+            st.markdown("---")
+            st.markdown("**Upload New Image (optional):**")
+        
+        uploaded_cover = st.file_uploader("Upload Cover Image (optional)", type=['jpg', 'jpeg', 'png'])
+        if uploaded_cover:
+            st.image(uploaded_cover, caption="New cover image", width=250)
+    
+    with col2:
+        st.markdown("**Preview (6\" x 9\" portrait)**")
+        
+        # Create a taller container for the preview
+        preview_height = 700
+        
+        # Use uploaded image first, then saved image, then none
+        if uploaded_cover:
+            img_bytes = uploaded_cover.getvalue()
+            img_base64 = base64.b64encode(img_bytes).decode()
+            use_image = True
+        elif saved_cover.get('cover_image') and os.path.exists(saved_cover['cover_image']):
+            with open(saved_cover['cover_image'], 'rb') as f:
+                img_bytes = f.read()
+            img_base64 = base64.b64encode(img_bytes).decode()
+            use_image = True
+        else:
+            use_image = False
+        
+        if use_image:
+            # Build subtitle HTML if provided
+            subtitle_html = f'<h2 style="font-family:{title_font}; color:white; font-size:24px; margin:5px 0 0 0; text-shadow:2px 2px 4px black;">{subtitle}</h2>' if subtitle else ''
+            
+            html_content = f'''
+            <div style="width:100%; max-width:450px; margin:0 auto; padding:10px;">
+                <div style="
+                    width:100%;
+                    aspect-ratio:600/900;
+                    background-image:url('data:image/jpeg;base64,{img_base64}');
+                    background-size:cover;
+                    background-position:center;
+                    border:2px solid #ddd;
+                    border-radius:10px;
+                    overflow:hidden;
+                    position:relative;
+                    box-shadow:0 4px 8px rgba(0,0,0,0.1);
+                ">
+                    <div style="
+                        position:absolute;
+                        top:0;
+                        left:0;
+                        width:100%;
+                        height:100%;
+                        background:rgba(0,0,0,0.3);
+                        display:flex;
+                        flex-direction:column;
+                        justify-content:space-between;
+                        padding:30px 20px;
+                        box-sizing:border-box;
+                    ">
+                        <div style="text-align:center;">
+                            <h1 style="font-family:{title_font}; color:white; font-size:48px; margin:0; text-shadow:2px 2px 4px black;">{title}</h1>
+                            {subtitle_html}
+                        </div>
+                        <div style="text-align:center;">
+                            <p style="font-family:{title_font}; color:white; font-size:24px; margin:0; text-shadow:1px 1px 2px black;">by {author}</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            '''
+        else:
+            # Build subtitle HTML if provided
+            subtitle_html = f'<h2 style="font-family:{title_font}; color:{title_color}; font-size:24px; margin:5px 0 0 0;">{subtitle}</h2>' if subtitle else ''
+            
+            html_content = f'''
+            <div style="width:100%; max-width:450px; margin:0 auto; padding:10px;">
+                <div style="
+                    width:100%;
+                    aspect-ratio:600/900;
+                    background-color:{background_color};
+                    border:2px solid #ddd;
+                    border-radius:10px;
+                    display:flex;
+                    flex-direction:column;
+                    justify-content:space-between;
+                    padding:30px 20px;
+                    box-sizing:border-box;
+                    box-shadow:0 4px 8px rgba(0,0,0,0.1);
+                ">
+                    <div style="text-align:center;">
+                        <h1 style="font-family:{title_font}; color:{title_color}; font-size:48px; margin:0;">{title}</h1>
+                        {subtitle_html}
+                    </div>
+                    <div style="text-align:center;">
+                        <p style="font-family:{title_font}; color:{title_color}; font-size:24px; margin:0;">by {author}</p>
+                    </div>
+                </div>
+            </div>
+            '''
+        
+        # Use st.components.v1.html with more height
+        from streamlit.components.v1 import html
+        html(html_content, height=preview_height)
+        
+        st.caption("6\" wide × 9\" tall (portrait format)")
+    
+    if st.button("💾 Save Cover Design", type="primary", use_container_width=True):
+        if 'cover_design' not in st.session_state.user_account:
+            st.session_state.user_account['cover_design'] = {}
+        
+        st.session_state.user_account['cover_design'].update({
+            "title": title,
+            "subtitle": subtitle,
+            "author": author,
+            "cover_type": cover_type,
+            "title_font": title_font,
+            "title_color": title_color,
+            "background_color": background_color,
+            "last_updated": datetime.now().isoformat()
+        })
+        
+        if uploaded_cover:
+            cover_path = f"uploads/covers/{st.session_state.user_id}_cover.jpg"
+            os.makedirs("uploads/covers", exist_ok=True)
+            with open(cover_path, 'wb') as f:
+                f.write(uploaded_cover.getbuffer())
+            st.session_state.user_account['cover_design']['cover_image'] = cover_path
+        
+        save_account_data(st.session_state.user_account)
+        st.success("Cover design saved!")
         time.sleep(1)
         st.rerun()
     
@@ -2338,7 +2510,134 @@ def show_bank_editor():
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================================
-# HTML GENERATION FUNCTION (keeping for backward compatibility)
+# PDF GENERATION FUNCTIONS
+# ============================================================================
+class PDF(FPDF):
+    def header(self):
+        if self.page_no() > 1:
+            self.set_font('Arial', 'I', 8)
+            self.cell(0, 10, 'Tell My Story', 0, 0, 'L')
+            self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'R')
+            self.ln(15)
+    
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        self.cell(0, 10, 'Generated by Tell My Story', 0, 0, 'C')
+
+def generate_pdf(book_title, author_name, stories, format_style, include_toc, include_dates):
+    pdf = PDF()
+    pdf.add_page()
+    
+    pdf.set_fill_color(102, 126, 234)
+    pdf.rect(0, 0, 210, 297, 'F')
+    pdf.set_text_color(255, 255, 255)
+    
+    safe_title = ''.join(c for c in book_title if ord(c) < 128)
+    safe_author = ''.join(c for c in author_name if ord(c) < 128)
+    
+    pdf.set_font('Arial', 'B', 30)
+    pdf.cell(0, 40, '', 0, 1)
+    pdf.cell(0, 20, safe_title if safe_title else 'My Story', 0, 1, 'C')
+    pdf.set_font('Arial', '', 16)
+    pdf.cell(0, 10, f'by {safe_author}' if safe_author else 'by Author', 0, 1, 'C')
+    pdf.set_font('Arial', '', 12)
+    pdf.cell(0, 10, 'Generated by Tell My Story', 0, 1, 'C')
+    pdf.add_page()
+    
+    pdf.set_text_color(0, 0, 0)
+    pdf.set_font('Arial', '', 11)
+    
+    for story in stories:
+        question = story.get('question', '')
+        answer = story.get('answer_text', '')
+        
+        safe_q = ''.join(c for c in question if ord(c) < 128)
+        safe_a = ''.join(c for c in answer if ord(c) < 128)
+        
+        pdf.set_font('Arial', 'B', 12)
+        pdf.multi_cell(0, 6, safe_q)
+        pdf.ln(2)
+        pdf.set_font('Arial', '', 11)
+        pdf.multi_cell(0, 6, safe_a)
+        pdf.ln(5)
+    
+    return pdf.output(dest='S').encode('latin-1', 'ignore')
+
+# ============================================================================
+# DOCX GENERATION FUNCTIONS
+# ============================================================================
+def generate_docx(book_title, author_name, stories, format_style, include_toc, include_dates):
+    doc = Document()
+    
+    title = doc.add_heading(book_title, 0)
+    title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    author = doc.add_paragraph(f'by {author_name}')
+    author.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    date_para = doc.add_paragraph(f'Generated on {datetime.now().strftime("%B %d, %Y")}')
+    date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    doc.add_page_break()
+    
+    if include_toc:
+        doc.add_heading('Table of Contents', 1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        if isinstance(stories, list):
+            current_session = None
+            for i, story in enumerate(stories, 1):
+                session_id = story.get('session_id', '1')
+                if session_id != current_session:
+                    session_title = story.get('session_title', f'Session {session_id}')
+                    doc.add_heading(session_title, 2)
+                    current_session = session_id
+                question = story.get('question', f'Story {i}')
+                p = doc.add_paragraph(f'{i}. {question}')
+                p.style = 'List Bullet'
+        doc.add_page_break()
+    
+    if isinstance(stories, list):
+        current_session = None
+        story_counter = 1
+        for story in stories:
+            session_id = story.get('session_id', '1')
+            if session_id != current_session:
+                session_title = story.get('session_title', f'Session {session_id}')
+                doc.add_heading(session_title, 1)
+                current_session = session_id
+            question = story.get('question', '')
+            answer_text = story.get('answer_text', '')
+            images = story.get('images', [])
+            
+            if format_style == 'interview':
+                doc.add_heading(f'Q: {question}', 3)
+                doc.add_paragraph(answer_text)
+            elif format_style == 'biography':
+                doc.add_paragraph(answer_text)
+            else:
+                doc.add_heading(f'Chapter {story_counter}: {question}', 2)
+                doc.add_paragraph(answer_text)
+            
+            for img_data in images:
+                b64 = img_data.get('base64')
+                caption = img_data.get('caption', '')
+                if b64:
+                    try:
+                        img_bytes = base64.b64decode(b64)
+                        img_stream = io.BytesIO(img_bytes)
+                        doc.add_picture(img_stream, width=Inches(4))
+                        if caption:
+                            cap = doc.add_paragraph(caption)
+                            cap.style = 'Caption'
+                    except:
+                        pass
+            doc.add_paragraph()
+            story_counter += 1
+    
+    docx_bytes = io.BytesIO()
+    doc.save(docx_bytes)
+    docx_bytes.seek(0)
+    return docx_bytes
+
+# ============================================================================
+# HTML GENERATION FUNCTION
 # ============================================================================
 def generate_html(book_title, author_name, stories):
     html = f"""<!DOCTYPE html>
@@ -2384,7 +2683,7 @@ def generate_html(book_title, author_name, stories):
     return html
 
 # ============================================================================
-# ZIP GENERATION FUNCTION (keeping for backward compatibility)
+# ZIP GENERATION FUNCTION
 # ============================================================================
 def generate_zip(book_title, author_name, stories):
     zip_buffer = io.BytesIO()
@@ -2682,6 +2981,10 @@ if st.session_state.show_privacy_settings:
     show_privacy_settings()
     st.stop()
 
+if st.session_state.show_cover_designer:
+    show_cover_designer()
+    st.stop()
+
 # For modals that have their own navigation/close buttons, we need to be careful
 # Only stop if the modal is actually being displayed, not when it's being closed
 if st.session_state.show_bank_manager:
@@ -2753,9 +3056,8 @@ with st.sidebar:
             st.session_state.show_privacy_settings = True
             st.rerun()
     with col2:
-        if st.button("🎨 Cover Designer", width='stretch'):
+        if st.button("🎨 Cover", width='stretch'):
             st.session_state.show_cover_designer = True
-            show_cover_designer()
             st.rerun()
     
     st.divider()
@@ -2895,56 +3197,36 @@ with st.sidebar:
             
             with col1:
                 if st.button("📊 DOCX", type="primary", width='stretch'):
-                    cover_choice = cover_selection_dialog("docx")
-                    if cover_choice:
-                        with st.spinner("Creating Word document..."):
-                            docx_bytes = generate_docx_with_cover(
-                                book_title, 
-                                author_name, 
-                                export_data,
-                                cover_choice
-                            )
-                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
-                            st.download_button(
-                                label="📥 Download DOCX", 
-                                data=docx_bytes, 
-                                file_name=filename,
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
-                                width='stretch', 
-                                key="docx_download"
-                            )
+                    with st.spinner("Creating Word document..."):
+                        docx_bytes = generate_docx(
+                            book_title, author_name, export_data, format_style, include_toc, include_dates
+                        )
+                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
+                        st.download_button(
+                            label="📥 Download DOCX", data=docx_bytes, file_name=filename,
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                            width='stretch', key="docx_download"
+                        )
 
             with col2:
                 if st.button("🌐 HTML", type="primary", width='stretch'):
-                    cover_choice = cover_selection_dialog("html")
-                    if cover_choice:
-                        with st.spinner("Creating HTML page..."):
-                            html_content = generate_html_with_cover(book_title, author_name, export_data, cover_choice)
-                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
-                            st.download_button(
-                                label="📥 Download HTML", 
-                                data=html_content, 
-                                file_name=filename,
-                                mime="text/html", 
-                                width='stretch', 
-                                key="html_download"
-                            )
+                    with st.spinner("Creating HTML page..."):
+                        html_content = generate_html(book_title, author_name, export_data)
+                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
+                        st.download_button(
+                            label="📥 Download HTML", data=html_content, file_name=filename,
+                            mime="text/html", width='stretch', key="html_download"
+                        )
 
             with col3:
                 if st.button("📦 ZIP", type="primary", width='stretch'):
-                    cover_choice = cover_selection_dialog("zip")
-                    if cover_choice:
-                        with st.spinner("Creating ZIP package..."):
-                            zip_data = generate_zip_with_cover(book_title, author_name, export_data, cover_choice)
-                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.zip"
-                            st.download_button(
-                                label="📥 Download ZIP", 
-                                data=zip_data, 
-                                file_name=filename,
-                                mime="application/zip", 
-                                width='stretch', 
-                                key="zip_download"
-                            )
+                    with st.spinner("Creating ZIP package..."):
+                        zip_data = generate_zip(book_title, author_name, export_data)
+                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.zip"
+                        st.download_button(
+                            label="📥 Download ZIP", data=zip_data, file_name=filename,
+                            mime="application/zip", width='stretch', key="zip_download"
+                        )
         else: 
             st.warning("No stories yet! Start writing to publish.")
     else: 
@@ -3777,5 +4059,6 @@ if st.session_state.user_account:
     st.caption(f"Tell My Story Timeline • 👤 {profile['first_name']} {profile['last_name']} • 📅 Account Age: {age} days • 📚 Bank: {st.session_state.get('current_bank_name', 'None')}")
 else: 
     st.caption(f"Tell My Story Timeline • User: {st.session_state.user_id}")
+
 
 
