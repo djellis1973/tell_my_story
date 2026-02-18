@@ -1,9 +1,8 @@
-# biography_publisher.py – DOCX & HTML with image upload for covers
+# biography_publisher.py – COMPLETE VERSION (NO SIDEBAR)
 import streamlit as st
 import json
 import base64
 from datetime import datetime
-import re
 import os
 import io
 from docx import Document
@@ -12,12 +11,9 @@ from docx.enum.text import WD_ALIGN_PARAGRAPH
 import time
 
 # ============================================================================
-# CELEBRATION BALLOONS FUNCTION
+# CELEBRATION BALLOONS
 # ============================================================================
 def show_celebration():
-    """Show animated balloons when book is successfully generated"""
-    st.session_state.balloons_shown = True
-    
     balloons_html = """
     <style>
     @keyframes float {
@@ -76,56 +72,40 @@ def show_celebration():
         100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
     }
     </style>
-    <div class="celebration-message">
-        🎉 Congratulations! 🎉<br>
-        <span style="font-size: 24px;">Your book has been published!</span>
-    </div>
-    <div class="balloon"></div>
-    <div class="balloon"></div>
-    <div class="balloon"></div>
-    <div class="balloon"></div>
-    <div class="balloon"></div>
-    <div class="balloon"></div>
-    <div class="balloon"></div>
-    <div class="balloon"></div>
-    <div class="balloon"></div>
-    <div class="balloon"></div>
+    <div class="celebration-message">🎉 Congratulations! 🎉<br><span style="font-size: 24px;">Your book has been published!</span></div>
+    <div class="balloon"></div><div class="balloon"></div><div class="balloon"></div><div class="balloon"></div><div class="balloon"></div>
+    <div class="balloon"></div><div class="balloon"></div><div class="balloon"></div><div class="balloon"></div><div class="balloon"></div>
     """
     st.components.v1.html(balloons_html, height=0)
     time.sleep(0.5)
     st.balloons()
 
 # ============================================================================
-# DOCX GENERATION WITH IMAGE COVER
+# DOCX GENERATION
 # ============================================================================
 def generate_docx(book_title, author_name, stories, format_style, include_toc=True, include_dates=False, cover_image=None):
-    """Generate DOCX with optional cover image"""
     doc = Document()
     
-    # Add cover image if provided
-    if cover_image:
+    # COVER: Use uploaded image OR simple text
+    if cover_image is not None:
         try:
             img_stream = io.BytesIO(cover_image)
             doc.add_picture(img_stream, width=Inches(6))
             doc.add_page_break()
-        except Exception as e:
-            # Fallback to text title
+        except:
             title = doc.add_heading(book_title, 0)
             title.alignment = WD_ALIGN_PARAGRAPH.CENTER
             author = doc.add_paragraph(f'by {author_name}')
             author.alignment = WD_ALIGN_PARAGRAPH.CENTER
             doc.add_page_break()
     else:
-        # Text title only
         title = doc.add_heading(book_title, 0)
         title.alignment = WD_ALIGN_PARAGRAPH.CENTER
         author = doc.add_paragraph(f'by {author_name}')
         author.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        date_para = doc.add_paragraph(f'Generated on {datetime.now().strftime("%B %d, %Y")}')
-        date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         doc.add_page_break()
     
-    # Table of Contents
+    # TOC
     if include_toc and stories:
         doc.add_heading('Table of Contents', 1).alignment = WD_ALIGN_PARAGRAPH.CENTER
         current_session = None
@@ -143,7 +123,6 @@ def generate_docx(book_title, author_name, stories, format_style, include_toc=Tr
     # Content
     if stories:
         current_session = None
-        story_counter = 1
         for story in stories:
             session_id = story.get('session_id', '1')
             if session_id != current_session:
@@ -161,7 +140,6 @@ def generate_docx(book_title, author_name, stories, format_style, include_toc=Tr
             else:
                 doc.add_paragraph(answer_text)
             
-            # Embed story images
             for img_data in images:
                 b64 = img_data.get('base64')
                 caption = img_data.get('caption', '')
@@ -173,10 +151,9 @@ def generate_docx(book_title, author_name, stories, format_style, include_toc=Tr
                         if caption:
                             cap = doc.add_paragraph(caption)
                             cap.style = 'Caption'
-                    except Exception as e:
-                        print(f"Could not embed image: {e}")
+                    except:
+                        pass
             doc.add_paragraph()
-            story_counter += 1
     
     docx_bytes = io.BytesIO()
     doc.save(docx_bytes)
@@ -184,31 +161,28 @@ def generate_docx(book_title, author_name, stories, format_style, include_toc=Tr
     return docx_bytes
 
 # ============================================================================
-# HTML GENERATION WITH IMAGE COVER
+# HTML GENERATION
 # ============================================================================
 def generate_html(book_title, author_name, stories, format_style, include_toc=True, include_dates=False, cover_image=None):
-    """Generate HTML with optional cover image"""
     
-    # Cover HTML
-    cover_html = ""
-    if cover_image:
+    # COVER: Use uploaded image OR simple gradient
+    if cover_image is not None:
         img_b64 = base64.b64encode(cover_image).decode()
         cover_html = f'''
-        <div style="text-align:center; margin:0 auto 40px auto; max-width:800px;">
-            <img src="data:image/jpeg;base64,{img_b64}" style="width:100%; max-width:600px; box-shadow:0 10px 20px rgba(0,0,0,0.3); border-radius:5px;">
+        <div style="text-align:center; margin:0 auto 40px auto;">
+            <img src="data:image/jpeg;base64,{img_b64}" style="width:100%; max-width:600px; box-shadow:0 10px 20px rgba(0,0,0,0.3);">
         </div>
-        <hr style="margin:40px 0;">
+        <hr>
         '''
     else:
         cover_html = f'''
         <div class="book-header">
             <h1>{book_title}</h1>
             <div class="author">by {author_name}</div>
-            <div class="date">Generated on {datetime.now().strftime("%B %d, %Y")}</div>
         </div>
         '''
     
-    # Build TOC
+    # TOC
     toc_html = ""
     if include_toc and stories:
         toc_html = "<h2>Table of Contents</h2><ul class='toc'>"
@@ -223,7 +197,7 @@ def generate_html(book_title, author_name, stories, format_style, include_toc=Tr
             toc_html += f"<li class='toc-story'><a href='#story-{i}'>{i}. {question}</a></li>"
         toc_html += "</ul><hr>"
     
-    # Build content
+    # Content
     content_html = ""
     current_session = None
     for i, story in enumerate(stories, 1):
@@ -238,12 +212,10 @@ def generate_html(book_title, author_name, stories, format_style, include_toc=Tr
         images = story.get('images', [])
         
         content_html += f"<div class='story' id='story-{i}'>"
-        
         if format_style == 'interview':
             content_html += f"<h2 class='question'>Q: {question}</h2>"
         
-        paragraphs = answer_text.split('\n')
-        for p in paragraphs:
+        for p in answer_text.split('\n'):
             if p.strip():
                 content_html += f"<p>{p}</p>"
         
@@ -255,140 +227,51 @@ def generate_html(book_title, author_name, stories, format_style, include_toc=Tr
                 if b64:
                     content_html += f"""
                     <div class='image-item'>
-                        <img src='data:image/jpeg;base64,{b64}' alt='{caption}'>
+                        <img src='data:image/jpeg;base64,{b64}'>
                         <div class='image-caption'>📝 {caption}</div>
                     </div>
                     """
             content_html += "</div>"
-        
         content_html += "</div><hr>"
     
-    # Complete HTML
+    # Final HTML
     html = f"""<!DOCTYPE html>
 <html>
-<head>
-    <meta charset="UTF-8">
-    <title>{book_title}</title>
-    <style>
-        body {{
-            font-family: 'Georgia', serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 40px 20px;
-            background: #fafafa;
-            color: #333;
-            line-height: 1.6;
-        }}
-        .book-header {{
-            text-align: center;
-            padding: 60px 0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            margin: -40px -20px 40px -20px;
-            border-radius: 0 0 20px 20px;
-        }}
-        .session-title {{
-            color: #764ba2;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 10px;
-            margin-top: 40px;
-        }}
-        .question {{
-            color: #667eea;
-            font-style: italic;
-        }}
-        .image-gallery {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            margin: 20px 0;
-        }}
-        .image-item {{
-            flex: 1 1 300px;
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }}
-        .image-item img {{
-            max-width: 100%;
-            height: auto;
-            border-radius: 5px;
-        }}
-        .image-caption {{
-            text-align: center;
-            font-size: 14px;
-            color: #666;
-            margin-top: 10px;
-            font-style: italic;
-        }}
-        .toc {{
-            background: white;
-            padding: 30px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            margin: 30px 0;
-        }}
-        .toc-session {{
-            font-weight: bold;
-            font-size: 18px;
-            margin-top: 15px;
-            color: #667eea;
-        }}
-        .toc-story {{
-            margin-left: 20px;
-        }}
-        .toc-story a {{
-            color: #333;
-            text-decoration: none;
-        }}
-        .toc-story a:hover {{
-            color: #667eea;
-            text-decoration: underline;
-        }}
-        hr {{
-            border: none;
-            border-top: 1px solid #ddd;
-            margin: 40px 0;
-        }}
-        .footer {{
-            text-align: center;
-            color: #999;
-            font-size: 12px;
-            margin-top: 60px;
-        }}
-    </style>
+<head><meta charset="UTF-8"><title>{book_title}</title>
+<style>
+    body {{ font-family: Georgia, serif; max-width: 800px; margin: 0 auto; padding: 40px 20px; background: #fafafa; }}
+    .book-header {{ text-align: center; padding: 60px 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; margin: -40px -20px 40px -20px; }}
+    .session-title {{ color: #764ba2; border-bottom: 2px solid #667eea; }}
+    .question {{ color: #667eea; font-style: italic; }}
+    .image-gallery {{ display: flex; flex-wrap: wrap; gap: 20px; }}
+    .image-item {{ flex: 1 1 300px; background: white; padding: 15px; border-radius: 10px; }}
+    .image-item img {{ max-width: 100%; }}
+    .toc {{ background: white; padding: 30px; border-radius: 10px; }}
+    .toc-session {{ font-weight: bold; color: #667eea; }}
+    hr {{ margin: 40px 0; }}
+</style>
 </head>
 <body>
     {cover_html}
-    
     {toc_html}
-    
-    <div class="content">
-        {content_html}
-    </div>
-    
-    <div class="footer">
-        Generated by Tell My Story • {datetime.now().year}
-    </div>
+    <div class="content">{content_html}</div>
+    <div class="footer" style="text-align:center; color:#999;">Generated by Tell My Story • {datetime.now().year}</div>
 </body>
 </html>"""
     return html
 
 # ============================================================================
-# MAIN PUBLISHER INTERFACE
+# MAIN - NO SIDEBAR, EVERYTHING IN MAIN SCREEN
 # ============================================================================
 def main():
     st.set_page_config(page_title="Biography Publisher", page_icon="📚", layout="wide")
     
     st.markdown("""
-    <style>
-        .main-header { text-align: center; padding: 2rem 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-                       margin: -1rem -1rem 2rem -1rem; border-radius: 0 0 20px 20px; color: white; }
-    </style>
+    <div style="text-align:center; padding:2rem; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); color:white; margin:-1rem -1rem 2rem -1rem;">
+        <h1>📚 Biography Publisher</h1>
+        <p>Upload a JPG - it becomes your cover</p>
+    </div>
     """, unsafe_allow_html=True)
-    
-    st.markdown('<div class="main-header"><h1>📚 Biography Publisher</h1><p>Publish your stories with a custom cover image</p></div>', unsafe_allow_html=True)
     
     # Initialize session state
     if 'stories_data' not in st.session_state:
@@ -404,50 +287,71 @@ def main():
     if 'uploaded_cover' not in st.session_state:
         st.session_state.uploaded_cover = None
     
-    # Sidebar
-    with st.sidebar:
-        st.header("📂 1. Upload Stories")
-        uploaded_file = st.file_uploader("Upload JSON from Tell My Story", type=['json'])
-        if uploaded_file:
-            try:
-                st.session_state.stories_data = json.load(uploaded_file)
-                st.success("✅ Uploaded successfully!")
-                user_profile = st.session_state.stories_data.get('user_profile', {})
-                if user_profile:
-                    first = user_profile.get('first_name', '')
-                    last = user_profile.get('last_name', '')
-                    if first and last:
-                        st.session_state.author_name = f"{first} {last}"
-                        st.session_state.book_title = f"The Story of {first} {last}"
-            except Exception as e:
-                st.error(f"Error loading file: {e}")
-        
-        st.divider()
-        st.header("🖼️ 2. Cover Image (Optional)")
-        uploaded_cover = st.file_uploader("Upload cover image", type=['jpg', 'jpeg', 'png'], key="cover_upload")
-        if uploaded_cover:
-            st.session_state.uploaded_cover = uploaded_cover.getvalue()
-            st.image(uploaded_cover, width=200, caption="Cover preview")
-        
-        st.divider()
-        st.header("⚙️ 3. Settings")
-        st.session_state.book_title = st.text_input("Book Title", value=st.session_state.book_title)
-        st.session_state.author_name = st.text_input("Author Name", value=st.session_state.author_name)
-        
-        st.session_state.format_style = st.radio(
-            "Format Style",
-            ["interview", "biography"],
-            format_func=lambda x: {"interview": "📝 Show Questions", "biography": "📖 Just Answers"}[x]
-        )
-        
-        st.session_state.include_toc = st.checkbox("Include Table of Contents", value=st.session_state.include_toc)
+    # ============================================================
+    # STEP 1: UPLOAD STORIES (MAIN SCREEN)
+    # ============================================================
+    st.markdown("### 📂 Step 1: Upload Your Stories")
+    uploaded_file = st.file_uploader("Upload JSON from Tell My Story", type=['json'])
+    if uploaded_file:
+        try:
+            st.session_state.stories_data = json.load(uploaded_file)
+            st.success("✅ Stories loaded successfully!")
+            user_profile = st.session_state.stories_data.get('user_profile', {})
+            if user_profile:
+                first = user_profile.get('first_name', '')
+                last = user_profile.get('last_name', '')
+                if first or last:
+                    st.session_state.author_name = f"{first} {last}".strip()
+                    st.session_state.book_title = f"The Story of {first} {last}".strip()
+        except Exception as e:
+            st.error(f"Error loading file: {e}")
     
-    # Main content
+    st.markdown("---")
+    
+    # ============================================================
+    # STEP 2: UPLOAD COVER IMAGE (MAIN SCREEN - NO SIDEBAR)
+    # ============================================================
+    st.markdown("### 🖼️ Step 2: Upload Cover Image (Optional)")
+    st.markdown("Upload any JPG or PNG - it will become your book cover")
+    
+    uploaded_cover = st.file_uploader("Choose an image file", type=['jpg', 'jpeg', 'png'], key="cover_upload_main")
+    if uploaded_cover:
+        st.session_state.uploaded_cover = uploaded_cover.getvalue()
+        st.image(uploaded_cover, width=300, caption="Your cover image")
+        st.success("✅ Cover image ready to use")
+    
+    st.markdown("---")
+    
+    # ============================================================
+    # STEP 3: BOOK SETTINGS (MAIN SCREEN)
+    # ============================================================
+    st.markdown("### ⚙️ Step 3: Book Settings")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.session_state.book_title = st.text_input("Book Title", value=st.session_state.book_title)
+    with col2:
+        st.session_state.author_name = st.text_input("Author Name", value=st.session_state.author_name)
+    
+    st.session_state.format_style = st.radio(
+        "Format Style",
+        ["interview", "biography"],
+        format_func=lambda x: "📝 Show Questions & Answers" if x == "interview" else "📖 Just Answers (Biography Style)",
+        horizontal=True
+    )
+    
+    st.session_state.include_toc = st.checkbox("Include Table of Contents", value=st.session_state.include_toc)
+    
+    st.markdown("---")
+    
+    # ============================================================
+    # STEP 4: GENERATE BOOK (MAIN SCREEN)
+    # ============================================================
     if st.session_state.stories_data:
         stories_data = st.session_state.stories_data
         stories = stories_data.get('stories', [])
         
-        # Summary
+        # Summary stats
         col1, col2, col3 = st.columns(3)
         with col1:
             st.metric("Total Stories", len(stories))
@@ -456,7 +360,7 @@ def main():
             st.metric("Sessions", sessions)
         with col3:
             total_images = sum(len(s.get('images', [])) for s in stories)
-            st.metric("Images", total_images)
+            st.metric("Images in Stories", total_images)
         
         # Preview
         with st.expander("📖 Preview Stories", expanded=False):
@@ -470,7 +374,7 @@ def main():
                 st.divider()
         
         # Generate buttons
-        st.subheader("📤 4. Generate Your Book")
+        st.markdown("### 📤 Step 4: Generate Your Book")
         col1, col2 = st.columns(2)
         
         with col1:
@@ -516,9 +420,8 @@ def main():
                         key="html_download"
                     )
                     show_celebration()
-    
     else:
-        st.info("👈 Start by uploading your stories JSON file using the sidebar")
+        st.info("👆 Start by uploading your stories JSON file above")
 
 if __name__ == "__main__":
     main()
