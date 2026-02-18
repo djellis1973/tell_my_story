@@ -1395,89 +1395,335 @@ if st.session_state.show_publisher:
 st.markdown(f'<div style="text-align:center;"><img src="{LOGO_URL}" style="max-width:300px;"></div>', unsafe_allow_html=True)
 
 # ============================================================================
-# SIDEBAR
+# SIDEBAR - COMPLETE VERSION WITH PUBLISHER BUTTON
 # ============================================================================
 with st.sidebar:
-    st.markdown('<div style="text-align:center;"><h2>Tell My Story</h2></div>', unsafe_allow_html=True)
+    st.markdown('<div class="sidebar-header"><h2>Tell My Story</h2><p>Your Life Timeline</p></div>', unsafe_allow_html=True)
     
-    if st.session_state.logged_in and st.session_state.user_account:
+    # ===== PROFILE SECTION =====
+    st.header("👤 Your Profile")
+    if st.session_state.user_account:
         profile = st.session_state.user_account['profile']
         st.success(f"✓ **{profile.get('first_name', '')} {profile.get('last_name', '')}**")
+    else:
+        st.info("Not logged in")
     
-    st.header("👤 Profile")
-    if st.button("📝 Edit Profile", use_container_width=True): 
-        st.session_state.show_profile_setup = True
-        st.rerun()
-    if st.button("🔒 Privacy", use_container_width=True):
-        st.session_state.show_privacy_settings = True
-        st.rerun()
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📝 Profile", use_container_width=True): 
+            st.session_state.show_profile_setup = True
+            st.rerun()
+    with col2:
+        if st.button("🔒 Privacy", use_container_width=True):
+            st.session_state.show_privacy_settings = True
+            st.rerun()
+    
     if st.button("🚪 Log Out", use_container_width=True): 
         logout_user()
     
     st.divider()
-    st.header("📚 Sessions")
     
-    for i, s in enumerate(st.session_state.current_question_bank):
-        sid = s["id"]
-        sdata = st.session_state.responses.get(sid, {})
-        answered = len(sdata.get("questions", {}))
-        total = len(s["questions"])
-        
-        if i == st.session_state.current_session:
-            status = "▶️ "
-        elif answered == total and total > 0:
-            status = "✅ "
-        elif answered > 0:
-            status = "🟡 "
-        else:
-            status = "⚪ "
-        
-        if st.button(f"{status}Session {i+1}: {s['title']}", key=f"nav_{i}", use_container_width=True):
-            st.session_state.current_session = i
-            st.session_state.current_question = 0
-            st.session_state.current_question_override = None
-            st.rerun()
-    
-    st.divider()
-    st.header("🎨 Publishing")
-    if st.button("📚 Publish Your Book", type="primary", use_container_width=True):
+    # ===== PUBLISHING SECTION =====
+    st.header("📚 Publishing")
+    if st.button("🎨 Publish Your Book", type="primary", use_container_width=True):
         st.session_state.show_publisher = True
         st.rerun()
     
+    # Show quick stats
+    if st.session_state.logged_in:
+        total_stories = 0
+        total_words = 0
+        for session in st.session_state.current_question_bank:
+            sid = session["id"]
+            if sid in st.session_state.responses:
+                total_stories += len(st.session_state.responses[sid].get("questions", {}))
+                for q_data in st.session_state.responses[sid].get("questions", {}).values():
+                    if q_data.get("answer"):
+                        text_only = re.sub(r'<[^>]+>', '', q_data["answer"])
+                        total_words += len(text_only.split())
+        
+        if total_stories > 0:
+            st.info(f"📝 {total_stories} stories • {total_words:,} words")
+    
     st.divider()
+    
+    # ===== SESSIONS SECTION =====
+    st.header("📖 Sessions")
+    
+    # Quick session navigation
+    sessions_per_row = 2
+    session_cols = st.columns(sessions_per_row)
+    
+    for i, session in enumerate(st.session_state.current_question_bank):
+        col_idx = i % sessions_per_row
+        with session_cols[col_idx]:
+            sid = session["id"]
+            sdata = st.session_state.responses.get(sid, {})
+            answered = len(sdata.get("questions", {}))
+            total = len(session["questions"])
+            
+            # Determine status emoji
+            if i == st.session_state.current_session:
+                status = "▶️"
+            elif answered == total and total > 0:
+                status = "✅"
+            elif answered > 0:
+                status = "🟡"
+            else:
+                status = "⚪"
+            
+            if st.button(f"{status} {i+1}", key=f"session_{i}", help=session["title"], use_container_width=True):
+                st.session_state.current_session = i
+                st.session_state.current_question = 0
+                st.session_state.current_question_override = None
+                st.rerun()
+    
+    # Session manager button
+    if st.button("📋 All Sessions", use_container_width=True):
+        st.session_state.show_session_manager = True
+        st.rerun()
+    
+    st.divider()
+    
+    # ===== TOPIC TOOLS SECTION =====
+    st.header("📝 Writing Tools")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📚 Topic Bank", use_container_width=True):
+            st.session_state.show_topic_browser = True
+            st.rerun()
+    with col2:
+        if st.button("📖 Vignettes", use_container_width=True):
+            st.session_state.show_vignette_manager = True
+            st.rerun()
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("✨ New Vignette", use_container_width=True):
+            import uuid
+            new_id = str(uuid.uuid4())[:8]
+            if 'vignette_manager' not in st.session_state:
+                try:
+                    from vignettes import VignetteManager
+                    st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
+                except:
+                    st.session_state.vignette_manager = None
+            
+            if st.session_state.vignette_manager:
+                st.session_state.vignette_manager.create_vignette_with_id(
+                    id=new_id,
+                    title="Untitled Vignette",
+                    content="<p>Write your story here...</p>",
+                    theme="Life Lesson",
+                    mood="Reflective",
+                    is_draft=True
+                )
+                st.session_state.editing_vignette_id = new_id
+                st.session_state.show_vignette_modal = True
+                st.rerun()
+    
+    with col2:
+        if st.button("📂 Import File", use_container_width=True):
+            # This will be handled in the main area
+            import_key = f"import_quill_{st.session_state.current_session}_{st.session_state.current_question}"
+            st.session_state[import_key] = True
+            st.rerun()
+    
+    st.divider()
+    
+    # ===== QUESTION BANK SECTION =====
+    st.header("📚 Question Banks")
+    
+    if st.button("📋 Bank Manager", use_container_width=True):
+        st.session_state.show_bank_manager = True
+        st.rerun()
+    
+    if st.session_state.get('current_bank_name'):
+        st.caption(f"Current: {st.session_state.current_bank_name}")
+    
+    st.divider()
+    
+    # ===== SEARCH SECTION =====
     st.header("🔍 Search")
-    search_query = st.text_input("Search stories...", placeholder="e.g., childhood, wedding")
+    
+    search_query = st.text_input("Search stories...", placeholder="e.g., childhood, wedding", label_visibility="collapsed")
+    
     if search_query and len(search_query) >= 2:
         results = search_all_answers(search_query)
         if results:
             st.success(f"Found {len(results)} matches")
-            for i, r in enumerate(results[:5]):
-                with st.expander(f"{r['session_title']}"):
-                    st.markdown(f"**{r['question']}**")
-                    st.markdown(f"{r['answer']}")
-                    if st.button(f"Go to this story", key=f"search_go_{i}"):
-                        for idx, s in enumerate(st.session_state.current_question_bank):
-                            if s["id"] == r['session_id']:
-                                st.session_state.current_session = idx
-                                st.session_state.current_question_override = r['question']
-                                st.rerun()
+            with st.container(height=300):
+                for i, r in enumerate(results[:10]):
+                    with st.container():
+                        st.markdown(f"**{r['session_title']}**")
+                        st.caption(f"{r['question'][:50]}...")
+                        if st.button(f"Go to story {i}", key=f"search_{i}", use_container_width=True):
+                            for idx, s in enumerate(st.session_state.current_question_bank):
+                                if s["id"] == r['session_id']:
+                                    st.session_state.current_session = idx
+                                    st.session_state.current_question_override = r['question']
+                                    st.rerun()
+                        st.divider()
+        else:
+            st.info("No matches found")
     
     st.divider()
-    st.header("📊 Stats")
-    total_answered = sum(len(st.session_state.responses.get(s["id"], {}).get("questions", {})) for s in st.session_state.current_question_bank)
-    total_questions = sum(len(s["questions"]) for s in st.session_state.current_question_bank)
-    total_words = sum(calculate_author_word_count(s["id"]) for s in st.session_state.current_question_bank)
     
-    st.metric("Stories Written", f"{total_answered}/{total_questions}")
-    st.metric("Total Words", f"{total_words:,}")
+    # ===== STATS SECTION =====
+    st.header("📊 Statistics")
+    
+    total_answered = 0
+    total_questions = 0
+    total_words = 0
+    
+    for session in st.session_state.current_question_bank:
+        sid = session["id"]
+        total_questions += len(session["questions"])
+        answered = len(st.session_state.responses.get(sid, {}).get("questions", {}))
+        total_answered += answered
+        
+        # Count words
+        if sid in st.session_state.responses:
+            for q_data in st.session_state.responses[sid].get("questions", {}).values():
+                if q_data.get("answer"):
+                    text_only = re.sub(r'<[^>]+>', '', q_data["answer"])
+                    total_words += len(text_only.split())
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.metric("Progress", f"{total_answered}/{total_questions}")
+    with col2:
+        st.metric("Words", f"{total_words:,}")
+    
+    # Progress bar
+    if total_questions > 0:
+        progress_pct = (total_answered / total_questions)
+        st.progress(progress_pct)
     
     st.divider()
-    st.header("⚠️ Clear Data")
-    if st.button("🗑️ Clear Current Session", use_container_width=True):
-        sid = st.session_state.current_question_bank[st.session_state.current_session]["id"]
-        st.session_state.responses[sid]["questions"] = {}
-        save_user_data(st.session_state.user_id, st.session_state.responses)
-        st.rerun()
+    
+    # ===== WORD TARGET SECTION =====
+    if st.session_state.current_session < len(st.session_state.current_question_bank):
+        current_session = st.session_state.current_question_bank[st.session_state.current_session]
+        current_session_id = current_session["id"]
+        progress_info = get_progress_info(current_session_id)
+        
+        st.header("🎯 Current Session")
+        st.caption(current_session["title"])
+        
+        st.metric("Word Count", f"{progress_info['current_count']}/{progress_info['target']}")
+        st.progress(min(progress_info['progress_percent'] / 100, 1.0))
+        
+        if st.button("✏️ Edit Target", use_container_width=True):
+            st.session_state.editing_word_target = not st.session_state.editing_word_target
+        
+        if st.session_state.editing_word_target:
+            new_target = st.number_input("Target:", min_value=100, max_value=5000, value=progress_info['target'])
+            if st.button("💾 Save", use_container_width=True):
+                st.session_state.responses[current_session_id]["word_target"] = new_target
+                save_user_data(st.session_state.user_id, st.session_state.responses)
+                st.session_state.editing_word_target = False
+                st.rerun()
+    
+    st.divider()
+    
+    # ===== EXPORT SECTION =====
+    st.header("📤 Export")
+    
+    if st.session_state.logged_in and total_answered > 0:
+        # Simple text export
+        if st.button("📝 Download as Text", use_container_width=True):
+            text_content = "Tell My Story - Life Timeline\n\n"
+            for session in st.session_state.current_question_bank:
+                sid = session["id"]
+                text_content += f"\n=== {session['title']} ===\n\n"
+                if sid in st.session_state.responses:
+                    for q, a in st.session_state.responses[sid].get("questions", {}).items():
+                        text_content += f"Q: {q}\n"
+                        text_content += f"A: {re.sub(r'<[^>]+>', '', a.get('answer', ''))}\n\n"
+            
+            st.download_button(
+                label="📥 Download TXT",
+                data=text_content,
+                file_name=f"tell_my_story_{datetime.now().strftime('%Y%m%d')}.txt",
+                mime="text/plain",
+                use_container_width=True,
+                key="txt_export"
+            )
+        
+        # JSON backup
+        if st.button("💾 JSON Backup", use_container_width=True):
+            backup_data = {
+                "user_id": st.session_state.user_id,
+                "export_date": datetime.now().isoformat(),
+                "responses": st.session_state.responses,
+                "profile": st.session_state.user_account.get('profile', {}) if st.session_state.user_account else {}
+            }
+            
+            st.download_button(
+                label="📥 Download JSON",
+                data=json.dumps(backup_data, indent=2),
+                file_name=f"backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
+                mime="application/json",
+                use_container_width=True,
+                key="json_export"
+            )
+    else:
+        st.caption("Write stories to enable export")
+    
+    st.divider()
+    
+    # ===== DANGER ZONE =====
+    st.header("⚠️ Danger Zone")
+    
+    if st.session_state.confirming_clear == "session":
+        st.warning("**Clear current session?**")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Yes", type="primary", use_container_width=True):
+                sid = st.session_state.current_question_bank[st.session_state.current_session]["id"]
+                st.session_state.responses[sid]["questions"] = {}
+                save_user_data(st.session_state.user_id, st.session_state.responses)
+                st.session_state.confirming_clear = None
+                st.rerun()
+        with col2:
+            if st.button("❌ No", use_container_width=True):
+                st.session_state.confirming_clear = None
+                st.rerun()
+    
+    elif st.session_state.confirming_clear == "all":
+        st.warning("**Clear ALL data?**")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Yes All", type="primary", use_container_width=True):
+                for s in st.session_state.current_question_bank:
+                    st.session_state.responses[s["id"]]["questions"] = {}
+                save_user_data(st.session_state.user_id, st.session_state.responses)
+                st.session_state.confirming_clear = None
+                st.rerun()
+        with col2:
+            if st.button("❌ No", use_container_width=True):
+                st.session_state.confirming_clear = None
+                st.rerun()
+    
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🗑️ Clear Session", use_container_width=True):
+                st.session_state.confirming_clear = "session"
+                st.rerun()
+        with col2:
+            if st.button("🔥 Clear All", use_container_width=True):
+                st.session_state.confirming_clear = "all"
+                st.rerun()
+    
+    st.divider()
+    
+    # ===== FOOTER =====
+    st.caption(f"Tell My Story v1.0")
+    if st.session_state.user_id:
+        st.caption(f"User: {st.session_state.user_id[:8]}...")
 
 # ============================================================================
 # MAIN CONTENT - CURRENT SESSION AND QUESTION
