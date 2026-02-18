@@ -244,6 +244,10 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
                 text-align: center;
                 margin-bottom: 50px;
                 page-break-after: always;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
             }}
             .cover-title {{
                 font-size: 48px;
@@ -263,6 +267,27 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
                 padding-top: 20px;
                 border-top: 1px solid #eee;
             }}
+            /* Styles for custom cover from designer */
+            .custom-cover {{
+                width: 100%;
+                height: 100%;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                align-items: center;
+            }}
+            .cover-image-container {{
+                max-width: 600px;
+                margin: 0 auto;
+            }}
+            .cover-image {{
+                max-width: 100%;
+                max-height: 70vh;
+                object-fit: contain;
+                border-radius: 10px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            }}
             @media print {{
                 body {{
                     padding: 0.5in;
@@ -271,44 +296,77 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
                     background: none;
                     border: 1px solid #ccc;
                 }}
+                .cover-page {{
+                    page-break-after: always;
+                    min-height: auto;
+                }}
             }}
         </style>
     </head>
     <body>
     """)
     
-    # Cover page
+    # COVER PAGE - This is the critical part
     html_parts.append('<div class="cover-page">')
     
-    # Use custom cover HTML if provided
+    # PRIORITY 1: Use custom cover HTML from the Cover Designer
     if cover_html_path and os.path.exists(cover_html_path):
         try:
             with open(cover_html_path, 'r') as f:
                 cover_content = f.read()
-                # Extract just the cover part if it's a full HTML
-                if '<body>' in cover_content:
-                    cover_match = re.search(r'<body>(.*?)</body>', cover_content, re.DOTALL)
-                    if cover_match:
-                        cover_content = cover_match.group(1)
-                html_parts.append(cover_content)
-        except:
-            # Fallback to simple cover
-            html_parts.append(f'<h1 class="cover-title">{title}</h1>')
-            html_parts.append(f'<p class="cover-author">by {author}</p>')
+                
+                # Extract just the cover content if it's a full HTML document
+                if '<body>' in cover_content.lower():
+                    # Try to extract body content
+                    body_match = re.search(r'<body[^>]*>(.*?)</body>', cover_content, re.DOTALL | re.IGNORECASE)
+                    if body_match:
+                        cover_content = body_match.group(1)
+                
+                # Also extract any inline styles
+                style_match = re.search(r'<style[^>]*>(.*?)</style>', cover_content, re.DOTALL | re.IGNORECASE)
+                if style_match and style_match.group(1) not in html_parts[0]:
+                    # Add the custom styles to our head if not already there
+                    custom_styles = style_match.group(1)
+                    html_parts[0] = html_parts[0].replace('</style>', f'{custom_styles}\n</style>')
+                
+                # Wrap in a container
+                html_parts.append(f'<div class="custom-cover">{cover_content}</div>')
+                
+        except Exception as e:
+            st.warning(f"Could not load custom cover: {e}")
+            # Fall through to next option
+    
+    # PRIORITY 2: Use uploaded cover image
     elif cover_image:
-        # Use uploaded image
-        img_base64 = base64.b64encode(cover_image).decode()
-        html_parts.append(f'<img src="data:image/jpeg;base64,{img_base64}" style="max-width:100%; max-height:400px; margin:20px auto;">')
-        html_parts.append(f'<h1 class="cover-title">{title}</h1>')
-        html_parts.append(f'<p class="cover-author">by {author}</p>')
+        try:
+            img_base64 = base64.b64encode(cover_image).decode()
+            html_parts.append(f'''
+            <div class="cover-image-container">
+                <img src="data:image/jpeg;base64,{img_base64}" class="cover-image">
+                <h1 class="cover-title">{title}</h1>
+                <p class="cover-author">by {author}</p>
+            </div>
+            ''')
+        except Exception as e:
+            st.warning(f"Could not process cover image: {e}")
+            # Fall through to simple cover
+    
+    # PRIORITY 3: Simple gradient cover
     else:
-        # Simple cover
-        html_parts.append(f'<h1 class="cover-title">{title}</h1>')
-        html_parts.append(f'<p class="cover-author">by {author}</p>')
+        html_parts.append(f'''
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                    padding: 60px 20px; 
+                    border-radius: 10px;
+                    color: white;
+                    margin: 20px;">
+            <h1 class="cover-title" style="color: white;">{title}</h1>
+            <p class="cover-author" style="color: rgba(255,255,255,0.9);">by {author}</p>
+        </div>
+        ''')
     
-    html_parts.append('</div>')
+    html_parts.append('</div>')  # Close cover-page
     
-    # Copyright
+    # Copyright page
     html_parts.append(f'<p class="copyright">© {datetime.now().year} {author}. All rights reserved.</p>')
     
     # Table of Contents
@@ -327,7 +385,7 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
         
         for session_title in sessions.keys():
             # Create anchor from session title
-            anchor = session_title.lower().replace(' ', '-')
+            anchor = session_title.lower().replace(' ', '-').replace('?', '').replace('!', '').replace(',', '')
             html_parts.append(f'<li><a href="#{anchor}">{session_title}</a></li>')
         
         html_parts.append('</ul>')
@@ -337,7 +395,7 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
     current_session = None
     for story in stories:
         session_title = story.get('session_title', 'Untitled Session')
-        anchor = session_title.lower().replace(' ', '-')
+        anchor = session_title.lower().replace(' ', '-').replace('?', '').replace('!', '').replace(',', '')
         
         # Add session header if new session
         if session_title != current_session:
@@ -354,7 +412,9 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
             paragraphs = answer_text.split('\n')
             for para in paragraphs:
                 if para.strip():
-                    html_parts.append(f'<p>{para.strip()}</p>')
+                    # Escape any HTML in the answer text
+                    escaped_para = para.strip().replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                    html_parts.append(f'<p>{escaped_para}</p>')
             html_parts.append('</div>')
         
         # Add images
@@ -363,7 +423,8 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
                 if img.get('base64'):
                     html_parts.append(f'<img src="data:image/jpeg;base64,{img["base64"]}" class="story-image">')
                     if img.get('caption'):
-                        html_parts.append(f'<p class="image-caption">{img["caption"]}</p>')
+                        caption = img['caption'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                        html_parts.append(f'<p class="image-caption">{caption}</p>')
         
         # Add separator
         html_parts.append('<hr style="margin: 30px 0; border: none; border-top: 1px dashed #ccc;">')
