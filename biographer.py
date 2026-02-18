@@ -8,7 +8,7 @@ import re
 import hashlib
 import smtplib
 from email.mime.text import MIMEText
-from email.mime.multipart
+from email.mime.multipart import MIMEMultipart
 import secrets
 import string
 import time
@@ -27,7 +27,7 @@ st.set_page_config(page_title="Tell My Story - Your Life Timeline", page_icon="�
 # IMPORT BIOGRAPHY PUBLISHER
 # ============================================================================
 try:
-    from biography_publisher import generate_docx, generate_html
+    from biography_publisher import generate_docx, generate_html, show_celebration
     PUBLISHER_AVAILABLE = True
 except ImportError as e:
     st.error(f"❌ Please ensure biography_publisher.py is in the same directory")
@@ -93,7 +93,7 @@ default_state = {
     "current_rewrite_data": None, "show_ai_rewrite": False, "show_ai_rewrite_menu": False,
     "editor_content": {}, "show_privacy_settings": False, "show_cover_designer": False,
     "beta_feedback_display": None, "beta_feedback_storage": {},
-    "auth_tab": 'login'  # Added for authentication
+    "auth_tab": 'login', "show_publisher": False, "cover_image_data": None, "publisher_data": None
 }
 for key, value in default_state.items():
     if key not in st.session_state:
@@ -533,7 +533,7 @@ def logout_user():
             'current_bank_type', 'current_bank_id', 'show_bank_manager', 'show_bank_editor',
             'editing_bank_id', 'editing_bank_name', 'show_image_manager', 'editor_content',
             'current_rewrite_data', 'show_ai_rewrite', 'show_ai_rewrite_menu',
-            'show_publisher']  # <-- ADD THIS
+            'show_publisher']
     for key in keys:
         if key in st.session_state: 
             del st.session_state[key]
@@ -953,6 +953,7 @@ def show_cover_designer():
     
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
+
 # ============================================================================
 # NARRATIVE GPS HELPER FUNCTIONS
 # ============================================================================
@@ -3189,14 +3190,8 @@ with st.sidebar:
                 }
             }
             
-            # Save to a temp file and store path in session state
-            temp_file = f"temp_export_{st.session_state.user_id}.json"
-            with open(temp_file, 'w') as f:
-                json.dump(complete_data, f)
-            
             # Store in session state for the publisher
             st.session_state.publisher_data = complete_data
-            st.session_state.publisher_data_path = temp_file
             
             # Button to open publisher in main screen
             if st.button("📚 Open Book Publisher", type="primary", use_container_width=True):
@@ -3279,6 +3274,7 @@ with st.sidebar:
                     st.info(f"... and {len(results)-10} more matches")
         else: 
             st.info("No matches found")
+
 # ============================================================================
 # PUBLISHER PAGE - SHOW ON MAIN SCREEN WHEN ACTIVATED
 # ============================================================================
@@ -3456,7 +3452,7 @@ if st.session_state.get('show_publisher', False):
     st.stop()
 
 # ============================================================================
-# MAIN CONTENT AREA
+# MAIN CONTENT AREA - Only shown when NOT in publisher mode
 # ============================================================================
 
 if (st.session_state.show_vignette_modal or 
