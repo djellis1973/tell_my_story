@@ -404,3 +404,4 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
     html_content = '\n'.join(html_parts)
     
     return html_content
+
