@@ -2739,7 +2739,7 @@ def generate_zip(book_title, author_name, stories):
 # ============================================================================
 # PAGE CONFIG
 # ============================================================================
-st.set_page_config(page_title="Tell My Story - Your Life Timeline", page_icon="📖", layout="wide", initial_sidebar_state="expanded")
+st.set_page_config(page_title="Tell My Story - Your Life Timeline", page_icon="📖", layout="wide", initial__state="expanded")
 
 if not st.session_state.qb_manager_initialized: 
     initialize_question_bank()
@@ -3033,7 +3033,7 @@ if st.session_state.show_session_creator:
 st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
 
 # ============================================================================
-# SIDEBAR - COMPLETELY REORGANIZED WITH SEARCH & DELETE AT BOTTOM
+# SIDEBAR - SEARCH AT TOP, PUBLISH PROMINENT, DELETE AT BOTTOM
 # ============================================================================
 with st.sidebar:
     # Use custom CSS to make sidebar scrollable
@@ -3064,23 +3064,34 @@ with st.sidebar:
         .stButton button {
             margin-bottom: 5px;
         }
-        .data-management-section {
-            margin-top: auto;
-            border-top: 2px solid #ff4444;
-            padding-top: 15px;
-            background-color: rgba(255, 68, 68, 0.05);
-            border-radius: 8px;
-            padding: 15px;
-            margin-bottom: 10px;
-        }
         .search-section {
-            margin-top: 20px;
-            border-top: 2px solid #4CAF50;
-            padding-top: 15px;
-            background-color: rgba(76, 175, 80, 0.05);
-            border-radius: 8px;
+            background-color: #f0f2f6;
             padding: 15px;
+            border-radius: 10px;
             margin-bottom: 20px;
+            border-left: 4px solid #4CAF50;
+        }
+        .publish-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 15px;
+            border-radius: 10px;
+            margin-bottom: 20px;
+            color: white;
+        }
+        .publish-section h3 {
+            color: white !important;
+            margin-top: 0;
+        }
+        .publish-section .stButton button {
+            background-color: white;
+            color: #667eea;
+        }
+        .data-management-section {
+            background-color: #fff3f3;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 20px;
+            border-left: 4px solid #ff4444;
         }
         .sidebar-footer {
             font-size: 0.8em;
@@ -3093,9 +3104,143 @@ with st.sidebar:
     </style>
     """, unsafe_allow_html=True)
     
+    # Header
     st.markdown('<div class="sidebar-header"><h2>Tell My Story</h2><p>Your Life Timeline</p></div>', unsafe_allow_html=True)
     
-    # ===== TOP SECTION: PROFILE & BASIC TOOLS =====
+    # ===== SEARCH SECTION - AT THE VERY TOP =====
+    st.markdown('<div class="search-section">', unsafe_allow_html=True)
+    st.markdown("### 🔍 Search")
+    search_query = st.text_input(
+        "Search", 
+        placeholder="Search stories, memories, photos...", 
+        key="global_search", 
+        label_visibility="collapsed"
+    )
+    
+    if search_query and len(search_query) >= 2:
+        results = search_all_answers(search_query)
+        if results:
+            st.success(f"Found {len(results)} matches")
+            with st.expander(f"📖 Results", expanded=True):
+                for i, r in enumerate(results[:5]):
+                    st.markdown(f"**{r['session_title']}**")
+                    st.markdown(f"*{r['question'][:50]}...*")
+                    if st.button(f"Go to story", key=f"srch_go_{i}", use_container_width=True):
+                        for idx, s in enumerate(SESSIONS):
+                            if s["id"] == r['session_id']:
+                                st.session_state.update(current_session=idx, current_question_override=r['question'], show_ai_rewrite_menu=False)
+                                st.rerun()
+                    if i < len(results[:5])-1:
+                        st.divider()
+                if len(results) > 5:
+                    st.caption(f"... and {len(results)-5} more matches")
+        else:
+            st.info("No matches found")
+    elif search_query:
+        st.caption("Type at least 2 characters")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # ===== PUBLISH SECTION - PROMINENT RIGHT AFTER SEARCH =====
+    st.markdown('<div class="publish-section">', unsafe_allow_html=True)
+    st.markdown("### 🖨️ Publish Your Book")
+    
+    total_answers = sum(len(st.session_state.responses.get(s["id"], {}).get("questions", {})) for s in SESSIONS)
+    st.caption(f"Total stories: {total_answers}")
+    
+    if st.session_state.logged_in and st.session_state.user_id and total_answers > 0:
+        export_data = []
+        for session in SESSIONS:
+            sid = session["id"]
+            sdata = st.session_state.responses.get(sid, {})
+            for q, a in sdata.get("questions", {}).items():
+                images_with_data = []
+                if a.get("images") and st.session_state.image_handler:
+                    for img_ref in a.get("images", []):
+                        img_id = img_ref.get("id")
+                        b64 = st.session_state.image_handler.get_image_base64(img_id)
+                        caption = img_ref.get("caption", "")
+                        if b64:
+                            images_with_data.append({
+                                "id": img_id, "base64": b64, "caption": caption
+                            })
+                
+                export_item = {
+                    "question": q, 
+                    "answer_text": re.sub(r'<[^>]+>', '', a.get("answer", "")),
+                    "timestamp": a.get("timestamp", ""), 
+                    "session_id": sid, 
+                    "session_title": session["title"],
+                    "has_images": a.get("has_images", False), 
+                    "image_count": a.get("image_count", 0),
+                    "images": images_with_data
+                }
+                export_data.append(export_item)
+        
+        if export_data:
+            first_name = st.session_state.user_account.get('profile', {}).get('first_name', 'My')
+            book_title = st.text_input("Title", value=f"{first_name}'s Story", key="publish_title", label_visibility="collapsed", placeholder="Book title")
+            author_name = st.text_input("Author", value=f"{st.session_state.user_account.get('profile', {}).get('first_name', '')} {st.session_state.user_account.get('profile', {}).get('last_name', '')}".strip(), key="publish_author", label_visibility="collapsed", placeholder="Author name")
+            
+            format_style = st.selectbox("Format", ["interview", "biography", "memoir"], 
+                                       format_func=lambda x: {"interview": "📝 Q&A", "biography": "📖 Biography", "memoir": "📚 Memoir"}[x],
+                                       key="publish_format", label_visibility="collapsed")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("📊 DOCX", use_container_width=True, key="docx_btn"):
+                    with st.spinner("Creating..."):
+                        docx_bytes = generate_docx(
+                            book_title, author_name, export_data, format_style, True, False
+                        )
+                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
+                        st.download_button(
+                            label="📥 Download", data=docx_bytes, file_name=filename,
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                            key="docx_download"
+                        )
+            
+            with col2:
+                if st.button("🌐 HTML", use_container_width=True, key="html_btn"):
+                    with st.spinner("Creating..."):
+                        html_content = generate_html(book_title, author_name, export_data)
+                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
+                        st.download_button(
+                            label="📥 Download", data=html_content, file_name=filename,
+                            mime="text/html", key="html_download"
+                        )
+            
+            complete_data = {
+                "user": st.session_state.user_id, 
+                "user_profile": st.session_state.user_account.get('profile', {}),
+                "narrative_gps": st.session_state.user_account.get('narrative_gps', {}),
+                "enhanced_profile": st.session_state.user_account.get('enhanced_profile', {}),
+                "stories": export_data, 
+                "export_date": datetime.now().isoformat(),
+                "summary": {
+                    "total_stories": len(export_data), 
+                    "total_sessions": len(set(s['session_id'] for s in export_data))
+                }
+            }
+            json_data = json.dumps(complete_data, indent=2)
+            
+            st.download_button(
+                label="📥 JSON Backup", 
+                data=json_data,
+                file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
+                mime="application/json", 
+                use_container_width=True,
+                key="json_backup_btn"
+            )
+    else: 
+        if total_answers == 0:
+            st.warning("Write stories first!")
+        else:
+            st.warning("Log in to publish")
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # ===== PROFILE SECTION =====
     st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
     st.markdown("### 👤 Profile")
     if st.session_state.user_account:
@@ -3218,143 +3363,7 @@ with st.sidebar:
     
     st.divider()
     
-    # ===== PUBLISH SECTION =====
-    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
-    st.markdown("### 🖨️ Publish Your Book")
-    
-    total_answers = sum(len(st.session_state.responses.get(s["id"], {}).get("questions", {})) for s in SESSIONS)
-    st.caption(f"Total stories: {total_answers}")
-    
-    if st.session_state.logged_in and st.session_state.user_id and total_answers > 0:
-        export_data = []
-        for session in SESSIONS:
-            sid = session["id"]
-            sdata = st.session_state.responses.get(sid, {})
-            for q, a in sdata.get("questions", {}).items():
-                images_with_data = []
-                if a.get("images") and st.session_state.image_handler:
-                    for img_ref in a.get("images", []):
-                        img_id = img_ref.get("id")
-                        b64 = st.session_state.image_handler.get_image_base64(img_id)
-                        caption = img_ref.get("caption", "")
-                        if b64:
-                            images_with_data.append({
-                                "id": img_id, "base64": b64, "caption": caption
-                            })
-                
-                export_item = {
-                    "question": q, 
-                    "answer_text": re.sub(r'<[^>]+>', '', a.get("answer", "")),
-                    "timestamp": a.get("timestamp", ""), 
-                    "session_id": sid, 
-                    "session_title": session["title"],
-                    "has_images": a.get("has_images", False), 
-                    "image_count": a.get("image_count", 0),
-                    "images": images_with_data
-                }
-                export_data.append(export_item)
-        
-        if export_data:
-            first_name = st.session_state.user_account.get('profile', {}).get('first_name', 'My')
-            book_title = st.text_input("Title", value=f"{first_name}'s Story", key="publish_title", label_visibility="collapsed", placeholder="Book title")
-            author_name = st.text_input("Author", value=f"{st.session_state.user_account.get('profile', {}).get('first_name', '')} {st.session_state.user_account.get('profile', {}).get('last_name', '')}".strip(), key="publish_author", label_visibility="collapsed", placeholder="Author name")
-            
-            format_style = st.selectbox("Format", ["interview", "biography", "memoir"], 
-                                       format_func=lambda x: {"interview": "📝 Q&A", "biography": "📖 Biography", "memoir": "📚 Memoir"}[x],
-                                       key="publish_format", label_visibility="collapsed")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                if st.button("📊 DOCX", use_container_width=True, key="docx_btn"):
-                    with st.spinner("Creating..."):
-                        docx_bytes = generate_docx(
-                            book_title, author_name, export_data, format_style, True, False
-                        )
-                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
-                        st.download_button(
-                            label="📥 Download", data=docx_bytes, file_name=filename,
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
-                            key="docx_download"
-                        )
-            
-            with col2:
-                if st.button("🌐 HTML", use_container_width=True, key="html_btn"):
-                    with st.spinner("Creating..."):
-                        html_content = generate_html(book_title, author_name, export_data)
-                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
-                        st.download_button(
-                            label="📥 Download", data=html_content, file_name=filename,
-                            mime="text/html", key="html_download"
-                        )
-            
-            complete_data = {
-                "user": st.session_state.user_id, 
-                "user_profile": st.session_state.user_account.get('profile', {}),
-                "narrative_gps": st.session_state.user_account.get('narrative_gps', {}),
-                "enhanced_profile": st.session_state.user_account.get('enhanced_profile', {}),
-                "stories": export_data, 
-                "export_date": datetime.now().isoformat(),
-                "summary": {
-                    "total_stories": len(export_data), 
-                    "total_sessions": len(set(s['session_id'] for s in export_data))
-                }
-            }
-            json_data = json.dumps(complete_data, indent=2)
-            
-            st.download_button(
-                label="📥 JSON Backup", 
-                data=json_data,
-                file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
-                mime="application/json", 
-                use_container_width=True,
-                key="json_backup_btn"
-            )
-    else: 
-        if total_answers == 0:
-            st.warning("Write stories first!")
-        else:
-            st.warning("Log in to publish")
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # ===== SPACER TO PUSH SEARCH/DELETE TO BOTTOM =====
-    st.markdown('<div style="flex-grow: 1;"></div>', unsafe_allow_html=True)
-    
-    st.divider()
-    
-    # ===== SEARCH SECTION - PROMINENT AT BOTTOM =====
-    st.markdown('<div class="search-section">', unsafe_allow_html=True)
-    st.markdown("### 🔍 Search Your Stories")
-    
-    search_query = st.text_input(
-        "Search", 
-        placeholder="Enter keywords...", 
-        key="global_search", 
-        label_visibility="collapsed"
-    )
-    
-    if search_query and len(search_query) >= 2:
-        results = search_all_answers(search_query)
-        if results:
-            st.success(f"Found {len(results)} matches")
-            with st.container():
-                for i, r in enumerate(results[:3]):  # Show first 3 results
-                    with st.expander(f"📖 {r['session_title'][:15]}...", expanded=False):
-                        st.markdown(f"**{r['question'][:50]}...**")
-                        st.markdown(f"_{r['answer'][:100]}..._")
-                        if st.button(f"Go to this story", key=f"srch_go_{i}", use_container_width=True):
-                            for idx, s in enumerate(SESSIONS):
-                                if s["id"] == r['session_id']:
-                                    st.session_state.update(current_session=idx, current_question_override=r['question'], show_ai_rewrite_menu=False)
-                                    st.rerun()
-                if len(results) > 3:
-                    st.caption(f"... and {len(results)-3} more results")
-        else:
-            st.info("No matches found")
-    elif search_query:
-        st.caption("Type at least 2 characters to search")
-    st.markdown('</div>', unsafe_allow_html=True)
-    
-    # ===== DATA MANAGEMENT SECTION - PROMINENT AT BOTTOM =====
+    # ===== DATA MANAGEMENT SECTION - AT THE BOTTOM =====
     st.markdown('<div class="data-management-section">', unsafe_allow_html=True)
     st.markdown("### ⚠️ Data Management")
     
