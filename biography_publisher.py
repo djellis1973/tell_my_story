@@ -9,6 +9,316 @@ from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
 
+# ============================================================================
+# PUBLISHER INTEGRATION WITH MAIN APP
+# ============================================================================
+
+def integrate_with_main_app():
+    """Check if running within main app and get session data"""
+    try:
+        # Check if we're in the main app context
+        if 'st' in globals() and hasattr(st, 'session_state'):
+            # Try to get sessions from main app
+            if 'current_question_bank' in st.session_state:
+                return st.session_state.current_question_bank
+            elif 'SESSIONS' in st.session_state:
+                return st.session_state.SESSIONS
+    except:
+        pass
+    return None
+
+# Get sessions from main app if available
+MAIN_APP_SESSIONS = integrate_with_main_app()
+
+# ============================================================================
+# HELPER FUNCTIONS FOR PUBLISHER
+# ============================================================================
+
+def prepare_stories_for_publishing(responses_data, sessions_data=None):
+    """Convert response data to format needed for publishing"""
+    stories = []
+    
+    if sessions_data is None:
+        sessions_data = MAIN_APP_SESSIONS or []
+    
+    for session in sessions_data:
+        session_id = session["id"]
+        session_data = responses_data.get(str(session_id), {})
+        session_data = responses_data.get(session_id, session_data)
+        
+        for question_text, answer_data in session_data.get("questions", {}).items():
+            # Get images if available
+            images = []
+            if answer_data.get("images"):
+                for img_ref in answer_data.get("images", []):
+                    img_id = img_ref.get("id")
+                    # Try to get image from main app's image handler
+                    b64 = None
+                    if st.session_state.get('image_handler'):
+                        b64 = st.session_state.image_handler.get_image_base64(img_id)
+                    
+                    images.append({
+                        "id": img_id,
+                        "base64": b64,
+                        "caption": img_ref.get("caption", "")
+                    })
+            
+            stories.append({
+                "question": question_text,
+                "answer_text": re.sub(r'<[^>]+>', '', answer_data.get("answer", "")),
+                "timestamp": answer_data.get("timestamp", ""),
+                "session_id": session_id,
+                "session_title": session["title"],
+                "has_images": answer_data.get("has_images", False),
+                "image_count": answer_data.get("image_count", 0),
+                "images": images
+            })
+    
+    return stories
+
+# ============================================================================
+# MODIFIED PUBLISHER FUNCTIONS WITH PROPER ERROR HANDLING
+# ============================================================================
+
+def show_publisher_interface():
+    """Display the publisher interface within the main app"""
+    
+    st.markdown("## 📚 Publish Your Book")
+    st.markdown("---")
+    
+    # Get data from main app
+    if not st.session_state.get('logged_in'):
+        st.warning("Please log in to publish your book.")
+        return
+    
+    # Prepare stories
+    stories = prepare_stories_for_publishing(
+        st.session_state.responses,
+        st.session_state.get('current_question_bank', [])
+    )
+    
+    if not stories:
+        st.info("No stories yet! Start writing to publish your book.")
+        return
+    
+    # Get user profile info
+    profile = st.session_state.user_account.get('profile', {})
+    first_name = profile.get('first_name', 'My')
+    last_name = profile.get('last_name', '')
+    
+    # Publishing options
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Book details
+        book_title = st.text_input(
+            "Book Title",
+            value=f"{first_name}'s Life Story",
+            key="publisher_book_title"
+        )
+        
+        author_name = st.text_input(
+            "Author Name",
+            value=f"{first_name} {last_name}".strip() or "Author Name",
+            key="publisher_author_name"
+        )
+        
+        format_style = st.selectbox(
+            "Format Style",
+            ["interview", "biography", "memoir"],
+            format_func=lambda x: {
+                "interview": "📝 Interview Q&A",
+                "biography": "📖 Continuous Biography",
+                "memoir": "📚 Chapter-based Memoir"
+            }[x],
+            key="publisher_format"
+        )
+    
+    with col2:
+        # Cover options
+        st.markdown("### Cover Design")
+        cover_choice = st.radio(
+            "Cover Type",
+            ["simple", "uploaded"],
+            format_func=lambda x: "🎨 Simple Gradient Cover" if x == "simple" else "📸 Upload Your Own Cover",
+            key="publisher_cover_type"
+        )
+        
+        cover_image = None
+        if cover_choice == "uploaded":
+            uploaded_cover = st.file_uploader(
+                "Upload Cover Image",
+                type=['jpg', 'jpeg', 'png'],
+                key="publisher_cover_upload"
+            )
+            if uploaded_cover:
+                cover_image = uploaded_cover.getvalue()
+                st.image(cover_image, caption="Cover Preview", width=200)
+        
+        # Additional options
+        include_toc = st.checkbox("Include Table of Contents", value=True, key="publisher_toc")
+        include_images = st.checkbox("Include Images", value=True, key="publisher_images")
+    
+    st.markdown("---")
+    
+    # Generate buttons
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        if st.button("📊 Generate DOCX", type="primary", use_container_width=True):
+            with st.spinner("Creating Word document..."):
+                try:
+                    docx_bytes = generate_docx(
+                        book_title,
+                        author_name,
+                        stories,
+                        format_style,
+                        include_toc,
+                        include_images,
+                        cover_image,
+                        cover_choice
+                    )
+                    
+                    filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
+                    
+                    st.download_button(
+                        label="📥 Download DOCX",
+                        data=docx_bytes,
+                        file_name=filename,
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                        use_container_width=True,
+                        key="docx_download_publisher"
+                    )
+                    
+                    show_celebration()
+                except Exception as e:
+                    st.error(f"Error generating DOCX: {str(e)}")
+    
+    with col2:
+        if st.button("🌐 Generate HTML", type="primary", use_container_width=True):
+            with st.spinner("Creating HTML page..."):
+                try:
+                    html_content = generate_html(
+                        book_title,
+                        author_name,
+                        stories,
+                        format_style,
+                        include_toc,
+                        include_images,
+                        None,  # cover_html_path
+                        cover_image,
+                        cover_choice
+                    )
+                    
+                    filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
+                    
+                    st.download_button(
+                        label="📥 Download HTML",
+                        data=html_content,
+                        file_name=filename,
+                        mime="text/html",
+                        use_container_width=True,
+                        key="html_download_publisher"
+                    )
+                    
+                    show_celebration()
+                except Exception as e:
+                    st.error(f"Error generating HTML: {str(e)}")
+    
+    with col3:
+        if st.button("📦 Generate ZIP", type="primary", use_container_width=True):
+            with st.spinner("Creating ZIP package..."):
+                try:
+                    import zipfile
+                    import io
+                    
+                    zip_buffer = io.BytesIO()
+                    
+                    with zipfile.ZipFile(zip_buffer, 'w', zipfile.ZIP_DEFLATED) as zip_file:
+                        # Generate HTML
+                        html_content = generate_html(
+                            book_title,
+                            author_name,
+                            stories,
+                            format_style,
+                            include_toc,
+                            include_images,
+                            None,
+                            cover_image,
+                            cover_choice
+                        )
+                        
+                        zip_file.writestr(f"{book_title.replace(' ', '_')}.html", html_content)
+                        
+                        # Add images to zip
+                        for story in stories:
+                            for img in story.get('images', []):
+                                if img.get('base64'):
+                                    img_data = base64.b64decode(img['base64'])
+                                    img_filename = f"images/{img['id']}.jpg"
+                                    zip_file.writestr(img_filename, img_data)
+                    
+                    filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.zip"
+                    
+                    st.download_button(
+                        label="📥 Download ZIP",
+                        data=zip_buffer.getvalue(),
+                        file_name=filename,
+                        mime="application/zip",
+                        use_container_width=True,
+                        key="zip_download_publisher"
+                    )
+                    
+                    show_celebration()
+                except Exception as e:
+                    st.error(f"Error generating ZIP: {str(e)}")
+    
+    # Statistics
+    st.markdown("---")
+    st.markdown("### 📊 Book Statistics")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.metric("Total Stories", len(stories))
+    
+    with col2:
+        total_words = sum(len(story['answer_text'].split()) for story in stories)
+        st.metric("Total Words", f"{total_words:,}")
+    
+    with col3:
+        sessions_count = len(set(story['session_id'] for story in stories))
+        st.metric("Sessions", sessions_count)
+    
+    with col4:
+        images_count = sum(story.get('image_count', 0) for story in stories)
+        st.metric("Images", images_count)
+
+# ============================================================================
+# ADD THIS TO YOUR MAIN biographer.py FILE
+# Add this function to integrate the publisher
+# ============================================================================
+
+def add_publisher_to_sidebar():
+    """Add publisher button to main app sidebar"""
+    
+    st.sidebar.divider()
+    st.sidebar.header("📚 Publishing")
+    
+    if st.sidebar.button("🎨 Publish Your Book", type="primary", use_container_width=True):
+        st.session_state.show_publisher = True
+        st.rerun()
+    
+    # Add stats
+    if st.session_state.logged_in:
+        total_stories = sum(
+            len(st.session_state.responses.get(s["id"], {}).get("questions", {}))
+            for s in st.session_state.get('current_question_bank', [])
+        )
+        
+        if total_stories > 0:
+            st.sidebar.info(f"📝 {total_stories} stories ready to publish")
+
 def show_celebration():
     """Show a celebration animation when book is generated"""
     st.balloons()
