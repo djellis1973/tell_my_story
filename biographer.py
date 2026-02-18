@@ -532,7 +532,8 @@ def logout_user():
             'current_beta_feedback', 'current_question_bank', 'current_bank_name',
             'current_bank_type', 'current_bank_id', 'show_bank_manager', 'show_bank_editor',
             'editing_bank_id', 'editing_bank_name', 'show_image_manager', 'editor_content',
-            'current_rewrite_data', 'show_ai_rewrite', 'show_ai_rewrite_menu']
+            'current_rewrite_data', 'show_ai_rewrite', 'show_ai_rewrite_menu',
+            'show_publisher']  # <-- ADD THIS
     for key in keys:
         if key in st.session_state: 
             del st.session_state[key]
@@ -2992,10 +2993,6 @@ if st.session_state.get('show_profile_setup', False):
 # ============================================================================
 # MODAL HANDLING
 # ============================================================================
-if st.session_state.get('show_publisher', False):
-    # The publisher page handles itself, we just need to let it run
-    pass  # This will be handled by the publisher section above
-
 if st.session_state.show_ai_rewrite and st.session_state.current_rewrite_data:
     show_ai_rewrite_modal()
     st.stop()
@@ -3290,6 +3287,8 @@ if st.session_state.get('show_publisher', False):
     <style>
         .main-header { display: none; }
         .sidebar-header { display: none; }
+        .stApp header { display: none; }
+        section[data-testid="stSidebar"] { display: none !important; }
     </style>
     """, unsafe_allow_html=True)
     
@@ -3303,64 +3302,27 @@ if st.session_state.get('show_publisher', False):
     </div>
     """, unsafe_allow_html=True)
     
-# Back button
-col1, col2, col3 = st.columns([1, 6, 1])
-with col1:
-    st.write("DEBUG - Before button, show_publisher =", st.session_state.get('show_publisher'))
-    if st.button("← Back to Writing", use_container_width=True):
-        st.session_state.show_publisher = False
-        st.write("DEBUG - Button clicked, setting show_publisher = False")
-        st.rerun()
-
-# ===== ADD THIS IMAGE UPLOAD SECTION HERE =====
-st.markdown("---")
-st.markdown("### 🖼️ Upload Cover Image (Optional)")
-st.markdown("Upload a JPG or PNG - it will become your book cover")
-
-uploaded_image = st.file_uploader("Choose an image", type=['jpg', 'jpeg', 'png'], key="publisher_image_upload")
-if uploaded_image:
-    st.session_state.cover_image_data = uploaded_image.getvalue()
-    st.image(uploaded_image, width=200, caption="Your cover image")
-    st.success("✅ Cover image ready")
-st.markdown("---")
-# ===== END IMAGE UPLOAD SECTION =====
-
-# Get data from session state
-if st.session_state.get('publisher_data'):
-    data = st.session_state.publisher_data
-    stories = data.get('stories', [])
-    user_profile = data.get('user_profile', {})
-    cover_design = data.get('cover_design', {})
+    # Back button
+    col1, col2, col3 = st.columns([1, 6, 1])
+    with col1:
+        if st.button("← Back to Writing", use_container_width=True):
+            st.session_state.show_publisher = False
+            st.rerun()
+    
     # Get data from session state
     if st.session_state.get('publisher_data'):
         data = st.session_state.publisher_data
         stories = data.get('stories', [])
         user_profile = data.get('user_profile', {})
-        cover_design = data.get('cover_design', {})
         
         # Book details
         col1, col2 = st.columns(2)
         with col1:
             default_title = f"{user_profile.get('first_name', 'My')}'s Story"
-            book_title = st.text_input("Book Title", value=cover_design.get('title', default_title))
+            book_title = st.text_input("Book Title", value=default_title)
         with col2:
             default_author = f"{user_profile.get('first_name', '')} {user_profile.get('last_name', '')}".strip()
-            book_author = st.text_input("Author Name", value=cover_design.get('author', default_author))
-        
-        # Cover preview if custom cover exists
-        if cover_design:
-            with st.expander("🎨 Your Custom Cover Preview", expanded=False):
-                col1, col2 = st.columns([1, 2])
-                with col1:
-                    if cover_design.get('cover_image') and os.path.exists(cover_design['cover_image']):
-                        st.image(cover_design['cover_image'], width=200)
-                    else:
-                        st.markdown(f"**Background:** {cover_design.get('background_color', '#667eea')}")
-                with col2:
-                    st.markdown(f"**Title:** {cover_design.get('title', book_title)}")
-                    if cover_design.get('subtitle'):
-                        st.markdown(f"**Subtitle:** {cover_design['subtitle']}")
-                    st.markdown(f"**Author:** {cover_design.get('author', book_author)}")
+            book_author = st.text_input("Author Name", value=default_author if default_author else "Author Name")
         
         # Format options
         st.markdown("---")
@@ -3378,15 +3340,30 @@ if st.session_state.get('publisher_data'):
         with col2:
             include_toc = st.checkbox("📖 Table of Contents", value=True)
         with col3:
-            cover_type = st.radio(
-                "🎨 Cover",
-                ["simple", "custom"],
-                format_func=lambda x: "Gradient" if x == "simple" else "My Design",
-                horizontal=True,
-                disabled=not bool(cover_design)
+            cover_choice = st.radio(
+                "🎨 Cover Type",
+                ["simple", "uploaded"],
+                format_func=lambda x: {
+                    "simple": "Simple Gradient Cover",
+                    "uploaded": "Use My Uploaded Image"
+                }[x],
+                horizontal=True
             )
         
+        # Show upload option only if user selects "uploaded"
+        if cover_choice == "uploaded":
+            st.markdown("---")
+            st.markdown("### 🖼️ Upload Cover Image")
+            uploaded_image = st.file_uploader("Choose an image (JPG or PNG)", type=['jpg', 'jpeg', 'png'], key="publisher_image_upload")
+            if uploaded_image:
+                st.session_state.cover_image_data = uploaded_image.getvalue()
+                st.image(uploaded_image, width=200, caption="Your cover image")
+                st.success("✅ Cover image ready")
+        else:
+            st.session_state.cover_image_data = None  # Clear any previously uploaded image
+        
         # Summary stats
+        st.markdown("---")
         col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Stories", len(stories))
@@ -3402,82 +3379,65 @@ if st.session_state.get('publisher_data'):
         # Preview section
         with st.expander("📖 Preview First 3 Stories", expanded=False):
             for i, story in enumerate(stories[:3]):
-                st.markdown(f"**{'Q: ' + story.get('question', '') if format_style == 'interview' else story.get('session_title', 'Session')}**")
+                if format_style == "interview":
+                    st.markdown(f"**Q: {story.get('question', '')}**")
+                else:
+                    st.markdown(f"**{story.get('session_title', 'Session')}**")
                 st.markdown(f"{story.get('answer_text', '')[:300]}...")
                 if story.get('images'):
                     st.caption(f"📸 {len(story['images'])} image(s)")
-                st.divider()
+                if i < 2:
+                    st.divider()
         
-       # Generate buttons
-st.markdown("---")
-st.markdown("### 🖨️ Generate Your Book")
-
-col1, col2 = st.columns(2)
-
-with col1:
-    if st.button("📊 Generate DOCX", type="primary", use_container_width=True):
-        with st.spinner("Creating Word document with images..."):
-            # Get the cover image data if uploaded
-            cover_image = st.session_state.get('cover_image_data')
-            
-            docx_bytes = generate_docx(
-                book_title,
-                book_author,
-                stories,
-                format_style,
-                include_toc,
-                False,
-                cover_image  # Pass the image data
-            )
-            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
-            st.download_button(
-                "📥 Download DOCX", 
-                data=docx_bytes, 
-                file_name=filename, 
-                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
-                use_container_width=True,
-                key="docx_download"
-            )
-            show_celebration()
-
-with col2:
-    if st.button("🌐 Generate HTML", type="primary", use_container_width=True):
-        with st.spinner("Creating HTML page..."):
-            # Get the cover HTML path from designer AND image data from upload
-            cover_html_path = cover_design.get('cover_html') if cover_design else None
-            cover_image = st.session_state.get('cover_image_data')
-            
-            html_content = generate_html(
-                book_title,
-                book_author,
-                stories,
-                format_style,
-                include_toc,
-                False,
-                cover_html_path,  # Pass the HTML cover path
-                cover_image        # Pass the uploaded image data
-            )
-            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
-            st.download_button(
-                "📥 Download HTML", 
-                data=html_content, 
-                file_name=filename, 
-                mime="text/html", 
-                use_container_width=True,
-                key="html_download"
-            )
-            show_celebration()
+        # Generate buttons
+        st.markdown("---")
+        st.markdown("### 🖨️ Generate Your Book")
         
-                
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("📊 Generate DOCX", type="primary", use_container_width=True):
+                with st.spinner("Creating Word document..."):
+                    # Only pass cover image if user selected "uploaded"
+                    cover_image = st.session_state.cover_image_data if cover_choice == "uploaded" else None
+                    
+                    docx_bytes = generate_docx(
+                        book_title,
+                        book_author,
+                        stories,
+                        format_style,
+                        include_toc,
+                        True,  # include_images
+                        cover_image,
+                        cover_choice  # Pass the user's choice
+                    )
+                    filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
+                    st.download_button(
+                        "📥 Download DOCX", 
+                        data=docx_bytes, 
+                        file_name=filename, 
+                        mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                        use_container_width=True,
+                        key="docx_download"
+                    )
+                    show_celebration()
+        
         with col2:
             if st.button("🌐 Generate HTML", type="primary", use_container_width=True):
                 with st.spinner("Creating HTML page..."):
+                    # Only pass cover image if user selected "uploaded"
+                    cover_image = st.session_state.cover_image_data if cover_choice == "uploaded" else None
+                    
                     html_content = generate_html(
                         book_title,
                         book_author,
                         stories,
                         format_style,
-                        include_toc
+                        include_toc,
+                        True,  # include_images
+                        None,  # No custom HTML cover
+                        cover_image,
+                        cover_choice  # Pass the user's choice
                     )
                     filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
                     st.download_button(
