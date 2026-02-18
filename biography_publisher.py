@@ -14,7 +14,7 @@ def show_celebration():
     st.balloons()
     st.success("🎉 Your book has been generated successfully!")
 
-def generate_docx(title, author, stories, format_style="interview", include_toc=True, include_images=True, cover_image=None):
+def generate_docx(title, author, stories, format_style="interview", include_toc=True, include_images=True, cover_image=None, cover_choice="simple"):
     """Generate a Word document from stories"""
     doc = Document()
     
@@ -23,35 +23,61 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
     style.font.name = 'Times New Roman'
     style.font.size = Pt(12)
     
-    # Add title page
-    title_para = doc.add_paragraph()
-    title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    title_run = title_para.add_run(title)
-    title_run.font.size = Pt(28)
-    title_run.font.bold = True
-    title_run.font.color.rgb = RGBColor(0, 0, 0)
-    
-    # Add author
-    author_para = doc.add_paragraph()
-    author_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    author_run = author_para.add_run(f"by {author}")
-    author_run.font.size = Pt(16)
-    author_run.font.italic = True
-    
-    # Add cover image if provided
-    if cover_image:
-        doc.add_page_break()
+    # COVER PAGE - Based on user choice
+    if cover_choice == "uploaded" and cover_image:
+        # Add uploaded image as cover
         try:
             image_stream = io.BytesIO(cover_image)
-            doc.add_picture(image_stream, width=Inches(4))
+            doc.add_picture(image_stream, width=Inches(5))
             last_paragraph = doc.paragraphs[-1]
             last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # Add title and author below image
+            doc.add_paragraph()
+            title_para = doc.add_paragraph()
+            title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            title_run = title_para.add_run(title)
+            title_run.font.size = Pt(28)
+            title_run.font.bold = True
+            
+            author_para = doc.add_paragraph()
+            author_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            author_run = author_para.add_run(f"by {author}")
+            author_run.font.size = Pt(16)
+            author_run.font.italic = True
         except Exception as e:
             st.warning(f"Could not add cover image: {e}")
+            # Fallback to simple title
+            title_para = doc.add_paragraph()
+            title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            title_run = title_para.add_run(title)
+            title_run.font.size = Pt(28)
+            title_run.font.bold = True
+            
+            author_para = doc.add_paragraph()
+            author_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            author_run = author_para.add_run(f"by {author}")
+            author_run.font.size = Pt(16)
+            author_run.font.italic = True
+    else:
+        # Simple title cover
+        title_para = doc.add_paragraph()
+        title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        title_run = title_para.add_run(title)
+        title_run.font.size = Pt(28)
+        title_run.font.bold = True
+        title_run.font.color.rgb = RGBColor(0, 0, 0)
+        
+        author_para = doc.add_paragraph()
+        author_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        author_run = author_para.add_run(f"by {author}")
+        author_run.font.size = Pt(16)
+        author_run.font.italic = True
     
     # Add publication info
     doc.add_page_break()
     copyright_para = doc.add_paragraph()
+    copyright_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     copyright_para.add_run(f"© {datetime.now().year} {author}. All rights reserved.")
     
     # Table of Contents
@@ -62,6 +88,7 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
         toc_run.font.size = Pt(18)
         toc_run.font.bold = True
         
+        # Group by session for TOC
         sessions = {}
         for story in stories:
             session_title = story.get('session_title', 'Untitled Session')
@@ -69,12 +96,8 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
                 sessions[session_title] = []
             sessions[session_title].append(story)
         
-        for session_title, session_stories in sessions.items():
+        for session_title in sessions.keys():
             doc.add_paragraph(f"  {session_title}", style='List Bullet')
-            for i, story in enumerate(session_stories[:3]):  # Show first 3 as examples
-                doc.add_paragraph(f"    {story.get('question', 'Story')[:50]}...", style='List Bullet 2')
-            if len(session_stories) > 3:
-                doc.add_paragraph(f"    ... and {len(session_stories)-3} more stories", style='List Bullet 2')
     
     # Add stories
     doc.add_page_break()
@@ -90,7 +113,6 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
             session_run = session_para.add_run(session_title)
             session_run.font.size = Pt(16)
             session_run.font.bold = True
-            session_run.font.color.rgb = RGBColor(100, 100, 100)
         
         if format_style == "interview":
             # Add question
@@ -139,7 +161,7 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
     
     return docx_bytes.getvalue()
 
-def generate_html(title, author, stories, format_style="interview", include_toc=True, include_images=True, cover_html_path=None, cover_image=None):
+def generate_html(title, author, stories, format_style="interview", include_toc=True, include_images=True, cover_html_path=None, cover_image=None, cover_choice="simple"):
     """Generate an HTML document from stories"""
     
     # Start building HTML
@@ -176,12 +198,6 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
                 border-bottom: 2px solid #eee;
                 padding-bottom: 10px;
             }}
-            h3 {{
-                font-size: 20px;
-                margin-top: 30px;
-                margin-bottom: 10px;
-                color: #666;
-            }}
             .author {{
                 text-align: center;
                 font-size: 18px;
@@ -197,9 +213,6 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
                 color: #2c3e50;
                 border-left: 4px solid #3498db;
                 padding-left: 15px;
-            }}
-            .answer {{
-                margin-bottom: 30px;
             }}
             .story-image {{
                 max-width: 100%;
@@ -217,14 +230,49 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
                 margin-bottom: 20px;
                 font-style: italic;
             }}
+            .cover-page {{
+                text-align: center;
+                margin-bottom: 50px;
+                page-break-after: always;
+                min-height: 80vh;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            }}
+            .cover-image {{
+                max-width: 100%;
+                max-height: 70vh;
+                object-fit: contain;
+                margin: 20px auto;
+                border-radius: 10px;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            }}
+            .simple-cover {{
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                padding: 60px 20px;
+                border-radius: 10px;
+                color: white;
+                margin: 20px;
+            }}
+            .simple-cover h1 {{
+                color: white;
+            }}
+            .simple-cover .author {{
+                color: rgba(255,255,255,0.9);
+            }}
+            .copyright {{
+                text-align: center;
+                font-size: 12px;
+                color: #999;
+                margin-top: 50px;
+                padding-top: 20px;
+                border-top: 1px solid #eee;
+            }}
             .toc {{
                 background: #f9f9f9;
                 padding: 20px;
                 border-radius: 5px;
                 margin: 30px 0;
-            }}
-            .toc h3 {{
-                margin-top: 0;
             }}
             .toc ul {{
                 list-style-type: none;
@@ -240,61 +288,9 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
             .toc a:hover {{
                 text-decoration: underline;
             }}
-            .cover-page {{
-                text-align: center;
-                margin-bottom: 50px;
-                page-break-after: always;
-                min-height: 100vh;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-            }}
-            .cover-title {{
-                font-size: 48px;
-                font-weight: bold;
-                margin: 50px 0 20px 0;
-            }}
-            .cover-author {{
-                font-size: 24px;
-                color: #666;
-                margin-bottom: 40px;
-            }}
-            .copyright {{
-                text-align: center;
-                font-size: 12px;
-                color: #999;
-                margin-top: 50px;
-                padding-top: 20px;
-                border-top: 1px solid #eee;
-            }}
-            /* Styles for custom cover from designer */
-            .custom-cover {{
-                width: 100%;
-                height: 100%;
-                min-height: 100vh;
-                display: flex;
-                flex-direction: column;
-                justify-content: center;
-                align-items: center;
-            }}
-            .cover-image-container {{
-                max-width: 600px;
-                margin: 0 auto;
-            }}
-            .cover-image {{
-                max-width: 100%;
-                max-height: 70vh;
-                object-fit: contain;
-                border-radius: 10px;
-                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
-            }}
             @media print {{
                 body {{
                     padding: 0.5in;
-                }}
-                .toc {{
-                    background: none;
-                    border: 1px solid #ccc;
                 }}
                 .cover-page {{
                     page-break-after: always;
@@ -306,61 +302,34 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
     <body>
     """)
     
-    # COVER PAGE - This is the critical part
+    # COVER PAGE - Based on user choice
     html_parts.append('<div class="cover-page">')
     
-    # PRIORITY 1: Use custom cover HTML from the Cover Designer
-    if cover_html_path and os.path.exists(cover_html_path):
-        try:
-            with open(cover_html_path, 'r') as f:
-                cover_content = f.read()
-                
-                # Extract just the cover content if it's a full HTML document
-                if '<body>' in cover_content.lower():
-                    # Try to extract body content
-                    body_match = re.search(r'<body[^>]*>(.*?)</body>', cover_content, re.DOTALL | re.IGNORECASE)
-                    if body_match:
-                        cover_content = body_match.group(1)
-                
-                # Also extract any inline styles
-                style_match = re.search(r'<style[^>]*>(.*?)</style>', cover_content, re.DOTALL | re.IGNORECASE)
-                if style_match and style_match.group(1) not in html_parts[0]:
-                    # Add the custom styles to our head if not already there
-                    custom_styles = style_match.group(1)
-                    html_parts[0] = html_parts[0].replace('</style>', f'{custom_styles}\n</style>')
-                
-                # Wrap in a container
-                html_parts.append(f'<div class="custom-cover">{cover_content}</div>')
-                
-        except Exception as e:
-            st.warning(f"Could not load custom cover: {e}")
-            # Fall through to next option
-    
-    # PRIORITY 2: Use uploaded cover image
-    elif cover_image:
+    if cover_choice == "uploaded" and cover_image:
+        # Use uploaded image
         try:
             img_base64 = base64.b64encode(cover_image).decode()
             html_parts.append(f'''
-            <div class="cover-image-container">
+            <div>
                 <img src="data:image/jpeg;base64,{img_base64}" class="cover-image">
-                <h1 class="cover-title">{title}</h1>
-                <p class="cover-author">by {author}</p>
+                <h1>{title}</h1>
+                <p class="author">by {author}</p>
             </div>
             ''')
         except Exception as e:
-            st.warning(f"Could not process cover image: {e}")
-            # Fall through to simple cover
-    
-    # PRIORITY 3: Simple gradient cover
+            # Fallback to simple cover
+            html_parts.append(f'''
+            <div class="simple-cover">
+                <h1>{title}</h1>
+                <p class="author">by {author}</p>
+            </div>
+            ''')
     else:
+        # Simple gradient cover
         html_parts.append(f'''
-        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
-                    padding: 60px 20px; 
-                    border-radius: 10px;
-                    color: white;
-                    margin: 20px;">
-            <h1 class="cover-title" style="color: white;">{title}</h1>
-            <p class="cover-author" style="color: rgba(255,255,255,0.9);">by {author}</p>
+        <div class="simple-cover">
+            <h1>{title}</h1>
+            <p class="author">by {author}</p>
         </div>
         ''')
     
@@ -384,7 +353,6 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
             sessions[session_title].append(story)
         
         for session_title in sessions.keys():
-            # Create anchor from session title
             anchor = session_title.lower().replace(' ', '-').replace('?', '').replace('!', '').replace(',', '')
             html_parts.append(f'<li><a href="#{anchor}">{session_title}</a></li>')
         
@@ -408,11 +376,10 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
         # Format answer with paragraphs
         answer_text = story.get('answer_text', '')
         if answer_text:
-            html_parts.append('<div class="answer">')
+            html_parts.append('<div>')
             paragraphs = answer_text.split('\n')
             for para in paragraphs:
                 if para.strip():
-                    # Escape any HTML in the answer text
                     escaped_para = para.strip().replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                     html_parts.append(f'<p>{escaped_para}</p>')
             html_parts.append('</div>')
