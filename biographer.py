@@ -3282,8 +3282,6 @@ else:
 # PUBLISHER PAGE (Full screen, not in sidebar)
 # ============================================================================
 if st.session_state.get('show_publisher', False):
-    
-if st.session_state.get('show_publisher', False):
     # Hide the main header and show publisher full screen
     st.markdown("""
     <style>
