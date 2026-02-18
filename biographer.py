@@ -3303,12 +3303,14 @@ if st.session_state.get('show_publisher', False):
     </div>
     """, unsafe_allow_html=True)
     
-    # Back button
-    col1, col2, col3 = st.columns([1, 6, 1])
-    with col1:
-        if st.button("← Back to Writing", use_container_width=True):
-            st.session_state.show_publisher = False
-            st.rerun()
+# Back button
+col1, col2, col3 = st.columns([1, 6, 1])
+with col1:
+    st.write("DEBUG - Before button, show_publisher =", st.session_state.get('show_publisher'))
+    if st.button("← Back to Writing", use_container_width=True):
+        st.session_state.show_publisher = False
+        st.write("DEBUG - Button clicked, setting show_publisher = False")
+        st.rerun()
 
 # ===== ADD THIS IMAGE UPLOAD SECTION HERE =====
 st.markdown("---")
