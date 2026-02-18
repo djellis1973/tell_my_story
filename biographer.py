@@ -3137,92 +3137,90 @@ with st.sidebar:
         st.session_state.show_session_creator = True
         st.rerun()
     
-# In biographer.py - Replace the entire export section in the sidebar with this:
+    # ============================================================================
+    # PUBLISH YOUR BOOK SECTION
+    # ============================================================================
+    st.divider()
+    st.subheader("📤 Publish Your Book")
 
-# ============================================================================
-# IN THE SIDEBAR - Replace the old export section with just a link to publisher
-# ============================================================================
-
-st.divider()
-st.subheader("📤 Publish Your Book")
-
-if st.session_state.logged_in and st.session_state.user_id:
-    # Prepare export data for the publisher
-    export_data = []
-    for session in SESSIONS:
-        sid = session["id"]
-        sdata = st.session_state.responses.get(sid, {})
-        for q, a in sdata.get("questions", {}).items():
-            images_with_data = []
-            if a.get("images"):
-                for img_ref in a.get("images", []):
-                    img_id = img_ref.get("id")
-                    b64 = st.session_state.image_handler.get_image_base64(img_id) if st.session_state.image_handler else None
-                    caption = img_ref.get("caption", "")
-                    if b64:
-                        images_with_data.append({
-                            "id": img_id, "base64": b64, "caption": caption
-                        })
+    if st.session_state.logged_in and st.session_state.user_id:
+        # Prepare export data for the publisher
+        export_data = []
+        for session in SESSIONS:
+            sid = session["id"]
+            sdata = st.session_state.responses.get(sid, {})
+            for q, a in sdata.get("questions", {}).items():
+                images_with_data = []
+                if a.get("images"):
+                    for img_ref in a.get("images", []):
+                        img_id = img_ref.get("id")
+                        b64 = st.session_state.image_handler.get_image_base64(img_id) if st.session_state.image_handler else None
+                        caption = img_ref.get("caption", "")
+                        if b64:
+                            images_with_data.append({
+                                "id": img_id, "base64": b64, "caption": caption
+                            })
+                
+                export_item = {
+                    "question": q, 
+                    "answer_text": re.sub(r'<[^>]+>', '', a.get("answer", "")),
+                    "timestamp": a.get("timestamp", ""), 
+                    "session_id": sid, 
+                    "session_title": session["title"],
+                    "has_images": a.get("has_images", False), 
+                    "image_count": a.get("image_count", 0),
+                    "images": images_with_data
+                }
+                export_data.append(export_item)
+        
+        if export_data:
+            # Save export data to session state for the publisher
+            complete_data = {
+                "user": st.session_state.user_id, 
+                "user_profile": st.session_state.user_account.get('profile', {}),
+                "narrative_gps": st.session_state.user_account.get('narrative_gps', {}),
+                "enhanced_profile": st.session_state.user_account.get('enhanced_profile', {}),
+                "cover_design": st.session_state.user_account.get('cover_design', {}),
+                "stories": export_data, 
+                "export_date": datetime.now().isoformat(),
+                "summary": {
+                    "total_stories": len(export_data), 
+                    "total_sessions": len(set(s['session_id'] for s in export_data))
+                }
+            }
             
-            export_item = {
-                "question": q, 
-                "answer_text": re.sub(r'<[^>]+>', '', a.get("answer", "")),
-                "timestamp": a.get("timestamp", ""), 
-                "session_id": sid, 
-                "session_title": session["title"],
-                "has_images": a.get("has_images", False), 
-                "image_count": a.get("image_count", 0),
-                "images": images_with_data
-            }
-            export_data.append(export_item)
-    
-    if export_data:
-        # Save export data to session state for the publisher
-        complete_data = {
-            "user": st.session_state.user_id, 
-            "user_profile": st.session_state.user_account.get('profile', {}),
-            "narrative_gps": st.session_state.user_account.get('narrative_gps', {}),
-            "enhanced_profile": st.session_state.user_account.get('enhanced_profile', {}),
-            "cover_design": st.session_state.user_account.get('cover_design', {}),
-            "stories": export_data, 
-            "export_date": datetime.now().isoformat(),
-            "summary": {
-                "total_stories": len(export_data), 
-                "total_sessions": len(set(s['session_id'] for s in export_data))
-            }
-        }
-        
-        # Save to a temp file and store path in session state
-        temp_file = f"temp_export_{st.session_state.user_id}.json"
-        with open(temp_file, 'w') as f:
-            json.dump(complete_data, f)
-        
-        # Store in session state for the publisher
-        st.session_state.publisher_data = complete_data
-        st.session_state.publisher_data_path = temp_file
-        
-        # Button to open publisher in new tab/page
-        if st.button("📚 Open Book Publisher", type="primary", use_container_width=True):
-            # Save the current page state
-            st.session_state.return_to_main = True
-            st.session_state.show_publisher = True
-            st.rerun()
-        
-        # Optional: Keep JSON backup
-        with st.expander("📦 JSON Backup", expanded=False):
-            json_data = json.dumps(complete_data, indent=2)
-            st.download_button(
-                label="📥 Download JSON Backup", 
-                data=json_data,
-                file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
-                mime="application/json", 
-                use_container_width=True
-            )
+            # Save to a temp file and store path in session state
+            temp_file = f"temp_export_{st.session_state.user_id}.json"
+            with open(temp_file, 'w') as f:
+                json.dump(complete_data, f)
+            
+            # Store in session state for the publisher
+            st.session_state.publisher_data = complete_data
+            st.session_state.publisher_data_path = temp_file
+            
+            # Button to open publisher in main screen
+            if st.button("📚 Open Book Publisher", type="primary", use_container_width=True):
+                st.session_state.show_publisher = True
+                st.rerun()
+            
+            # Optional: Keep JSON backup
+            with st.expander("📦 JSON Backup", expanded=False):
+                json_data = json.dumps(complete_data, indent=2)
+                st.download_button(
+                    label="📥 Download JSON Backup", 
+                    data=json_data,
+                    file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
+                    mime="application/json", 
+                    use_container_width=True
+                )
+        else: 
+            st.warning("No stories yet! Start writing to publish.")
     else: 
-        st.warning("No stories yet! Start writing to publish.")
-else: 
-    st.warning("Please log in to export your data.")
+        st.warning("Please log in to export your data.")
     
+    # ============================================================================
+    # CLEAR DATA SECTION
+    # ============================================================================
     st.divider()
     st.subheader("⚠️ Clear Data")
     if st.session_state.confirming_clear == "session":
@@ -3255,6 +3253,9 @@ else:
             st.session_state.confirming_clear = "all"
             st.rerun()
     
+    # ============================================================================
+    # SEARCH SECTION
+    # ============================================================================
     st.divider()
     st.subheader("🔍 Search Your Stories")
     search_query = st.text_input("Search answers & captions...", placeholder="e.g., childhood, wedding, photo", key="global_search")
