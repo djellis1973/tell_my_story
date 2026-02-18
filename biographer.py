@@ -3286,9 +3286,7 @@ else:
 # PUBLISHER PAGE (Full screen, not in sidebar)
 # ============================================================================
 if st.session_state.get('show_publisher', False):
-    # Add this debug line
-    st.write("DEBUG: In publisher page, show_publisher =", st.session
-
+    
 if st.session_state.get('show_publisher', False):
     # Hide the main header and show publisher full screen
     st.markdown("""
