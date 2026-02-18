@@ -3294,7 +3294,7 @@ if st.session_state.get('show_publisher', False):
     """, unsafe_allow_html=True)
     
     # Import publisher functions
-    from biography_publisher import generate_pdf, generate_docx, generate_html, show_celebration
+    from biography_publisher import generate_docx, generate_html, show_celebration
     
     st.markdown("""
     <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin: -1rem -1rem 2rem -1rem; border-radius: 0 0 20px 20px; color: white;">
