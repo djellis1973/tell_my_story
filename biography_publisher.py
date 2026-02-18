@@ -18,6 +18,7 @@ import zipfile
 # ============================================================================
 # COVER DESIGNER STATE (shared via session state)
 # ============================================================================
+print("Initializing cover designer state...")  # DEBUG
 if 'cover_design' not in st.session_state:
     st.session_state.cover_design = {
         "title": "",
@@ -30,10 +31,11 @@ if 'cover_design' not in st.session_state:
         "cover_image": None,
         "cover_image_path": None
     }
+    print("Cover design initialized")  # DEBUG
 
 if 'show_cover_designer' not in st.session_state:
     st.session_state.show_cover_designer = False
-
+    print("Show cover designer initialized")  # DEBUG
 # ============================================================================
 # COVER DESIGNER FUNCTIONS
 # ============================================================================
