@@ -3033,112 +3033,188 @@ if st.session_state.show_session_creator:
 st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
 
 # ============================================================================
-# SIDEBAR
+# SIDEBAR - FIXED VERSION WITH SCROLLABLE CONTENT
 # ============================================================================
 with st.sidebar:
+    # Use custom CSS to make sidebar scrollable
+    st.markdown("""
+    <style>
+        [data-testid="stSidebar"] {
+            height: 100vh;
+            overflow-y: auto;
+            scrollbar-width: thin;
+        }
+        [data-testid="stSidebar"]::-webkit-scrollbar {
+            width: 6px;
+        }
+        [data-testid="stSidebar"]::-webkit-scrollbar-thumb {
+            background-color: #888;
+            border-radius: 3px;
+        }
+        .sidebar-header {
+            padding: 10px 0;
+            text-align: center;
+            border-bottom: 1px solid #eee;
+            margin-bottom: 15px;
+        }
+        .sidebar-section {
+            margin-bottom: 20px;
+            padding: 0 5px;
+        }
+        .stButton button {
+            margin-bottom: 5px;
+        }
+    </style>
+    """, unsafe_allow_html=True)
+    
     st.markdown('<div class="sidebar-header"><h2>Tell My Story</h2><p>Your Life Timeline</p></div>', unsafe_allow_html=True)
     
-    st.header("👤 Your Profile")
+    # Profile Section - Compact
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("### 👤 Profile")
     if st.session_state.user_account:
         profile = st.session_state.user_account['profile']
         st.success(f"✓ **{profile['first_name']} {profile['last_name']}**")
-    if st.button("📝 Complete Profile", width='stretch'): 
-        st.session_state.show_profile_setup = True
-        st.rerun()
-    if st.button("🚪 Log Out", width='stretch'): 
-        logout_user()
     
-    st.divider()
-    st.header("🔧 Tools")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔒 Privacy", width='stretch'):
+        if st.button("📝 Complete Profile", use_container_width=True): 
+            st.session_state.show_profile_setup = True
+            st.rerun()
+    with col2:
+        if st.button("🚪 Log Out", use_container_width=True): 
+            logout_user()
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # Tools Section - Compact
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("### 🔧 Tools")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("🔒 Privacy", use_container_width=True):
             st.session_state.show_privacy_settings = True
             st.rerun()
     with col2:
-        if st.button("🎨 Cover", width='stretch'):
+        if st.button("🎨 Cover", use_container_width=True):
             st.session_state.show_cover_designer = True
             st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.divider()
-    st.header("📚 Question Banks")
-    if st.button("📋 Bank Manager", width='stretch', type="primary"): 
+    
+    # Question Banks - Compact
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("### 📚 Question Banks")
+    if st.button("📋 Bank Manager", use_container_width=True, type="primary"): 
         st.session_state.show_bank_manager = True
         st.rerun()
     if st.session_state.get('current_bank_name'): 
-        st.info(f"**Current Bank:**\n{st.session_state.current_bank_name}")
+        st.info(f"**Current:** {st.session_state.current_bank_name[:30]}...")
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.divider()
-    st.header("📖 Sessions")
+    
+    # Sessions - Make this collapsible to save space
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("### 📖 Sessions")
+    
+    # Add a session selector dropdown to save space
     if st.session_state.current_question_bank:
-        for i, s in enumerate(st.session_state.current_question_bank):
-            sid = s["id"]
-            sdata = st.session_state.responses.get(sid, {})
-            resp_cnt = len(sdata.get("questions", {}))
-            total_q = len(s["questions"])
-            status = "🟢" if resp_cnt == total_q and total_q > 0 else "🟡" if resp_cnt > 0 else "🔴"
-            if i == st.session_state.current_session: 
-                status = "▶️"
-            if st.button(f"{status} Session {sid}: {s['title']}", key=f"sel_sesh_{i}", width='stretch'):
-                st.session_state.update(current_session=i, current_question=0, editing=False, current_question_override=None, show_ai_rewrite_menu=False)
-                st.rerun()
-    
-    st.divider()
-    st.header("✨ Vignettes")
-    if st.button("📝 New Vignette", width='stretch'): 
-        # Create a REAL vignette in the database immediately
-        import uuid
-        new_id = str(uuid.uuid4())[:8]
-        
-        # Initialize vignette manager if needed
-        if 'vignette_manager' not in st.session_state:
-            from vignettes import VignetteManager
-            st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
-        
-        # Create the vignette with a permanent ID
-        st.session_state.vignette_manager.create_vignette_with_id(
-            id=new_id,
-            title="Untitled Vignette",
-            content="<p>Write your story here...</p>",
-            theme="Life Lesson",
-            mood="Reflective",
-            is_draft=True
+        session_options = [f"Session {s['id']}: {s['title'][:20]}..." for s in st.session_state.current_question_bank]
+        selected_idx = st.selectbox(
+            "Jump to session:",
+            range(len(session_options)),
+            format_func=lambda x: session_options[x],
+            index=st.session_state.current_session,
+            key="session_selector",
+            label_visibility="collapsed"
         )
         
-        # Now open it for editing - it's an EXISTING vignette!
-        st.session_state.editing_vignette_id = new_id
-        st.session_state.show_vignette_modal = True
-        st.rerun()
-    
-    if st.button("📖 View All Vignettes", width='stretch'): 
-        st.session_state.show_vignette_manager = True
-        st.rerun()
-    
-    st.divider()
-    st.header("📖 Session Management")
-    if st.button("📋 All Sessions", width='stretch'): 
-        st.session_state.show_session_manager = True
-        st.rerun()
-    if st.button("➕ Custom Session", width='stretch'): 
-        st.session_state.show_session_creator = True
-        st.rerun()
+        if selected_idx != st.session_state.current_session:
+            st.session_state.update(current_session=selected_idx, current_question=0, editing=False, current_question_override=None, show_ai_rewrite_menu=False)
+            st.rerun()
+        
+        # Show current session status compactly
+        s = st.session_state.current_question_bank[st.session_state.current_session]
+        sid = s["id"]
+        sdata = st.session_state.responses.get(sid, {})
+        answered = len(sdata.get("questions", {}))
+        total = len(s["questions"])
+        status_color = "🟢" if answered == total else "🟡" if answered > 0 else "🔴"
+        st.caption(f"{status_color} Current: {answered}/{total} topics")
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.divider()
-    st.subheader("📤 Export Options")
+    
+    # Vignettes Section - Compact
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("### ✨ Vignettes")
+    
+    # Use two rows for buttons to save vertical space
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("📝 New", use_container_width=True): 
+            import uuid
+            new_id = str(uuid.uuid4())[:8]
+            if 'vignette_manager' not in st.session_state:
+                from vignettes import VignetteManager
+                st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
+            st.session_state.vignette_manager.create_vignette_with_id(
+                id=new_id,
+                title="Untitled Vignette",
+                content="<p>Write your story here...</p>",
+                theme="Life Lesson",
+                mood="Reflective",
+                is_draft=True
+            )
+            st.session_state.editing_vignette_id = new_id
+            st.session_state.show_vignette_modal = True
+            st.rerun()
+    
+    with col2:
+        if st.button("📖 View All", use_container_width=True): 
+            st.session_state.show_vignette_manager = True
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # Session Management - Compact
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("### 📋 Session Mgmt")
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("All Sessions", use_container_width=True): 
+            st.session_state.show_session_manager = True
+            st.rerun()
+    with col2:
+        if st.button("Custom", use_container_width=True): 
+            st.session_state.show_session_creator = True
+            st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    st.divider()
+    
+    # PUBLISH SECTION - MOVED UP AND MADE PROMINENT
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("### 🖨️ Publish Your Book")
+    
     total_answers = sum(len(st.session_state.responses.get(s["id"], {}).get("questions", {})) for s in SESSIONS)
-    st.caption(f"Total answers: {total_answers}")
+    st.caption(f"Total stories: {total_answers}")
     
-    if st.session_state.logged_in and st.session_state.user_id:
+    if st.session_state.logged_in and st.session_state.user_id and total_answers > 0:
         export_data = []
         for session in SESSIONS:
             sid = session["id"]
             sdata = st.session_state.responses.get(sid, {})
             for q, a in sdata.get("questions", {}).items():
                 images_with_data = []
-                if a.get("images"):
+                if a.get("images") and st.session_state.image_handler:
                     for img_ref in a.get("images", []):
                         img_id = img_ref.get("id")
-                        b64 = st.session_state.image_handler.get_image_base64(img_id) if st.session_state.image_handler else None
+                        b64 = st.session_state.image_handler.get_image_base64(img_id)
                         caption = img_ref.get("caption", "")
                         if b64:
                             images_with_data.append({
@@ -3146,148 +3222,149 @@ with st.sidebar:
                             })
                 
                 export_item = {
-                    "question": q, "answer_text": re.sub(r'<[^>]+>', '', a.get("answer", "")),
-                    "timestamp": a.get("timestamp", ""), "session_id": sid, "session_title": session["title"],
-                    "has_images": a.get("has_images", False), "image_count": a.get("image_count", 0),
+                    "question": q, 
+                    "answer_text": re.sub(r'<[^>]+>', '', a.get("answer", "")),
+                    "timestamp": a.get("timestamp", ""), 
+                    "session_id": sid, 
+                    "session_title": session["title"],
+                    "has_images": a.get("has_images", False), 
+                    "image_count": a.get("image_count", 0),
                     "images": images_with_data
                 }
                 export_data.append(export_item)
         
         if export_data:
+            # Book info - compact
+            first_name = st.session_state.user_account.get('profile', {}).get('first_name', 'My')
+            book_title = st.text_input("Title", value=f"{first_name}'s Story", key="publish_title", label_visibility="collapsed", placeholder="Book title")
+            author_name = st.text_input("Author", value=f"{st.session_state.user_account.get('profile', {}).get('first_name', '')} {st.session_state.user_account.get('profile', {}).get('last_name', '')}".strip(), key="publish_author", label_visibility="collapsed", placeholder="Author name")
+            
+            # Format selector
+            format_style = st.selectbox("Format", ["interview", "biography", "memoir"], 
+                                       format_func=lambda x: {"interview": "📝 Q&A", "biography": "📖 Biography", "memoir": "📚 Memoir"}[x],
+                                       key="publish_format", label_visibility="collapsed")
+            
+            # Export buttons in a grid
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("📊 DOCX", use_container_width=True):
+                    with st.spinner("Creating..."):
+                        docx_bytes = generate_docx(
+                            book_title, author_name, export_data, format_style, True, False
+                        )
+                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
+                        st.download_button(
+                            label="📥 Download", data=docx_bytes, file_name=filename,
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                            key="docx_download"
+                        )
+            
+            with col2:
+                if st.button("🌐 HTML", use_container_width=True):
+                    with st.spinner("Creating..."):
+                        html_content = generate_html(book_title, author_name, export_data)
+                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
+                        st.download_button(
+                            label="📥 Download", data=html_content, file_name=filename,
+                            mime="text/html", key="html_download"
+                        )
+            
+            # JSON backup in its own row
             complete_data = {
-                "user": st.session_state.user_id, "user_profile": st.session_state.user_account.get('profile', {}),
+                "user": st.session_state.user_id, 
+                "user_profile": st.session_state.user_account.get('profile', {}),
                 "narrative_gps": st.session_state.user_account.get('narrative_gps', {}),
                 "enhanced_profile": st.session_state.user_account.get('enhanced_profile', {}),
-                "stories": export_data, "export_date": datetime.now().isoformat(),
+                "stories": export_data, 
+                "export_date": datetime.now().isoformat(),
                 "summary": {
-                    "total_stories": len(export_data), "total_sessions": len(set(s['session_id'] for s in export_data))
+                    "total_stories": len(export_data), 
+                    "total_sessions": len(set(s['session_id'] for s in export_data))
                 }
             }
             json_data = json.dumps(complete_data, indent=2)
             
-            st.download_button(label="📥 Download JSON Backup", 
-                              data=json_data,
-                              file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
-                              mime="application/json", 
-                              width='stretch')
-            
-            st.divider()
-            
-            st.markdown("### 🖨️ Publish Your Book")
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                first_name = st.session_state.user_account.get('profile', {}).get('first_name', 'My')
-                book_title = st.text_input("Book Title", value=f"{first_name}'s Story")
-            with col2:
-                author_name = st.text_input("Author Name", value=f"{st.session_state.user_account.get('profile', {}).get('first_name', '')} {st.session_state.user_account.get('profile', {}).get('last_name', '')}".strip())
-            
-            format_style = st.selectbox("Format Style", ["interview", "biography", "memoir"], 
-                                       format_func=lambda x: {"interview": "📝 Interview Q&A", 
-                                                             "biography": "📖 Continuous Biography", 
-                                                             "memoir": "📚 Chapter-based Memoir"}[x])
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                include_toc = st.checkbox("Table of Contents", value=True)
-            with col2:
-                include_dates = st.checkbox("Include Dates", value=False)
-            
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                if st.button("📊 DOCX", type="primary", width='stretch'):
-                    with st.spinner("Creating Word document..."):
-                        docx_bytes = generate_docx(
-                            book_title, author_name, export_data, format_style, include_toc, include_dates
-                        )
-                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
-                        st.download_button(
-                            label="📥 Download DOCX", data=docx_bytes, file_name=filename,
-                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
-                            width='stretch', key="docx_download"
-                        )
-
-            with col2:
-                if st.button("🌐 HTML", type="primary", width='stretch'):
-                    with st.spinner("Creating HTML page..."):
-                        html_content = generate_html(book_title, author_name, export_data)
-                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
-                        st.download_button(
-                            label="📥 Download HTML", data=html_content, file_name=filename,
-                            mime="text/html", width='stretch', key="html_download"
-                        )
-
-            with col3:
-                if st.button("📦 ZIP", type="primary", width='stretch'):
-                    with st.spinner("Creating ZIP package..."):
-                        zip_data = generate_zip(book_title, author_name, export_data)
-                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.zip"
-                        st.download_button(
-                            label="📥 Download ZIP", data=zip_data, file_name=filename,
-                            mime="application/zip", width='stretch', key="zip_download"
-                        )
-        else: 
-            st.warning("No stories yet! Start writing to publish.")
+            st.download_button(
+                label="📥 JSON Backup", 
+                data=json_data,
+                file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
+                mime="application/json", 
+                use_container_width=True
+            )
     else: 
-        st.warning("Please log in to export your data.")
+        if total_answers == 0:
+            st.warning("Write stories first!")
+        else:
+            st.warning("Log in to publish")
+    st.markdown('</div>', unsafe_allow_html=True)
     
     st.divider()
-    st.subheader("⚠️ Clear Data")
-    if st.session_state.confirming_clear == "session":
-        st.warning("**Delete ALL answers in current session?**")
-        if st.button("✅ Confirm", type="primary", key="conf_sesh", width='stretch'): 
-            sid = SESSIONS[st.session_state.current_session]["id"]
-            st.session_state.responses[sid]["questions"] = {}
-            save_user_data(st.session_state.user_id, st.session_state.responses)
-            st.session_state.confirming_clear = None
-            st.rerun()
-        if st.button("❌ Cancel", key="can_sesh", width='stretch'): 
-            st.session_state.confirming_clear = None
-            st.rerun()
-    elif st.session_state.confirming_clear == "all":
-        st.warning("**Delete ALL answers for ALL sessions?**")
-        if st.button("✅ Confirm All", type="primary", key="conf_all", width='stretch'): 
-            for s in SESSIONS:
-                st.session_state.responses[s["id"]]["questions"] = {}
-            save_user_data(st.session_state.user_id, st.session_state.responses)
-            st.session_state.confirming_clear = None
-            st.rerun()
-        if st.button("❌ Cancel", key="can_all", width='stretch'): 
-            st.session_state.confirming_clear = None
-            st.rerun()
-    else:
-        if st.button("🗑️ Clear Session", width='stretch'): 
-            st.session_state.confirming_clear = "session"
-            st.rerun()
-        if st.button("🔥 Clear All", width='stretch'): 
-            st.session_state.confirming_clear = "all"
-            st.rerun()
     
-    st.divider()
-    st.subheader("🔍 Search Your Stories")
-    search_query = st.text_input("Search answers & captions...", placeholder="e.g., childhood, wedding, photo", key="global_search")
+    # Data Management - Compact at bottom
+    st.markdown('<div class="sidebar-section">', unsafe_allow_html=True)
+    st.markdown("### ⚙️ Data")
+    
+    # Search
+    search_query = st.text_input("🔍", placeholder="Search stories...", key="global_search", label_visibility="collapsed")
     if search_query and len(search_query) >= 2:
         results = search_all_answers(search_query)
         if results:
-            st.success(f"Found {len(results)} matches")
-            with st.expander(f"📖 {len(results)} Results", expanded=True):
-                for i, r in enumerate(results[:10]):
-                    st.markdown(f"**Session {r['session_id']}: {r['session_title']}**  \n*{r['question']}*")
-                    if r.get('has_images'):
-                        st.caption(f"📸 Contains {r.get('image_count', 1)} photo(s)")
-                    st.markdown(f"{r['answer'][:150]}...")
-                    if st.button(f"Go to Session", key=f"srch_go_{i}_{r['session_id']}", width='stretch'):
+            with st.expander(f"📖 {len(results)} Results", expanded=False):
+                for i, r in enumerate(results[:5]):
+                    st.markdown(f"**{r['session_title']}**  \n{r['question'][:30]}...")
+                    if st.button(f"Go", key=f"srch_{i}", use_container_width=True):
                         for idx, s in enumerate(SESSIONS):
                             if s["id"] == r['session_id']:
                                 st.session_state.update(current_session=idx, current_question_override=r['question'], show_ai_rewrite_menu=False)
                                 st.rerun()
                     st.divider()
-                if len(results) > 10: 
-                    st.info(f"... and {len(results)-10} more matches")
-        else: 
-            st.info("No matches found")
-
+                if len(results) > 5: 
+                    st.caption(f"... {len(results)-5} more")
+    
+    # Clear options
+    if st.session_state.confirming_clear == "session":
+        st.warning("**Delete current session?**")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Yes", type="primary", key="conf_sesh", use_container_width=True): 
+                sid = SESSIONS[st.session_state.current_session]["id"]
+                st.session_state.responses[sid]["questions"] = {}
+                save_user_data(st.session_state.user_id, st.session_state.responses)
+                st.session_state.confirming_clear = None
+                st.rerun()
+        with col2:
+            if st.button("❌ No", key="can_sesh", use_container_width=True): 
+                st.session_state.confirming_clear = None
+                st.rerun()
+    elif st.session_state.confirming_clear == "all":
+        st.warning("**Delete ALL data?**")
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("✅ Yes All", type="primary", key="conf_all", use_container_width=True): 
+                for s in SESSIONS:
+                    st.session_state.responses[s["id"]]["questions"] = {}
+                save_user_data(st.session_state.user_id, st.session_state.responses)
+                st.session_state.confirming_clear = None
+                st.rerun()
+        with col2:
+            if st.button("❌ No", key="can_all", use_container_width=True): 
+                st.session_state.confirming_clear = None
+                st.rerun()
+    else:
+        col1, col2 = st.columns(2)
+        with col1:
+            if st.button("🗑️ Session", use_container_width=True): 
+                st.session_state.confirming_clear = "session"
+                st.rerun()
+        with col2:
+            if st.button("🔥 All", use_container_width=True): 
+                st.session_state.confirming_clear = "all"
+                st.rerun()
+    st.markdown('</div>', unsafe_allow_html=True)
+    
+    # Footer
+    st.markdown("---")
+    st.caption("Tell My Story v2.0")
 # ============================================================================
 # MAIN CONTENT AREA
 # ============================================================================
