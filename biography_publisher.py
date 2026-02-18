@@ -3,10 +3,11 @@ import streamlit as st
 from datetime import datetime
 import io
 import base64
+import os
+import re
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-import re
 
 def show_celebration():
     """Show a celebration animation when book is generated"""
@@ -145,14 +146,14 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
     html_parts = []
     
     # HTML header with styling
-    html_parts.append("""
+    html_parts.append(f"""
     <!DOCTYPE html>
     <html>
     <head>
         <meta charset="UTF-8">
-        <title>{}</title>
+        <title>{title}</title>
         <style>
-            body {
+            body {{
                 font-family: 'Georgia', serif;
                 line-height: 1.6;
                 color: #333;
@@ -160,35 +161,35 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
                 margin: 0 auto;
                 padding: 40px 20px;
                 background: #fff;
-            }
-            h1 {
+            }}
+            h1 {{
                 font-size: 42px;
                 text-align: center;
                 margin-bottom: 10px;
                 color: #000;
-            }
-            h2 {
+            }}
+            h2 {{
                 font-size: 28px;
                 margin-top: 40px;
                 margin-bottom: 20px;
                 color: #444;
                 border-bottom: 2px solid #eee;
                 padding-bottom: 10px;
-            }
-            h3 {
+            }}
+            h3 {{
                 font-size: 20px;
                 margin-top: 30px;
                 margin-bottom: 10px;
                 color: #666;
-            }
-            .author {
+            }}
+            .author {{
                 text-align: center;
                 font-size: 18px;
                 color: #666;
                 margin-bottom: 40px;
                 font-style: italic;
-            }
-            .question {
+            }}
+            .question {{
                 font-weight: bold;
                 font-size: 18px;
                 margin-top: 30px;
@@ -196,85 +197,85 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
                 color: #2c3e50;
                 border-left: 4px solid #3498db;
                 padding-left: 15px;
-            }
-            .answer {
+            }}
+            .answer {{
                 margin-bottom: 30px;
-            }
-            .story-image {
+            }}
+            .story-image {{
                 max-width: 100%;
                 height: auto;
                 display: block;
                 margin: 20px auto;
                 border-radius: 5px;
                 box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            }
-            .image-caption {
+            }}
+            .image-caption {{
                 text-align: center;
                 font-size: 14px;
                 color: #666;
                 margin-top: -10px;
                 margin-bottom: 20px;
                 font-style: italic;
-            }
-            .toc {
+            }}
+            .toc {{
                 background: #f9f9f9;
                 padding: 20px;
                 border-radius: 5px;
                 margin: 30px 0;
-            }
-            .toc h3 {
+            }}
+            .toc h3 {{
                 margin-top: 0;
-            }
-            .toc ul {
+            }}
+            .toc ul {{
                 list-style-type: none;
                 padding-left: 0;
-            }
-            .toc li {
+            }}
+            .toc li {{
                 margin-bottom: 10px;
-            }
-            .toc a {
+            }}
+            .toc a {{
                 color: #3498db;
                 text-decoration: none;
-            }
-            .toc a:hover {
+            }}
+            .toc a:hover {{
                 text-decoration: underline;
-            }
-            .cover-page {
+            }}
+            .cover-page {{
                 text-align: center;
                 margin-bottom: 50px;
                 page-break-after: always;
-            }
-            .cover-title {
+            }}
+            .cover-title {{
                 font-size: 48px;
                 font-weight: bold;
                 margin: 50px 0 20px 0;
-            }
-            .cover-author {
+            }}
+            .cover-author {{
                 font-size: 24px;
                 color: #666;
                 margin-bottom: 40px;
-            }
-            .copyright {
+            }}
+            .copyright {{
                 text-align: center;
                 font-size: 12px;
                 color: #999;
                 margin-top: 50px;
                 padding-top: 20px;
                 border-top: 1px solid #eee;
-            }
-            @media print {
-                body {
+            }}
+            @media print {{
+                body {{
                     padding: 0.5in;
-                }
-                .toc {
+                }}
+                .toc {{
                     background: none;
                     border: 1px solid #ccc;
-                }
-            }
+                }}
+            }}
         </style>
     </head>
     <body>
-    """.format(title))
+    """)
     
     # Cover page
     html_parts.append('<div class="cover-page">')
@@ -286,9 +287,9 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
                 cover_content = f.read()
                 # Extract just the cover part if it's a full HTML
                 if '<body>' in cover_content:
-                    cover_content = re.search(r'<body>(.*?)</body>', cover_content, re.DOTALL)
-                    if cover_content:
-                        cover_content = cover_content.group(1)
+                    cover_match = re.search(r'<body>(.*?)</body>', cover_content, re.DOTALL)
+                    if cover_match:
+                        cover_content = cover_match.group(1)
                 html_parts.append(cover_content)
         except:
             # Fallback to simple cover
