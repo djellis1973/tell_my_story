@@ -170,192 +170,30 @@ def generate_docx(book_title, author_name, stories, format_style, include_toc=Tr
     return docx_bytes
 
 # ============================================================================
-# HTML GENERATION 
+# HTML GENERATION - TEST VERSION WITH HARDCODED COVER
 # ============================================================================
 def generate_html(book_title, author_name, stories, format_style, include_toc=True, include_dates=False, cover_type="simple", custom_cover=None):
-    """Generate HTML - USES THE HTML COVER"""
+    """Generate HTML - TEST VERSION"""
     
-    cover_html = ""
-    
-    # ALWAYS use HTML cover if it exists
-    if custom_cover and custom_cover.get('cover_html') and os.path.exists(custom_cover['cover_html']):
-        try:
-            with open(custom_cover['cover_html'], 'r') as f:
-                full_cover_html = f.read()
-            
-            import re
-            body_match = re.search(r'<body>(.*?)</body>', full_cover_html, re.DOTALL)
-            if body_match:
-                cover_html = body_match.group(1)
-            else:
-                cover_html = f"""
-                <div class="book-header">
-                    <h1>{book_title}</h1>
-                    <div class="author">by {author_name}</div>
-                </div>
-                """
-        except Exception as e:
-            cover_html = f"""
-            <div class="book-header">
-                <h1>{book_title}</h1>
-                <div class="author">by {author_name}</div>
-            </div>
-            """
-    else:
-        cover_html = f"""
-        <div class="book-header">
-            <h1>{book_title}</h1>
-            <div class="author">by {author_name}</div>
+    # TEST: Create a simple test cover to prove it works
+    test_cover = f"""
+    <div style="width:600px; height:900px; margin:0 auto 40px auto; background:linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius:10px; display:flex; flex-direction:column; justify-content:space-between; padding:50px; box-sizing:border-box; box-shadow:0 10px 20px rgba(0,0,0,0.3);">
+        <div style="text-align:center;">
+            <h1 style="color:white; font-size:72px; margin:0; text-shadow:4px 4px 8px black;">{book_title}</h1>
+            <h2 style="color:white; font-size:32px; margin:20px 0 0 0;">A Test Cover</h2>
         </div>
-        """
-    
-    # Build TOC
-    toc_html = ""
-    if include_toc and stories:
-        toc_html = "<h2>Table of Contents</h2><ul class='toc'>"
-        current_session = None
-        for i, story in enumerate(stories, 1):
-            session_id = story.get('session_id', '1')
-            if session_id != current_session:
-                session_title = story.get('session_title', f'Session {session_id}')
-                toc_html += f"<li class='toc-session'>{session_title}</li>"
-                current_session = session_id
-            question = story.get('question', f'Story {i}')
-            toc_html += f"<li class='toc-story'><a href='#story-{i}'>{i}. {question}</a></li>"
-        toc_html += "</ul><hr>"
-    
-    # Build content
-    content_html = ""
-    current_session = None
-    for i, story in enumerate(stories, 1):
-        session_id = story.get('session_id', '1')
-        if session_id != current_session:
-            session_title = story.get('session_title', f'Session {session_id}')
-            content_html += f"<h1 class='session-title'>{session_title}</h1>"
-            current_session = session_id
-        
-        question = story.get('question', '')
-        answer_text = story.get('answer_text', '')
-        images = story.get('images', [])
-        
-        content_html += f"<div class='story' id='story-{i}'>"
-        
-        if format_style == 'interview':
-            content_html += f"<h2 class='question'>Q: {question}</h2>"
-        
-        paragraphs = answer_text.split('\n')
-        for p in paragraphs:
-            if p.strip():
-                content_html += f"<p>{p}</p>"
-        
-        if images:
-            content_html += "<div class='image-gallery'>"
-            for img_data in images:
-                b64 = img_data.get('base64')
-                caption = img_data.get('caption', '')
-                if b64:
-                    content_html += f"""
-                    <div class='image-item'>
-                        <img src='data:image/jpeg;base64,{b64}' alt='{caption}'>
-                        <div class='image-caption'>📝 {caption}</div>
-                    </div>
-                    """
-            content_html += "</div>"
-        
-        content_html += "</div><hr>"
-    
-    # Complete HTML with styling
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>{book_title}</title>
-    <style>
-        body {{
-            font-family: 'Georgia', serif;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 40px 20px;
-            background: #fafafa;
-            color: #333;
-            line-height: 1.6;
-        }}
-        .book-header {{
-            text-align: center;
-            padding: 60px 0;
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white;
-            margin: -40px -20px 40px -20px;
-            border-radius: 0 0 20px 20px;
-        }}
-        .session-title {{
-            color: #764ba2;
-            border-bottom: 2px solid #667eea;
-            padding-bottom: 10px;
-            margin-top: 40px;
-        }}
-        .question {{
-            color: #667eea;
-            font-style: italic;
-        }}
-        .image-gallery {{
-            display: flex;
-            flex-wrap: wrap;
-            gap: 20px;
-            margin: 20px 0;
-        }}
-        .image-item {{
-            flex: 1 1 300px;
-            background: white;
-            padding: 15px;
-            border-radius: 10px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }}
-        .image-item img {{
-            max-width: 100%;
-            height: auto;
-            border-radius: 5px;
-        }}
-        .image-caption {{
-            text-align: center;
-            font-size: 14px;
-            color: #666;
-            margin-top: 10px;
-            font-style: italic;
-        }}
-        hr {{
-            border: none;
-            border-top: 1px solid #ddd;
-            margin: 40px 0;
-        }}
-        .footer {{
-            text-align: center;
-            color: #999;
-            font-size: 12px;
-            margin-top: 60px;
-        }}
-        .cover-container {{
-            width: 600px;
-            height: 900px;
-            margin: 0 auto 40px auto;
-            position: relative;
-        }}
-    </style>
-</head>
-<body>
-    {cover_html}
-    
-    {toc_html}
-    
-    <div class="content">
-        {content_html}
+        <div style="text-align:center;">
+            <p style="color:white; font-size:36px; margin:0; text-shadow:3px 3px 6px black;">by {author_name}</p>
+        </div>
     </div>
+    """
     
-    <div class="footer">
-        Generated by Tell My Story • {datetime.now().year}
-    </div>
-</body>
-</html>"""
+    # Use test cover
+    cover_html = test_cover
+    
+    # Rest of your HTML generation code...
+    # [Keep all the TOC, content, and styling code from before]
+    
     return html
 
 # ============================================================================
