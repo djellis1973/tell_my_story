@@ -133,6 +133,21 @@ def create_custom_cover_html(title, author, subtitle, image_path, title_font):
 
 def show_cover_designer():
     """Display the cover designer interface (can be called from main app)"""
+    
+    # Initialize session state INSIDE the function
+    if 'cover_design' not in st.session_state:
+        st.session_state.cover_design = {
+            "title": "",
+            "subtitle": "",
+            "author": "",
+            "cover_type": "Simple",
+            "title_font": "Georgia",
+            "title_color": "#000000",
+            "background_color": "#FFFFFF",
+            "cover_image": None,
+            "cover_image_path": None
+        }
+    
     st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
     st.title("🎨 Cover Designer")
     
