@@ -9,7 +9,7 @@ import hashlib
 import smtplib
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
-import secretshttps://github.com/djellis1973/Tell_My_Story/tree/main
+import secrets
 import string
 import time
 import shutil
