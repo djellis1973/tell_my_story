@@ -4,11 +4,11 @@ import io
 import base64
 import os
 import re
-import html  # Add this import
+import html
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
-from docx.enum.table import WD_TABLE_ALIGNMENT
+from docx.enum.table import WD_TABLE_ALIGNMENT  # Add this import
 
 def clean_text(text):
     """Convert HTML entities to regular characters"""
@@ -428,12 +428,11 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
             html_parts.append(f'<h2 id="{anchor}">{session_title}</h2>')
         
         if format_style == "interview":
-            # Clean question text
             question_text = story.get('question', '')
             clean_question = clean_text(question_text)
             html_parts.append(f'<div class="question">{clean_question}</div>')
         
-        # Format answer - CLEAN IT HERE
+        # Format answer
         answer_text = story.get('answer_text', '')
         if answer_text:
             clean_answer = clean_text(answer_text)
@@ -442,7 +441,6 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
             paragraphs = clean_answer.split('\n')
             for para in paragraphs:
                 if para.strip():
-                    # Escape HTML special characters
                     escaped_para = para.strip().replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                     html_parts.append(f'<p>{escaped_para}</p>')
             html_parts.append('</div>')
@@ -453,7 +451,6 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
                 if img.get('base64'):
                     html_parts.append(f'<img src="data:image/jpeg;base64,{img["base64"]}" class="story-image">')
                     if img.get('caption'):
-                        # Clean caption text
                         clean_caption = clean_text(img['caption'])
                         caption = clean_caption.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
                         html_parts.append(f'<p class="image-caption">{caption}</p>')
