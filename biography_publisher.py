@@ -1,4 +1,3 @@
- biography_publisher.py – PDF, DOCX & HTML with embedded images (FULLY FIXED)
 import streamlit as st
 import json
 import base64
@@ -8,8 +7,9 @@ import os
 import io
 import tempfile
 from docx import Document
-from docx.shared import Inches
+from docx.shared import Inches, Pt
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
 from fpdf import FPDF
 import hashlib
 import time
@@ -100,6 +100,32 @@ def show_celebration():
     # Also use Streamlit's balloons after a tiny delay
     time.sleep(0.5)
     st.balloons()
+
+# ============================================================================
+# CLEAN TEXT FUNCTION
+# ============================================================================
+def clean_text(text):
+    """Convert HTML entities to regular characters"""
+    if not text:
+        return text
+    
+    # Convert &nbsp; to space
+    text = text.replace('&nbsp;', ' ')
+    
+    # Also handle other common HTML entities
+    text = text.replace('&amp;', '&')
+    text = text.replace('&lt;', '<')
+    text = text.replace('&gt;', '>')
+    text = text.replace('&quot;', '"')
+    text = text.replace('&#39;', "'")
+    
+    # Remove HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # Clean up whitespace
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
 
 # ============================================================================
 # PDF CLASS (FIXED - returns bytes directly)
@@ -210,7 +236,7 @@ def generate_pdf(book_title, author_name, stories, format_style, include_toc=Tru
             if session_id != current_session:
                 session_title = pdf.safe_text(story.get('session_title', f'Session {session_id}'))
                 pdf.set_font('Arial', 'B', 18)
-                pdf.cell(0, 10, session_title, 0, 1, 'L')
+                pdf.cell(0, 10, session_title, 0, 1, 'C')  # Centered session title
                 pdf.ln(5)
                 current_session = session_id
             
@@ -253,17 +279,32 @@ def generate_pdf(book_title, author_name, stories, format_style, include_toc=Tru
     return pdf.output(dest='S')
 
 # ============================================================================
-# DOCX GENERATION (FIXED - uses full cover image, no text overlay)
+# DOCX GENERATION (FIXED - with centered tables)
 # ============================================================================
 def generate_docx(book_title, author_name, stories, format_style, include_toc=True, include_dates=False, cover_type="simple", custom_cover=None):
-    """Generate DOCX with embedded images"""
+    """Generate DOCX with embedded images and centered content blocks"""
     doc = Document()
+    
+    # Set document margins
+    sections = doc.sections
+    for section in sections:
+        section.top_margin = Inches(1)
+        section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1.25)
+        section.right_margin = Inches(1.25)
+    
+    # Set normal style
+    style = doc.styles['Normal']
+    style.font.name = 'Times New Roman'
+    style.font.size = Pt(12)
     
     # Title page - use full cover image if available
     if cover_type == "custom" and custom_cover and custom_cover.get('cover_image') and os.path.exists(custom_cover['cover_image']):
         # Add the full cover image - no text overlay
         try:
             doc.add_picture(custom_cover['cover_image'], width=Inches(6))
+            last_paragraph = doc.paragraphs[-1]
+            last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             doc.add_page_break()
         except Exception as e:
             # Fallback to text title
@@ -284,57 +325,95 @@ def generate_docx(book_title, author_name, stories, format_style, include_toc=Tr
     
     # TOC
     if include_toc and stories:
-        doc.add_heading('Table of Contents', 1).alignment = WD_ALIGN_PARAGRAPH.CENTER
+        toc = doc.add_heading('Table of Contents', 1)
+        toc.alignment = WD_ALIGN_PARAGRAPH.CENTER
         current_session = None
         for i, story in enumerate(stories, 1):
             session_id = story.get('session_id', '1')
             if session_id != current_session:
                 session_title = story.get('session_title', f'Session {session_id}')
-                doc.add_heading(session_title, 2)
+                p = doc.add_paragraph()
+                p.add_run(session_title).bold = True
+                p.paragraph_format.left_indent = Inches(0.25)
                 current_session = session_id
-            question = story.get('question', f'Story {i}')
-            p = doc.add_paragraph(f'{i}. {question}')
-            p.style = 'List Bullet'
+            question = clean_text(story.get('question', f'Story {i}'))
+            p = doc.add_paragraph(f'  {i}. {question[:50]}...' if len(question) > 50 else f'  {i}. {question}')
+            p.paragraph_format.left_indent = Inches(0.5)
         doc.add_page_break()
     
-    # Content
+    # Content with centered tables
     if stories:
         current_session = None
         story_counter = 1
         for story in stories:
             session_id = story.get('session_id', '1')
+            
+            # Add session header if new session - CENTERED
             if session_id != current_session:
                 session_title = story.get('session_title', f'Session {session_id}')
-                doc.add_heading(session_title, 1)
+                heading = doc.add_heading(session_title, 1)
+                heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 current_session = session_id
             
-            question = story.get('question', '')
-            answer_text = story.get('answer_text', '')
+            question = clean_text(story.get('question', ''))
+            answer_text = clean_text(story.get('answer_text', ''))
             images = story.get('images', [])
             
-            if format_style == 'interview':
-                doc.add_heading(f'Q: {question}', 3)
-                doc.add_paragraph(answer_text)
-            else:  # biography format - just the answer
-                doc.add_paragraph(answer_text)
+            # Create centered container table (6 inches wide)
+            table = doc.add_table(rows=1, cols=1)
+            table.autofit = False
+            table.allow_autofit = False
+            table.columns[0].width = Inches(6.0)
+            table.alignment = WD_TABLE_ALIGNMENT.CENTER
             
-            # Embed images
+            # Get the cell
+            cell = table.cell(0, 0)
+            
+            if format_style == 'interview' and question:
+                # Question inside cell (left-aligned)
+                q_para = cell.paragraphs[0]
+                q_run = q_para.add_run(f'Q: {question}')
+                q_run.bold = True
+                q_run.italic = True
+                q_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                q_para.paragraph_format.space_after = Pt(6)
+                
+                # Answer inside cell
+                if answer_text:
+                    a_para = cell.add_paragraph(answer_text)
+                    a_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    a_para.paragraph_format.first_line_indent = Inches(0.25)
+            else:
+                # Just answer (biography style)
+                if answer_text:
+                    p = cell.paragraphs[0]
+                    p.add_run(answer_text)
+                    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    p.paragraph_format.first_line_indent = Inches(0.25)
+            
+            # Embed images (outside table so they can be centered independently)
             for img_data in images:
                 b64 = img_data.get('base64')
-                caption = img_data.get('caption', '')
+                caption = clean_text(img_data.get('caption', ''))
                 if b64:
                     try:
                         img_bytes = base64.b64decode(b64)
                         img_stream = io.BytesIO(img_bytes)
                         doc.add_picture(img_stream, width=Inches(4))
+                        last_paragraph = doc.paragraphs[-1]
+                        last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                         if caption:
                             cap = doc.add_paragraph(caption)
                             cap.style = 'Caption'
+                            cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
                     except Exception as e:
                         print(f"Could not embed image: {e}")
+            
+            # Add spacing between stories
             doc.add_paragraph()
             story_counter += 1
     
+    # Save to bytes
     docx_bytes = io.BytesIO()
     doc.save(docx_bytes)
     docx_bytes.seek(0)
@@ -382,8 +461,8 @@ def generate_html(book_title, author_name, stories, format_style, include_toc=Tr
                 session_title = story.get('session_title', f'Session {session_id}')
                 toc_html += f"<li class='toc-session'>{session_title}</li>"
                 current_session = session_id
-            question = story.get('question', f'Story {i}')
-            toc_html += f"<li class='toc-story'><a href='#story-{i}'>{i}. {question}</a></li>"
+            question = clean_text(story.get('question', f'Story {i}'))
+            toc_html += f"<li class='toc-story'><a href='#story-{i}'>{i}. {question[:50]}...</a></li>"
         toc_html += "</ul><hr>"
     
     # Build content
@@ -396,14 +475,14 @@ def generate_html(book_title, author_name, stories, format_style, include_toc=Tr
             content_html += f"<h1 class='session-title'>{session_title}</h1>"
             current_session = session_id
         
-        question = story.get('question', '')
-        answer_text = story.get('answer_text', '')
+        question = clean_text(story.get('question', ''))
+        answer_text = clean_text(story.get('answer_text', ''))
         images = story.get('images', [])
         
         # Add anchor for TOC
         content_html += f"<div class='story' id='story-{i}'>"
         
-        if format_style == 'interview':
+        if format_style == 'interview' and question:
             content_html += f"<h2 class='question'>Q: {question}</h2>"
         
         # Convert newlines to paragraphs
@@ -417,7 +496,7 @@ def generate_html(book_title, author_name, stories, format_style, include_toc=Tr
             content_html += "<div class='image-gallery'>"
             for img_data in images:
                 b64 = img_data.get('base64')
-                caption = img_data.get('caption', '')
+                caption = clean_text(img_data.get('caption', ''))
                 if b64:
                     content_html += f"""
                     <div class='image-item'>
@@ -505,9 +584,13 @@ def generate_html(book_title, author_name, stories, format_style, include_toc=Tr
             border-bottom: 2px solid #667eea;
             padding-bottom: 10px;
             margin-top: 40px;
+            text-align: center;
         }}
         .story {{
             margin: 30px 0;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
         }}
         .question {{
             color: #667eea;
@@ -518,6 +601,7 @@ def generate_html(book_title, author_name, stories, format_style, include_toc=Tr
             flex-wrap: wrap;
             gap: 20px;
             margin: 20px 0;
+            justify-content: center;
         }}
         .image-item {{
             flex: 1 1 300px;
