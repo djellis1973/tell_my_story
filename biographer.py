@@ -815,64 +815,72 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
         from docx.shared import Inches, Pt
         from docx.enum.text import WD_ALIGN_PARAGRAPH
         import io
+        import re
+        import html
         
         doc = Document()
+        
+        # Set page margins for proper book layout
+        sections = doc.sections
+        for section in sections:
+            section.top_margin = Inches(1)
+            section.bottom_margin = Inches(1)
+            section.left_margin = Inches(1.25)  # Slightly larger for binding
+            section.right_margin = Inches(1)
         
         # COVER PAGE - Based on user choice
         if cover_choice == "uploaded" and cover_image:
             try:
                 # Add uploaded image as cover (NO text)
                 image_stream = io.BytesIO(cover_image)
-                doc.add_picture(image_stream, width=Inches(5))
-                last_paragraph = doc.paragraphs[-1]
-                last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
                 
-                # NO title or author text here - just the image
+                # Center the image on the page
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                p.add_run().add_picture(image_stream, width=Inches(5))
                 
                 # Page break after cover
                 doc.add_page_break()
                 
             except Exception as e:
                 # Fallback to simple title cover if image fails
-                title_para = doc.add_paragraph()
-                title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                title_run = title_para.add_run(title)
-                title_run.font.size = Pt(28)
-                title_run.font.bold = True
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                p.add_run(title).font.size = Pt(28)
+                p.add_run().font.bold = True
                 
-                author_para = doc.add_paragraph()
-                author_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                author_run = author_para.add_run(f"by {author}")
-                author_run.font.size = Pt(16)
-                author_run.font.italic = True
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                p.add_run(f"by {author}").font.size = Pt(16)
+                p.add_run().font.italic = True
                 doc.add_page_break()
         else:
             # Simple title cover
-            title_para = doc.add_paragraph()
-            title_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            title_run = title_para.add_run(title)
-            title_run.font.size = Pt(28)
-            title_run.font.bold = True
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.add_run(title).font.size = Pt(28)
+            p.add_run().font.bold = True
             
-            author_para = doc.add_paragraph()
-            author_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            author_run = author_para.add_run(f"by {author}")
-            author_run.font.size = Pt(16)
-            author_run.font.italic = True
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.add_run(f"by {author}").font.size = Pt(16)
+            p.add_run().font.italic = True
             doc.add_page_break()
         
         # Copyright page (blank for now - can add content later)
-        copyright_para = doc.add_paragraph()
-        copyright_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        copyright_para.add_run("")  # Empty for now
+        p = doc.add_paragraph()
+        p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        p.add_run("")  # Empty for now
         
         # Table of Contents
         if include_toc:
             doc.add_page_break()
-            toc_para = doc.add_paragraph()
-            toc_run = toc_para.add_run("Table of Contents")
-            toc_run.font.size = Pt(18)
-            toc_run.font.bold = True
+            
+            # TOC title - centered
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            p.add_run("Table of Contents").font.size = Pt(18)
+            p.add_run().font.bold = True
             
             # Group by session for TOC
             sessions = {}
@@ -882,8 +890,12 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
                     sessions[session_title] = []
                 sessions[session_title].append(story)
             
+            # TOC entries - left aligned but within centered page margins
             for session_title in sessions.keys():
-                doc.add_paragraph(f"  {session_title}", style='List Bullet')
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                p.paragraph_format.left_indent = Inches(1.5)  # Indent to create centered block
+                p.add_run(f"  {session_title}")
         
         # Add stories
         doc.add_page_break()
@@ -895,26 +907,48 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
             # Add session header if new session
             if session_title != current_session:
                 current_session = session_title
-                session_para = doc.add_paragraph()
-                session_run = session_para.add_run(session_title)
-                session_run.font.size = Pt(16)
-                session_run.font.bold = True
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                p.add_run(session_title).font.size = Pt(16)
+                p.add_run().font.bold = True
             
             if format_style == "interview":
                 # Add question
-                q_para = doc.add_paragraph()
-                q_run = q_para.add_run(story.get('question', ''))
+                p = doc.add_paragraph()
+                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                p.paragraph_format.left_indent = Inches(0.5)  # Indent questions slightly
+                q_run = p.add_run(story.get('question', ''))
                 q_run.font.bold = True
                 q_run.font.italic = True
             
-            # Add answer
+            # Add answer - CLEAN HTML FIRST
             answer_text = story.get('answer_text', '')
             if answer_text:
-                # Split into paragraphs
-                paragraphs = answer_text.split('\n')
+                # Clean HTML entities and tags
+                answer_text = html.unescape(answer_text)
+                
+                # Replace <p> and <br> with newlines for proper paragraph breaks
+                answer_text = answer_text.replace('</p>', '\n\n').replace('<br>', '\n').replace('<br/>', '\n').replace('<br />', '\n')
+                answer_text = re.sub(r'<[^>]+>', '', answer_text)
+                
+                # Clean up multiple newlines and spaces
+                answer_text = re.sub(r'\n\s*\n\s*\n', '\n\n', answer_text)
+                answer_text = re.sub(r'[ \t]+', ' ', answer_text)
+                
+                # Split into paragraphs and add to document
+                paragraphs = answer_text.split('\n\n')
                 for para in paragraphs:
                     if para.strip():
-                        doc.add_paragraph(para.strip())
+                        # Further split long paragraphs by single newlines
+                        lines = para.split('\n')
+                        for line in lines:
+                            if line.strip():
+                                p = doc.add_paragraph(line.strip())
+                                p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                                p.paragraph_format.left_indent = Inches(1)  # Indent main text to create centered block
+                                p.paragraph_format.right_indent = Inches(1)  # Match right side
+                                p.paragraph_format.first_line_indent = Inches(0.25)  # Indent first line
+                                p.paragraph_format.space_after = Pt(6)
             
             # Add images if any
             if include_images and story.get('images'):
@@ -923,17 +957,18 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
                         try:
                             img_data = base64.b64decode(img['base64'])
                             img_stream = io.BytesIO(img_data)
-                            doc.add_picture(img_stream, width=Inches(4))
-                            last_paragraph = doc.paragraphs[-1]
-                            last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            
+                            # Center the image
+                            p = doc.add_paragraph()
+                            p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                            p.add_run().add_picture(img_stream, width=Inches(4))
                             
                             # Add caption
                             if img.get('caption'):
-                                caption_para = doc.add_paragraph()
-                                caption_run = caption_para.add_run(img['caption'])
-                                caption_run.font.size = Pt(10)
-                                caption_run.font.italic = True
-                                caption_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                                p = doc.add_paragraph()
+                                p.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                                p.add_run(img['caption']).font.size = Pt(10)
+                                p.add_run().font.italic = True
                         except:
                             pass
             
