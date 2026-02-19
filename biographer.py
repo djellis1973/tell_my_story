@@ -1,3421 +1,790 @@
-# biographer.py – Tell My Story App (COMPLETE WORKING VERSION)
 import streamlit as st
 import json
-from datetime import datetime, date
-from openai import OpenAI
-import os
-import re
-import hashlib
-import smtplib
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-import secrets
-import string
-import time
-import shutil
 import base64
-from PIL import Image
+from datetime import datetime
+import re
+import os
 import io
-import zipfile
+import tempfile
+from docx import Document
+from docx.shared import Inches, Pt
+from docx.enum.text import WD_ALIGN_PARAGRAPH
+from docx.enum.table import WD_TABLE_ALIGNMENT
+from fpdf import FPDF
+import hashlib
+import time
 
 # ============================================================================
-# PAGE CONFIG - MUST BE FIRST
+# CELEBRATION BALLOONS FUNCTION
 # ============================================================================
-st.set_page_config(page_title="Tell My Story - Your Life Timeline", page_icon="📖", layout="wide", initial_sidebar_state="expanded")
-
-# ============================================================================
-# IMPORT BIOGRAPHY PUBLISHER
-# ============================================================================
-try:
-    from biography_publisher import generate_docx, generate_html, show_celebration
-    PUBLISHER_AVAILABLE = True
-except ImportError as e:
-    st.error(f"❌ Please ensure biography_publisher.py is in the same directory")
-    st.stop()
-
-# ============================================================================
-# IMPORT QUILL RICH TEXT EDITOR
-# ============================================================================
-try:
-    from streamlit_quill import st_quill
-    QUILL_AVAILABLE = True
-except ImportError:
-    st.error("❌ Please install streamlit-quill: pip install streamlit-quill")
-    st.stop()
-
-# ============================================================================
-# FORCE DIRECTORY CREATION
-# ============================================================================
-for dir_path in ["question_banks/default", "question_banks/users", "question_banks", 
-                 "uploads", "uploads/thumbnails", "uploads/metadata", "accounts", "sessions", "backups"]:
-    os.makedirs(dir_path, exist_ok=True)
-
-# ============================================================================
-# IMPORTS
-# ============================================================================
-try:
-    from topic_bank import TopicBank
-    from session_manager import SessionManager
-    from vignettes import VignetteManager
-    from session_loader import SessionLoader
-    from beta_reader import BetaReader
-    from question_bank_manager import QuestionBankManager
-except ImportError as e:
-    st.error(f"Error importing modules: {e}")
-    st.info("Please ensure all .py files are in the same directory")
-    TopicBank = SessionManager = VignetteManager = SessionLoader = BetaReader = QuestionBankManager = None
-
-DEFAULT_WORD_TARGET = 500
-
-# ============================================================================
-# INITIALIZATION
-# ============================================================================
-client = OpenAI(api_key=st.secrets.get("OPENAI_API_KEY", os.environ.get("OPENAI_API_KEY")))
-beta_reader = BetaReader(client) if BetaReader else None
-
-# Initialize session state
-default_state = {
-    "qb_manager": None, "qb_manager_initialized": False, "user_id": None, "logged_in": False,
-    "current_session": 0, "current_question": 0, "responses": {}, "editing": False,
-    "editing_word_target": False, "confirming_clear": None, "data_loaded": False,
-    "current_question_override": None, "show_vignette_modal": False, "vignette_topic": "",
-    "vignette_content": "", "selected_vignette_type": "Standard Topic", "current_vignette_list": [],
-    "editing_vignette_index": None, "show_vignette_manager": False, "custom_topic_input": "",
-    "show_custom_topic_modal": False, "show_topic_browser": False, "show_session_manager": False,
-    "show_session_creator": False, "editing_custom_session": None, "show_vignette_detail": False,
-    "selected_vignette_id": None, "editing_vignette_id": None, "selected_vignette_for_session": None,
-    "published_vignette": None, "show_beta_reader": False, "current_beta_feedback": None,
-    "current_question_bank": None, "current_bank_name": None, "current_bank_type": None,
-    "current_bank_id": None, "show_bank_manager": False, "show_bank_editor": False,
-    "editing_bank_id": None, "editing_bank_name": None, "qb_manager": None, "qb_manager_initialized": False,
-    "confirm_delete": None, "user_account": None, "show_profile_setup": False,
-    "image_handler": None, "show_image_manager": False,
-    "current_rewrite_data": None, "show_ai_rewrite": False, "show_ai_rewrite_menu": False,
-    "editor_content": {}, "show_privacy_settings": False, "show_cover_designer": False,
-    "beta_feedback_display": None, "beta_feedback_storage": {},
-    "auth_tab": 'login',  # Added for authentication
-    "show_publisher": False,
-    "cover_image_data": None
-}
-for key, value in default_state.items():
-    if key not in st.session_state:
-        st.session_state[key] = value
-
-# Load external CSS
-try:
-    with open("styles.css", encoding="utf-8") as f:
-        st.markdown(f"<style>{f.read()}</style>", unsafe_allow_html=True)
-except FileNotFoundError:
-    pass
-
-LOGO_URL = "https://menuhunterai.com/wp-content/uploads/2026/02/tms_logo.png"
-
-# ============================================================================
-# EMAIL CONFIG
-# ============================================================================
-EMAIL_CONFIG = {
-    "smtp_server": st.secrets.get("SMTP_SERVER", "smtp.gmail.com"),
-    "smtp_port": int(st.secrets.get("SMTP_PORT", 587)),
-    "sender_email": st.secrets.get("SENDER_EMAIL", ""),
-    "sender_password": st.secrets.get("SENDER_PASSWORD", ""),
-    "use_tls": True
-}
-
-# ============================================================================
-# BACKUP AND RESTORE FUNCTIONS
-# ============================================================================
-def create_backup():
-    if not st.session_state.user_id:
-        return None
-    try:
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        backup_data = {
-            "user_id": st.session_state.user_id,
-            "user_account": st.session_state.user_account,
-            "responses": st.session_state.responses,
-            "backup_date": datetime.now().isoformat(),
-            "version": "1.0"
-        }
-        backup_file = f"backups/{st.session_state.user_id}_{timestamp}.json"
-        with open(backup_file, 'w') as f:
-            json.dump(backup_data, f, indent=2)
-        return json.dumps(backup_data, indent=2)
-    except Exception as e:
-        st.error(f"Backup failed: {e}")
-        return None
-
-def restore_from_backup(backup_json):
-    try:
-        backup_data = json.loads(backup_json)
-        if backup_data.get("user_id") != st.session_state.user_id:
-            st.error("Backup belongs to a different user")
-            return False
-        st.session_state.user_account = backup_data.get("user_account", st.session_state.user_account)
-        st.session_state.responses = backup_data.get("responses", st.session_state.responses)
-        save_account_data(st.session_state.user_account)
-        save_user_data(st.session_state.user_id, st.session_state.responses)
-        return True
-    except Exception as e:
-        st.error(f"Restore failed: {e}")
-        return False
-
-def list_backups():
-    if not st.session_state.user_id:
-        return []
-    backups = []
-    try:
-        for f in os.listdir("backups"):
-            if f.startswith(st.session_state.user_id) and f.endswith(".json"):
-                filepath = f"backups/{f}"
-                with open(filepath, 'r') as file:
-                    data = json.load(file)
-                    backups.append({
-                        "filename": f,
-                        "date": data.get("backup_date", "Unknown"),
-                        "size": os.path.getsize(filepath)
-                    })
-    except:
-        pass
-    return sorted(backups, key=lambda x: x["date"], reverse=True)
-
-# ============================================================================
-# IMAGE HANDLER
-# ============================================================================
-class ImageHandler:
-    def __init__(self, user_id=None):
-        self.user_id = user_id
-        self.base_path = "uploads"
-        self.settings = {
-            "full_width": 1600,
-            "inline_width": 800,
-            "thumbnail_size": 200,
-            "dpi": 300,
-            "quality": 85,
-            "max_file_size_mb": 5,
-            "aspect_ratio": 1.6
-        }
+def show_celebration():
+    """Show animated balloons when book is successfully generated"""
+    # Store in session state that we've shown balloons
+    st.session_state.balloons_shown = True
     
-    def get_user_path(self):
-        if self.user_id:
-            user_hash = hashlib.md5(self.user_id.encode()).hexdigest()[:8]
-            path = f"{self.base_path}/user_{user_hash}"
-            os.makedirs(f"{path}/thumbnails", exist_ok=True)
-            return path
-        return self.base_path
+    balloons_html = """
+    <style>
+    @keyframes float {
+        0% { transform: translateY(100vh) scale(0.5); opacity: 1; }
+        100% { transform: translateY(-100vh) scale(1.2); opacity: 0; }
+    }
+    .balloon {
+        position: fixed;
+        bottom: -100px;
+        width: 50px;
+        height: 70px;
+        background: radial-gradient(circle at 30% 30%, #fff, #ff6b6b);
+        border-radius: 50% 50% 50% 50% / 60% 60% 40% 40%;
+        animation: float 8s ease-in forwards;
+        z-index: 9999;
+        pointer-events: none;
+    }
+    .balloon:nth-child(2) { left: 10%; background: radial-gradient(circle at 30% 30%, #fff, #ffd93d); animation-delay: 0.5s; }
+    .balloon:nth-child(3) { left: 20%; background: radial-gradient(circle at 30% 30%, #fff, #6bff6b); animation-delay: 1s; }
+    .balloon:nth-child(4) { left: 30%; background: radial-gradient(circle at 30% 30%, #fff, #6b6bff); animation-delay: 1.5s; }
+    .balloon:nth-child(5) { left: 40%; background: radial-gradient(circle at 30% 30%, #fff, #ff6bff); animation-delay: 2s; }
+    .balloon:nth-child(6) { left: 50%; background: radial-gradient(circle at 30% 30%, #fff, #6bffff); animation-delay: 2.5s; }
+    .balloon:nth-child(7) { left: 60%; background: radial-gradient(circle at 30% 30%, #fff, #ffb06b); animation-delay: 3s; }
+    .balloon:nth-child(8) { left: 70%; background: radial-gradient(circle at 30% 30%, #fff, #ff6b6b); animation-delay: 3.5s; }
+    .balloon:nth-child(9) { left: 80%; background: radial-gradient(circle at 30% 30%, #fff, #ffd93d); animation-delay: 4s; }
+    .balloon:nth-child(10) { left: 90%; background: radial-gradient(circle at 30% 30%, #fff, #6bff6b); animation-delay: 4.5s; }
+    .balloon::after {
+        content: '';
+        position: absolute;
+        bottom: -15px;
+        left: 50%;
+        transform: translateX(-50%);
+        width: 2px;
+        height: 30px;
+        background: linear-gradient(to bottom, #888, #ccc);
+    }
+    .celebration-message {
+        position: fixed;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        padding: 30px 50px;
+        border-radius: 20px;
+        font-size: 32px;
+        font-weight: bold;
+        z-index: 10000;
+        box-shadow: 0 10px 30px rgba(0,0,0,0.3);
+        animation: pop-in 0.5s ease-out;
+        text-align: center;
+    }
+    @keyframes pop-in {
+        0% { transform: translate(-50%, -50%) scale(0); opacity: 0; }
+        80% { transform: translate(-50%, -50%) scale(1.1); }
+        100% { transform: translate(-50%, -50%) scale(1); opacity: 1; }
+    }
+    </style>
+    <div class="celebration-message">
+        🎉 Congratulations! 🎉<br>
+        <span style="font-size: 24px;">Your book has been published!</span>
+    </div>
+    <div class="balloon"></div>
+    <div class="balloon"></div>
+    <div class="balloon"></div>
+    <div class="balloon"></div>
+    <div class="balloon"></div>
+    <div class="balloon"></div>
+    <div class="balloon"></div>
+    <div class="balloon"></div>
+    <div class="balloon"></div>
+    <div class="balloon"></div>
+    """
+    st.components.v1.html(balloons_html, height=0)
     
-    def optimize_image(self, image, max_width=1600, is_thumbnail=False):
-        try:
-            if image.mode in ('RGBA', 'LA', 'P'):
-                bg = Image.new('RGB', image.size, (255, 255, 255))
-                if image.mode == 'P':
-                    image = image.convert('RGBA')
-                if image.mode == 'RGBA':
-                    bg.paste(image, mask=image.split()[-1])
-                else:
-                    bg.paste(image)
-                image = bg
-            
-            width, height = image.size
-            aspect = height / width
-            
-            if is_thumbnail:
-                size = min(width, height)
-                left = (width - size) // 2
-                top = (height - size) // 2
-                right = left + size
-                bottom = top + size
-                image = image.crop((left, top, right, bottom))
-                image.thumbnail((self.settings["thumbnail_size"], self.settings["thumbnail_size"]), Image.Resampling.LANCZOS)
-                return image
-            
-            if width > max_width:
-                new_width = max_width
-                new_height = int(max_width * aspect)
-                image = image.resize((new_width, new_height), Image.Resampling.LANCZOS)
-            
-            return image
-        except Exception as e:
-            print(f"Error optimizing image: {e}")
-            return image
+    # Also use Streamlit's balloons after a tiny delay
+    time.sleep(0.5)
+    st.balloons()
+
+# ============================================================================
+# CLEAN TEXT FUNCTION
+# ============================================================================
+def clean_text(text):
+    """Convert HTML entities to regular characters"""
+    if not text:
+        return text
     
-    def save_image(self, uploaded_file, session_id, question_text, caption="", usage="full_page"):
-        try:
-            image_data = uploaded_file.read()
-            original_size = len(image_data) / (1024 * 1024)
-            
-            if original_size > self.settings["max_file_size_mb"]:
-                print(f"Warning: Large image ({original_size:.1f}MB). Will be optimized.")
-            
-            img = Image.open(io.BytesIO(image_data))
-            target_width = self.settings["full_width"] if usage == "full_page" else self.settings["inline_width"]
-            
-            image_id = hashlib.md5(f"{self.user_id}{session_id}{question_text}{datetime.now()}".encode()).hexdigest()[:16]
-            
-            optimized_img = self.optimize_image(img, target_width, is_thumbnail=False)
-            thumb_img = self.optimize_image(img, is_thumbnail=True)
-            
-            main_buffer = io.BytesIO()
-            optimized_img.save(main_buffer, format="JPEG", quality=self.settings["quality"], optimize=True)
-            main_size = len(main_buffer.getvalue()) / (1024 * 1024)
-            
-            thumb_buffer = io.BytesIO()
-            thumb_img.save(thumb_buffer, format="JPEG", quality=70, optimize=True)
-            
-            user_path = self.get_user_path()
-            with open(f"{user_path}/{image_id}.jpg", 'wb') as f: 
-                f.write(main_buffer.getvalue())
-            with open(f"{user_path}/thumbnails/{image_id}.jpg", 'wb') as f: 
-                f.write(thumb_buffer.getvalue())
-            
-            metadata = {
-                "id": image_id, "session_id": session_id, "question": question_text,
-                "caption": caption, "alt_text": caption[:100] if caption else "",
-                "timestamp": datetime.now().isoformat(), "user_id": self.user_id,
-                "usage": usage, "original_size_mb": round(original_size, 2),
-                "optimized_size_mb": round(main_size, 2), "dimensions": f"{optimized_img.width}x{optimized_img.height}",
-                "optimized": True, "format": "JPEG", "dpi": self.settings["dpi"]
-            }
-            with open(f"{self.base_path}/metadata/{image_id}.json", 'w') as f: 
-                json.dump(metadata, f, indent=2)
-            
-            reduction = ((original_size - main_size) / original_size) * 100 if original_size > 0 else 0
-            if reduction > 20:
-                print(f"✅ Image optimized: {original_size:.1f}MB → {main_size:.1f}MB ({reduction:.0f}% reduction)")
-            
-            return {
-                "has_images": True, 
-                "images": [{
-                    "id": image_id, "caption": caption,
-                    "dimensions": f"{optimized_img.width}x{optimized_img.height}",
-                    "size_mb": round(main_size, 2)
-                }]
-            }
-        except Exception as e:
-            print(f"Error saving image: {e}")
-            return None
+    # Convert &nbsp; to space
+    text = text.replace('&nbsp;', ' ')
     
-    def get_image_html(self, image_id, thumbnail=False):
-        try:
-            user_path = self.get_user_path()
-            path = f"{user_path}/thumbnails/{image_id}.jpg" if thumbnail else f"{user_path}/{image_id}.jpg"
-            if not os.path.exists(path): 
-                return None
-            
-            with open(path, 'rb') as f: 
-                image_data = f.read()
-            b64 = base64.b64encode(image_data).decode()
-            
-            meta_path = f"{self.base_path}/metadata/{image_id}.json"
-            caption = ""
-            dimensions = ""
-            if os.path.exists(meta_path):
-                with open(meta_path, 'r') as f:
-                    metadata = json.load(f)
-                    caption = metadata.get("caption", "")
-                    dimensions = metadata.get("dimensions", "")
-            
-            return {
-                "html": f'<img src="data:image/jpeg;base64,{b64}" class="story-image" alt="{caption}" data-dimensions="{dimensions}">',
-                "caption": caption, "base64": b64, "dimensions": dimensions
-            }
-        except:
-            return None
+    # Also handle other common HTML entities
+    text = text.replace('&amp;', '&')
+    text = text.replace('&lt;', '<')
+    text = text.replace('&gt;', '>')
+    text = text.replace('&quot;', '"')
+    text = text.replace('&#39;', "'")
     
-    def get_image_base64(self, image_id):
-        try:
-            user_path = self.get_user_path()
-            path = f"{user_path}/{image_id}.jpg"
-            if not os.path.exists(path): 
-                return None
-            with open(path, 'rb') as f: 
-                image_data = f.read()
-            return base64.b64encode(image_data).decode()
-        except:
-            return None
+    # Remove HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
     
-    def get_image_caption(self, image_id):
-        meta_path = f"{self.base_path}/metadata/{image_id}.json"
-        if os.path.exists(meta_path):
+    # Clean up whitespace
+    text = re.sub(r'\s+', ' ', text)
+    
+    return text.strip()
+
+# ============================================================================
+# PDF CLASS (FIXED - returns bytes directly)
+# ============================================================================
+class PDF(FPDF):
+    def __init__(self, custom_cover=None):
+        super().__init__()
+        self.custom_cover = custom_cover
+        
+    def header(self):
+        if self.page_no() > 1:
+            self.set_font('Arial', 'I', 8)
+            self.cell(0, 10, 'Tell My Story', 0, 0, 'L')
+            self.cell(0, 10, f'Page {self.page_no()}', 0, 0, 'R')
+            self.ln(15)
+    
+    def footer(self):
+        self.set_y(-15)
+        self.set_font('Arial', 'I', 8)
+        year = datetime.now().strftime("%Y")
+        self.cell(0, 10, f'Generated by Tell My Story - {year}', 0, 0, 'C')
+    
+    def safe_text(self, text):
+        """Convert text to safe ASCII, replacing problematic characters"""
+        if not text:
+            return ""
+        # Replace common special characters
+        text = text.replace('•', '-')
+        text = text.replace('…', '...')
+        text = text.replace('“', '"')
+        text = text.replace('”', '"')
+        text = text.replace('‘', "'")
+        text = text.replace('’', "'")
+        text = text.replace('—', '-')
+        text = text.replace('–', '-')
+        # Encode to ASCII, ignoring errors
+        return text.encode('ascii', 'ignore').decode('ascii')
+    
+    def add_cover_page(self, book_title, author_name, cover_type="simple", custom_cover=None):
+        """Add cover page - either simple gradient or custom designed cover"""
+        self.add_page()
+        
+        if cover_type == "custom" and custom_cover and custom_cover.get('cover_image') and os.path.exists(custom_cover['cover_image']):
+            # Use the full cover image as-is, no text overlay
             try:
-                with open(meta_path, 'r') as f:
-                    metadata = json.load(f)
-                    return metadata.get("caption", "")
-            except:
-                pass
-        return ""
+                self.image(custom_cover['cover_image'], x=0, y=0, w=210, h=297)
+            except Exception as e:
+                # Fallback to simple cover
+                self.add_simple_cover(book_title, author_name)
+        else:
+            self.add_simple_cover(book_title, author_name)
     
-    def get_images_for_answer(self, session_id, question_text):
-        images = []
-        metadata_dir = f"{self.base_path}/metadata"
-        if not os.path.exists(metadata_dir): 
-            return images
+    def add_simple_cover(self, book_title, author_name):
+        """Simple gradient cover"""
+        safe_title = self.safe_text(book_title)
+        safe_author = self.safe_text(author_name)
         
-        for fname in os.listdir(metadata_dir):
-            if fname.endswith('.json'):
-                try:
-                    with open(f"{metadata_dir}/{fname}") as f: 
-                        meta = json.load(f)
-                    if (meta.get("session_id") == session_id and 
-                        meta.get("question") == question_text and 
-                        meta.get("user_id") == self.user_id):
-                        thumb = self.get_image_html(meta["id"], thumbnail=True)
-                        full = self.get_image_html(meta["id"])
-                        if thumb and full:
-                            images.append({
-                                **meta, 
-                                "thumb_html": thumb["html"], 
-                                "full_html": full["html"]
-                            })
-                except:
-                    continue
-        return sorted(images, key=lambda x: x.get("timestamp", ""), reverse=True)
+        self.set_fill_color(102, 126, 234)
+        self.rect(0, 0, 210, 297, 'F')
+        self.set_text_color(255, 255, 255)
+        self.set_font('Arial', 'B', 30)
+        self.cell(0, 40, '', 0, 1)
+        self.cell(0, 20, safe_title, 0, 1, 'C')
+        self.set_font('Arial', '', 16)
+        self.cell(0, 10, f'by {safe_author}', 0, 1, 'C')
+        self.set_font('Arial', '', 12)
+        self.cell(0, 10, f'Generated on {datetime.now().strftime("%B %d, %Y")}', 0, 1, 'C')
+
+# ============================================================================
+# PDF GENERATION (FIXED - returns bytes, no double encoding)
+# ============================================================================
+def generate_pdf(book_title, author_name, stories, format_style, include_toc=True, include_dates=False, cover_type="simple", custom_cover=None):
+    """Generate PDF with embedded images"""
+    pdf = PDF(custom_cover)
     
-    def delete_image(self, image_id):
+    # Add cover page
+    pdf.add_cover_page(book_title, author_name, cover_type, custom_cover)
+    
+    # Table of Contents
+    if include_toc and stories:
+        pdf.add_page()
+        pdf.set_text_color(0, 0, 0)
+        pdf.set_font('Arial', 'B', 20)
+        pdf.cell(0, 10, 'Table of Contents', 0, 1, 'C')
+        pdf.ln(10)
+        pdf.set_font('Arial', '', 12)
+        
+        current_session = None
+        for i, story in enumerate(stories, 1):
+            session_id = story.get('session_id', '1')
+            if session_id != current_session:
+                session_title = pdf.safe_text(story.get('session_title', f'Session {session_id}'))
+                pdf.set_font('Arial', 'B', 12)
+                pdf.cell(0, 8, session_title, 0, 1)
+                current_session = session_id
+            question = pdf.safe_text(story.get('question', f'Story {i}'))
+            pdf.set_font('Arial', '', 12)
+            pdf.cell(10, 6, f'{i}.', 0, 0)
+            pdf.cell(0, 6, question[:50] + "..." if len(question) > 50 else question, 0, 1)
+        pdf.add_page()
+
+    # Content
+    if stories:
+        current_session = None
+        story_counter = 1
+        for story in stories:
+            session_id = story.get('session_id', '1')
+            if session_id != current_session:
+                session_title = pdf.safe_text(story.get('session_title', f'Session {session_id}'))
+                pdf.set_font('Arial', 'B', 18)
+                pdf.cell(0, 10, session_title, 0, 1, 'C')  # Centered session title
+                pdf.ln(5)
+                current_session = session_id
+            
+            question = pdf.safe_text(story.get('question', ''))
+            answer_text = pdf.safe_text(story.get('answer_text', ''))
+            images = story.get('images', [])
+            
+            if format_style == 'interview':
+                pdf.set_font('Arial', 'B', 12)
+                pdf.multi_cell(0, 6, f'Q: {question}')
+                pdf.ln(2)
+                pdf.set_font('Arial', '', 11)
+                pdf.multi_cell(0, 6, answer_text)
+            else:  # biography format - just the answer
+                pdf.set_font('Arial', '', 11)
+                pdf.multi_cell(0, 6, answer_text)
+            
+            # Embed images
+            for img_data in images:
+                b64 = img_data.get('base64')
+                caption = pdf.safe_text(img_data.get('caption', ''))
+                if b64:
+                    try:
+                        img_bytes = base64.b64decode(b64)
+                        with tempfile.NamedTemporaryFile(delete=False, suffix='.jpg') as tmp:
+                            tmp.write(img_bytes)
+                            tmp_path = tmp.name
+                        pdf.image(tmp_path, w=100)
+                        os.unlink(tmp_path)
+                        if caption:
+                            pdf.set_font('Arial', 'I', 10)
+                            pdf.cell(0, 6, f'Caption: {caption}', 0, 1, 'C')
+                        pdf.ln(5)
+                    except Exception as e:
+                        print(f"Could not embed image: {e}")
+            pdf.ln(5)
+            story_counter += 1
+
+    # Return the PDF as bytes directly (output() already returns bytes)
+    return pdf.output(dest='S')
+
+# ============================================================================
+# DOCX GENERATION (FIXED - with centered tables)
+# ============================================================================
+def generate_docx(book_title, author_name, stories, format_style, include_toc=True, include_dates=False, cover_type="simple", custom_cover=None):
+    """Generate DOCX with embedded images and centered content blocks"""
+    doc = Document()
+    
+    # Set document margins
+    sections = doc.sections
+    for section in sections:
+        section.top_margin = Inches(1)
+        section.bottom_margin = Inches(1)
+        section.left_margin = Inches(1.25)
+        section.right_margin = Inches(1.25)
+    
+    # Set normal style
+    style = doc.styles['Normal']
+    style.font.name = 'Times New Roman'
+    style.font.size = Pt(12)
+    
+    # Title page - use full cover image if available
+    if cover_type == "custom" and custom_cover and custom_cover.get('cover_image') and os.path.exists(custom_cover['cover_image']):
+        # Add the full cover image - no text overlay
         try:
-            user_path = self.get_user_path()
-            for p in [f"{user_path}/{image_id}.jpg", 
-                     f"{user_path}/thumbnails/{image_id}.jpg", 
-                     f"{self.base_path}/metadata/{image_id}.json"]:
-                if os.path.exists(p): 
-                    os.remove(p)
-            return True
-        except:
-            return False
-
-def init_image_handler():
-    if not st.session_state.image_handler or st.session_state.image_handler.user_id != st.session_state.get('user_id'):
-        st.session_state.image_handler = ImageHandler(st.session_state.get('user_id'))
-    return st.session_state.image_handler
+            doc.add_picture(custom_cover['cover_image'], width=Inches(6))
+            last_paragraph = doc.paragraphs[-1]
+            last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            doc.add_page_break()
+        except Exception as e:
+            # Fallback to text title
+            title = doc.add_heading(book_title, 0)
+            title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            author = doc.add_paragraph(f'by {author_name}')
+            author.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            doc.add_page_break()
+    else:
+        # Simple text title
+        title = doc.add_heading(book_title, 0)
+        title.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        author = doc.add_paragraph(f'by {author_name}')
+        author.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        date_para = doc.add_paragraph(f'Generated on {datetime.now().strftime("%B %d, %Y")}')
+        date_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        doc.add_page_break()
+    
+    # TOC
+    if include_toc and stories:
+        toc = doc.add_heading('Table of Contents', 1)
+        toc.alignment = WD_ALIGN_PARAGRAPH.CENTER
+        current_session = None
+        for i, story in enumerate(stories, 1):
+            session_id = story.get('session_id', '1')
+            if session_id != current_session:
+                session_title = story.get('session_title', f'Session {session_id}')
+                p = doc.add_paragraph()
+                p.add_run(session_title).bold = True
+                p.paragraph_format.left_indent = Inches(0.25)
+                current_session = session_id
+            question = clean_text(story.get('question', f'Story {i}'))
+            p = doc.add_paragraph(f'  {i}. {question[:50]}...' if len(question) > 50 else f'  {i}. {question}')
+            p.paragraph_format.left_indent = Inches(0.5)
+        doc.add_page_break()
+    
+    # Content with centered tables
+    if stories:
+        current_session = None
+        story_counter = 1
+        for story in stories:
+            session_id = story.get('session_id', '1')
+            
+            # Add session header if new session - CENTERED
+            if session_id != current_session:
+                session_title = story.get('session_title', f'Session {session_id}')
+                heading = doc.add_heading(session_title, 1)
+                heading.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                current_session = session_id
+            
+            question = clean_text(story.get('question', ''))
+            answer_text = clean_text(story.get('answer_text', ''))
+            images = story.get('images', [])
+            
+            # Create centered container table (6 inches wide)
+            table = doc.add_table(rows=1, cols=1)
+            table.autofit = False
+            table.allow_autofit = False
+            table.columns[0].width = Inches(6.0)
+            table.alignment = WD_TABLE_ALIGNMENT.CENTER
+            
+            # Get the cell
+            cell = table.cell(0, 0)
+            
+            if format_style == 'interview' and question:
+                # Question inside cell (left-aligned)
+                q_para = cell.paragraphs[0]
+                q_run = q_para.add_run(f'Q: {question}')
+                q_run.bold = True
+                q_run.italic = True
+                q_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                q_para.paragraph_format.space_after = Pt(6)
+                
+                # Answer inside cell
+                if answer_text:
+                    a_para = cell.add_paragraph(answer_text)
+                    a_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    a_para.paragraph_format.first_line_indent = Inches(0.25)
+            else:
+                # Just answer (biography style)
+                if answer_text:
+                    p = cell.paragraphs[0]
+                    p.add_run(answer_text)
+                    p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                    p.paragraph_format.first_line_indent = Inches(0.25)
+            
+            # Embed images (outside table so they can be centered independently)
+            for img_data in images:
+                b64 = img_data.get('base64')
+                caption = clean_text(img_data.get('caption', ''))
+                if b64:
+                    try:
+                        img_bytes = base64.b64decode(b64)
+                        img_stream = io.BytesIO(img_bytes)
+                        doc.add_picture(img_stream, width=Inches(4))
+                        last_paragraph = doc.paragraphs[-1]
+                        last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                        if caption:
+                            cap = doc.add_paragraph(caption)
+                            cap.style = 'Caption'
+                            cap.alignment = WD_ALIGN_PARAGRAPH.CENTER
+                    except Exception as e:
+                        print(f"Could not embed image: {e}")
+            
+            # Add spacing between stories
+            doc.add_paragraph()
+            story_counter += 1
+    
+    # Save to bytes
+    docx_bytes = io.BytesIO()
+    doc.save(docx_bytes)
+    docx_bytes.seek(0)
+    return docx_bytes
 
 # ============================================================================
-# AUTHENTICATION FUNCTIONS
+# HTML GENERATION (FIXED - uses full cover image, no text overlay)
 # ============================================================================
-def generate_password(length=12):
-    alphabet = string.ascii_letters + string.digits + "!@#$%^&*"
-    return ''.join(secrets.choice(alphabet) for _ in range(length))
-
-def hash_password(password):
-    return hashlib.sha256(password.encode()).hexdigest()
-
-def verify_password(stored_hash, password):
-    return stored_hash == hash_password(password)
-
-def create_user_account(user_data, password=None):
-    try:
-        user_id = hashlib.sha256(f"{user_data['email']}{datetime.now().isoformat()}".encode()).hexdigest()[:12]
-        if not password: 
-            password = generate_password()
-        user_record = {
-            "user_id": user_id, "email": user_data["email"].lower().strip(),
-            "password_hash": hash_password(password), "account_type": user_data.get("account_for", "self"),
-            "created_at": datetime.now().isoformat(), "last_login": datetime.now().isoformat(),
-            "profile": {
-                "first_name": user_data["first_name"], "last_name": user_data["last_name"],
-                "email": user_data["email"], "gender": user_data.get("gender", ""),
-                "birthdate": user_data.get("birthdate", ""), "timeline_start": user_data.get("birthdate", ""),
-                "occupation": user_data.get("occupation", ""), "hometown": user_data.get("hometown", ""),
-                "current_location": user_data.get("current_location", ""), "family": user_data.get("family", ""),
-                "education": user_data.get("education", ""), "life_philosophy": user_data.get("life_philosophy", ""),
-                "legacy_hopes": user_data.get("legacy_hopes", "")
-            },
-            "narrative_gps": {},
-            "privacy_settings": {
-                "profile_public": False, "stories_public": False, "allow_sharing": False,
-                "data_collection": True, "encryption": True
-            },
-            "settings": {
-                "email_notifications": True, "auto_save": True, "privacy_level": "private",
-                "theme": "light", "email_verified": False
-            },
-            "stats": {
-                "total_sessions": 0, "total_words": 0, "current_streak": 0, "longest_streak": 0,
-                "account_age_days": 0, "last_active": datetime.now().isoformat()
-            }
-        }
-        save_account_data(user_record)
-        return {"success": True, "user_id": user_id, "password": password, "user_record": user_record}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-def save_account_data(user_record):
-    try:
-        with open(f"accounts/{user_record['user_id']}_account.json", 'w') as f:
-            json.dump(user_record, f, indent=2)
-        update_accounts_index(user_record)
-        return True
-    except: 
-        return False
-
-def update_accounts_index(user_record):
-    try:
-        index_file = "accounts/accounts_index.json"
-        index = json.load(open(index_file, 'r')) if os.path.exists(index_file) else {}
-        index[user_record['user_id']] = {
-            "email": user_record['email'], "first_name": user_record['profile']['first_name'],
-            "last_name": user_record['profile']['last_name'], "created_at": user_record['created_at'],
-            "account_type": user_record['account_type']
-        }
-        with open(index_file, 'w') as f: 
-            json.dump(index, f, indent=2)
-        return True
-    except: 
-        return False
-
-def get_account_data(user_id=None, email=None):
-    try:
-        if user_id:
-            fname = f"accounts/{user_id}_account.json"
-            if os.path.exists(fname): 
-                return json.load(open(fname, 'r'))
-        if email:
-            email = email.lower().strip()
-            index = json.load(open("accounts/accounts_index.json", 'r')) if os.path.exists("accounts/accounts_index.json") else {}
-            for uid, data in index.items():
-                if data.get("email", "").lower() == email:
-                    return json.load(open(f"accounts/{uid}_account.json", 'r'))
-    except: 
-        pass
-    return None
-
-def authenticate_user(email, password):
-    try:
-        account = get_account_data(email=email)
-        if account and verify_password(account['password_hash'], password):
-            account['last_login'] = datetime.now().isoformat()
-            save_account_data(account)
-            return {"success": True, "user_id": account['user_id'], "user_record": account}
-        return {"success": False, "error": "Invalid email or password"}
-    except Exception as e:
-        return {"success": False, "error": str(e)}
-
-def send_welcome_email(user_data, credentials):
-    try:
-        if not EMAIL_CONFIG['sender_email'] or not EMAIL_CONFIG['sender_password']: 
-            return False
-        msg = MIMEMultipart()
-        msg['From'] = EMAIL_CONFIG['sender_email']
-        msg['To'] = user_data['email']
-        msg['Subject'] = "Welcome to Tell My Story"
+def generate_html(book_title, author_name, stories, format_style, include_toc=True, include_dates=False, cover_type="simple", custom_cover=None):
+    """Generate beautiful HTML with embedded images"""
+    
+    cover_html = ""
+    
+    if cover_type == "custom" and custom_cover and custom_cover.get('cover_image') and os.path.exists(custom_cover['cover_image']):
+        # Convert image to base64 for HTML embedding
+        with open(custom_cover['cover_image'], 'rb') as f:
+            img_data = f.read()
+        img_b64 = base64.b64encode(img_data).decode()
         
-        body = f"""
-        <html><body style="font-family: Arial;">
-        <h2>Welcome to Tell My Story, {user_data['first_name']}!</h2>
-        <div class="welcome-email">
-            <h3>Your Account Details:</h3>
-            <p><strong>Account ID:</strong> {credentials['user_id']}</p>
-            <p><strong>Email:</strong> {user_data['email']}</p>
-            <p><strong>Password:</strong> {credentials['password']}</p>
+        # Use the full cover image - no text overlay
+        cover_html = f"""
+        <div class="cover-page">
+            <img src="data:image/jpeg;base64,{img_b64}" style="width:100%; max-width:800px; margin:0 auto; display:block;">
         </div>
-        <p>Please keep this information safe. You can change your password anytime in settings.</p>
-        </body></html>
+        <hr>
         """
-        msg.attach(MIMEText(body, 'html'))
-        with smtplib.SMTP(EMAIL_CONFIG['smtp_server'], EMAIL_CONFIG['smtp_port']) as server:
-            if EMAIL_CONFIG['use_tls']: 
-                server.starttls()
-            server.login(EMAIL_CONFIG['sender_email'], EMAIL_CONFIG['sender_password'])
-            server.send_message(msg)
-        return True
-    except: 
-        return False
-
-def logout_user():
-    st.session_state.qb_manager = None
-    st.session_state.qb_manager_initialized = False
-    st.session_state.image_handler = None
-    keys = ['user_id', 'user_account', 'logged_in', 'show_profile_setup', 'current_session',
-            'current_question', 'responses', 'session_conversations', 'data_loaded',
-            'show_vignette_modal', 'vignette_topic', 'vignette_content', 'selected_vignette_type',
-            'current_vignette_list', 'editing_vignette_index', 'show_vignette_manager',
-            'custom_topic_input', 'show_custom_topic_modal', 'show_topic_browser',
-            'show_session_manager', 'show_session_creator', 'editing_custom_session',
-            'show_vignette_detail', 'selected_vignette_id', 'editing_vignette_id',
-            'selected_vignette_for_session', 'published_vignette', 'show_beta_reader',
-            'current_beta_feedback', 'current_question_bank', 'current_bank_name',
-            'current_bank_type', 'current_bank_id', 'show_bank_manager', 'show_bank_editor',
-            'editing_bank_id', 'editing_bank_name', 'show_image_manager', 'editor_content',
-            'current_rewrite_data', 'show_ai_rewrite', 'show_ai_rewrite_menu',
-            'show_publisher', 'cover_image_data']
-    for key in keys:
-        if key in st.session_state: 
-            del st.session_state[key]
-    st.query_params.clear()
-    st.rerun()
-
-# ============================================================================
-# PRIVACY SETTINGS MODAL
-# ============================================================================
-def show_privacy_settings():
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    st.title("🔒 Privacy & Security Settings")
-    
-    if st.button("← Back", key="privacy_back"):
-        st.session_state.show_privacy_settings = False
-        st.rerun()
-    
-    st.markdown("### Ethical AI & Data Privacy")
-    st.info("Your stories are private and secure. We use AI ethically to help you write better, never to train models on your personal data.")
-    
-    if 'privacy_settings' not in st.session_state.user_account:
-        st.session_state.user_account['privacy_settings'] = {
-            "profile_public": False, "stories_public": False, "allow_sharing": False,
-            "data_collection": True, "encryption": True
-        }
-    
-    privacy = st.session_state.user_account['privacy_settings']
-    
-    privacy['profile_public'] = st.checkbox("Make profile public", value=privacy.get('profile_public', False),
-                                           help="Allow others to see your basic profile information")
-    privacy['stories_public'] = st.checkbox("Share stories publicly", value=privacy.get('stories_public', False),
-                                           help="Make your stories visible to the public (coming soon)")
-    privacy['allow_sharing'] = st.checkbox("Allow sharing via link", value=privacy.get('allow_sharing', False),
-                                          help="Generate shareable links to your stories")
-    privacy['data_collection'] = st.checkbox("Allow anonymous usage data", value=privacy.get('data_collection', True),
-                                            help="Help us improve by sharing anonymous usage statistics")
-    privacy['encryption'] = st.checkbox("Enable encryption", value=privacy.get('encryption', True),
-                                       disabled=True, help="Your data is always encrypted at rest")
-    
-    st.markdown("---")
-    st.markdown("### 🔐 Security")
-    st.markdown("- All data encrypted at rest")
-    st.markdown("- No third-party data sharing")
-    st.markdown("- You own all your content")
-    st.markdown("- AI analysis is temporary and private")
-    
-    if st.button("💾 Save Privacy Settings", type="primary", use_container_width=True):
-        save_account_data(st.session_state.user_account)
-        st.success("Privacy settings saved!")
-        time.sleep(1)
-        st.rerun()
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
-
-# ============================================================================
-# PERFECT COVER DESIGNER - EXPORTS HTML (what you see is what you get)
-# ============================================================================
-def show_cover_designer():
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    st.title("🎨 Cover Designer")
-    st.success("✅ Exports as HTML - Preview matches export exactly!")
-    
-    if st.button("← Back", key="cover_back"):
-        st.session_state.show_cover_designer = False
-        st.rerun()
-    
-    st.markdown("### Design your book cover - Portrait format (6\" x 9\")")
-    
-    # Load existing cover design if it exists
-    saved_cover = st.session_state.user_account.get('cover_design', {}) if st.session_state.user_account else {}
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.markdown("**Cover Options**")
-        
-        # Editable title - load saved value if exists
-        default_title = f"{st.session_state.user_account.get('profile', {}).get('first_name', 'My')}'s Story"
-        title = st.text_input("Book Title", value=saved_cover.get('title', default_title))
-        
-        # Editable subtitle - load saved value if exists
-        subtitle = st.text_input("Subtitle (optional)", value=saved_cover.get('subtitle', ''), placeholder="A brief subtitle or tagline")
-        
-        # Editable author name - load saved value if exists
-        default_author = f"{st.session_state.user_account.get('profile', {}).get('first_name', '')} {st.session_state.user_account.get('profile', {}).get('last_name', '')}".strip()
-        author = st.text_input("Author Name", value=saved_cover.get('author', default_author if default_author else "Author Name"))
-        
-        # Cover style options with safe indexing
-        cover_options = ["Simple", "Elegant", "Modern", "Classic", "Vintage"]
-        cover_index = 0
-        saved_cover_type = saved_cover.get('cover_type', 'Simple')
-        if saved_cover_type in cover_options:
-            cover_index = cover_options.index(saved_cover_type)
-        cover_type = st.selectbox("Cover Style", cover_options, index=cover_index)
-        
-        # Font options with safe indexing
-        font_options = ["Georgia", "Arial", "Times New Roman", "Helvetica", "Calibri"]
-        font_index = 0
-        saved_font = saved_cover.get('title_font', 'Georgia')
-        if saved_font in font_options:
-            font_index = font_options.index(saved_font)
-        title_font = st.selectbox("Title Font", font_options, index=font_index)
-        
-        title_color = st.color_picker("Title Color", value=saved_cover.get('title_color', '#000000'))
-        background_color = st.color_picker("Background Color", value=saved_cover.get('background_color', '#FFFFFF'))
-        
-        # Show saved HTML if exists
-        if saved_cover.get('cover_html') and os.path.exists(saved_cover['cover_html']):
-            st.markdown("**Current Cover HTML:**")
-            with open(saved_cover['cover_html'], 'r') as f:
-                html_content = f.read()
-            st.download_button(
-                label="📥 Download Current Cover HTML",
-                data=html_content,
-                file_name="my_cover.html",
-                mime="text/html",
-                use_container_width=True
-            )
-            st.markdown("---")
-            st.markdown("**Upload New Image (optional):**")
-        
-        uploaded_cover = st.file_uploader("Upload Cover Image (optional)", type=['jpg', 'jpeg', 'png'])
-        if uploaded_cover:
-            st.image(uploaded_cover, caption="New cover image", width=250)
-    
-    with col2:
-        st.markdown("**Preview (6\" x 9\" portrait) - This EXACT HTML will be saved**")
-        
-        # Create the complete cover HTML with ALL elements
-        if uploaded_cover:
-            img_bytes = uploaded_cover.getvalue()
-            img_base64 = base64.b64encode(img_bytes).decode()
-            use_image = True
-        elif saved_cover.get('cover_image') and os.path.exists(saved_cover['cover_image']):
-            with open(saved_cover['cover_image'], 'rb') as f:
-                img_bytes = f.read()
-            img_base64 = base64.b64encode(img_bytes).decode()
-            use_image = True
-        else:
-            use_image = False
-            img_bytes = None
-        
-        # Build the EXACT cover HTML that will be saved
-        if use_image:
-            # With background image - text is WHITE with shadow for readability
-            subtitle_html = f'<h2 style="font-family:{title_font}, sans-serif; color:white; font-size:32px; margin:20px 0 0 0; text-shadow:3px 3px 6px black; font-weight:normal;">{subtitle}</h2>' if subtitle else ''
-            
-            cover_html = f'''
-            <div style="width:100%; max-width:600px; margin:0 auto; background:white; padding:20px;">
-                <div style="
-                    width:100%;
-                    aspect-ratio:600/900;
-                    background-image:url('data:image/jpeg;base64,{img_base64}');
-                    background-size:cover;
-                    background-position:center;
-                    border:2px solid #333;
-                    border-radius:10px;
-                    overflow:hidden;
-                    position:relative;
-                    box-shadow:0 10px 20px rgba(0,0,0,0.3);
-                ">
-                    <div style="
-                        position:absolute;
-                        top:0;
-                        left:0;
-                        width:100%;
-                        height:100%;
-                        background:rgba(0,0,0,0.25);
-                        display:flex;
-                        flex-direction:column;
-                        justify-content:space-between;
-                        padding:50px 30px;
-                        box-sizing:border-box;
-                    ">
-                        <div style="text-align:center;">
-                            <h1 style="font-family:{title_font}, sans-serif; color:white; font-size:72px; margin:0; text-shadow:4px 4px 8px black; line-height:1.2;">{title}</h1>
-                            {subtitle_html}
-                        </div>
-                        <div style="text-align:center; margin-bottom:50px;">
-                            <p style="font-family:{title_font}, sans-serif; color:white; font-size:36px; margin:0; text-shadow:3px 3px 6px black;">by {author}</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            '''
-        else:
-            # Solid color background - text uses selected color
-            subtitle_html = f'<h2 style="font-family:{title_font}, sans-serif; color:{title_color}; font-size:32px; margin:20px 0 0 0; font-weight:normal;">{subtitle}</h2>' if subtitle else ''
-            
-            cover_html = f'''
-            <div style="width:100%; max-width:600px; margin:0 auto; background:white; padding:20px;">
-                <div style="
-                    width:100%;
-                    aspect-ratio:600/900;
-                    background-color:{background_color};
-                    border:2px solid #333;
-                    border-radius:10px;
-                    display:flex;
-                    flex-direction:column;
-                    justify-content:space-between;
-                    padding:50px 30px;
-                    box-sizing:border-box;
-                    box-shadow:0 10px 20px rgba(0,0,0,0.3);
-                ">
-                    <div style="text-align:center;">
-                        <h1 style="font-family:{title_font}, sans-serif; color:{title_color}; font-size:72px; margin:0; line-height:1.2;">{title}</h1>
-                        {subtitle_html}
-                    </div>
-                    <div style="text-align:center; margin-bottom:50px;">
-                        <p style="font-family:{title_font}, sans-serif; color:{title_color}; font-size:36px; margin:0;">by {author}</p>
-                    </div>
-                </div>
-            </div>
-            '''
-        
-        # Display the complete cover preview
-        from streamlit.components.v1 import html
-        html(cover_html, height=800)
-        
-        st.caption("6\" wide × 9\" tall (portrait format) - This EXACT HTML will be saved")
-    
-    # Save button - NOW SAVES HTML instead of JPG
-    if st.button("💾 Save Cover Design (as HTML)", type="primary", use_container_width=True):
-        with st.spinner("💾 Saving cover HTML..."):
-            try:
-                # Create the complete HTML document
-                if use_image:
-                    subtitle_html_saved = f'<h2 style="font-family:{title_font}, sans-serif; color:white; font-size:32px; margin:20px 0 0 0; text-shadow:3px 3px 6px black; font-weight:normal;">{subtitle}</h2>' if subtitle else ''
-                    
-                    full_html = f'''<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Book Cover - {title}</title>
-    <style>
-        body {{ margin:0; padding:0; display:flex; justify-content:center; align-items:center; min-height:100vh; background:#f0f0f0; }}
-        .cover-container {{ width:600px; height:900px; position:relative; }}
-        .cover {{
-            width:100%;
-            height:100%;
-            background-image:url('data:image/jpeg;base64,{img_base64}');
-            background-size:cover;
-            background-position:center;
-            border:2px solid #333;
-            border-radius:10px;
-            overflow:hidden;
-            position:relative;
-            box-shadow:0 10px 20px rgba(0,0,0,0.3);
-        }}
-        .overlay {{
-            position:absolute;
-            top:0;
-            left:0;
-            width:100%;
-            height:100%;
-            background:rgba(0,0,0,0.25);
-            display:flex;
-            flex-direction:column;
-            justify-content:space-between;
-            padding:50px 30px;
-            box-sizing:border-box;
-        }}
-        .title {{
-            font-family:{title_font}, sans-serif;
-            color:white;
-            font-size:72px;
-            margin:0;
-            text-shadow:4px 4px 8px black;
-            line-height:1.2;
-            text-align:center;
-        }}
-        .subtitle {{
-            font-family:{title_font}, sans-serif;
-            color:white;
-            font-size:32px;
-            margin:20px 0 0 0;
-            text-shadow:3px 3px 6px black;
-            font-weight:normal;
-            text-align:center;
-        }}
-        .author {{
-            font-family:{title_font}, sans-serif;
-            color:white;
-            font-size:36px;
-            margin:0;
-            text-shadow:3px 3px 6px black;
-            text-align:center;
-        }}
-    </style>
-</head>
-<body>
-    <div class="cover-container">
-        <div class="cover">
-            <div class="overlay">
-                <div>
-                    <div class="title">{title}</div>
-                    {subtitle_html_saved}
-                </div>
-                <div class="author">by {author}</div>
-            </div>
-        </div>
-    </div>
-</body>
-</html>'''
-                else:
-                    subtitle_html_saved = f'<div class="subtitle">{subtitle}</div>' if subtitle else ''
-                    
-                    full_html = f'''<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>Book Cover - {title}</title>
-    <style>
-        body {{ margin:0; padding:0; display:flex; justify-content:center; align-items:center; min-height:100vh; background:#f0f0f0; }}
-        .cover-container {{ width:600px; height:900px; position:relative; }}
-        .cover {{
-            width:100%;
-            height:100%;
-            background-color:{background_color};
-            border:2px solid #333;
-            border-radius:10px;
-            display:flex;
-            flex-direction:column;
-            justify-content:space-between;
-            padding:50px 30px;
-            box-sizing:border-box;
-            box-shadow:0 10px 20px rgba(0,0,0,0.3);
-        }}
-        .title {{
-            font-family:{title_font}, sans-serif;
-            color:{title_color};
-            font-size:72px;
-            margin:0;
-            line-height:1.2;
-            text-align:center;
-        }}
-        .subtitle {{
-            font-family:{title_font}, sans-serif;
-            color:{title_color};
-            font-size:32px;
-            margin:20px 0 0 0;
-            font-weight:normal;
-            text-align:center;
-        }}
-        .author {{
-            font-family:{title_font}, sans-serif;
-            color:{title_color};
-            font-size:36px;
-            margin:0;
-            text-align:center;
-        }}
-    </style>
-</head>
-<body>
-    <div class="cover-container">
-        <div class="cover">
-            <div>
-                <div class="title">{title}</div>
-                {subtitle_html_saved}
-            </div>
-            <div class="author">by {author}</div>
-        </div>
-    </div>
-</body>
-</html>'''
-                
-                # Save HTML file
-                html_filename = f"uploads/covers/{st.session_state.user_id}_cover.html"
-                os.makedirs("uploads/covers", exist_ok=True)
-                with open(html_filename, 'w') as f:
-                    f.write(full_html)
-                
-                # Update user account with cover design data
-                if 'cover_design' not in st.session_state.user_account:
-                    st.session_state.user_account['cover_design'] = {}
-                
-                st.session_state.user_account['cover_design'].update({
-                    "title": title,
-                    "subtitle": subtitle,
-                    "author": author,
-                    "cover_type": cover_type,
-                    "title_font": title_font,
-                    "title_color": title_color,
-                    "background_color": background_color,
-                    "cover_html": html_filename,
-                    "last_updated": datetime.now().isoformat()
-                })
-                
-                # Also save the background image if uploaded
-                if uploaded_cover:
-                    img_path = f"uploads/covers/{st.session_state.user_id}_cover_bg.jpg"
-                    with open(img_path, 'wb') as f:
-                        f.write(uploaded_cover.getbuffer())
-                    st.session_state.user_account['cover_design']['cover_image'] = img_path
-                
-                save_account_data(st.session_state.user_account)
-                
-                # Success message with download button
-                st.success("✅ Cover HTML saved successfully!")
-                
-                # Offer immediate download to verify
-                st.download_button(
-                    label="📥 Download Cover HTML (open in browser to verify)",
-                    data=full_html,
-                    file_name=f"my_cover_{datetime.now().strftime('%Y%m%d_%H%M%S')}.html",
-                    mime="text/html",
-                    use_container_width=True
-                )
-                
-                st.balloons()
-                time.sleep(2)
-                st.rerun()
-                
-            except Exception as e:
-                st.error(f"Error saving cover: {str(e)}")
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
-# ============================================================================
-# NARRATIVE GPS HELPER FUNCTIONS
-# ============================================================================
-def get_narrative_gps_for_ai():
-    if not st.session_state.user_account or 'narrative_gps' not in st.session_state.user_account:
-        return ""
-    
-    gps = st.session_state.user_account['narrative_gps']
-    if not gps:
-        return ""
-    
-    context = "\n\n=== BOOK PROJECT CONTEXT (From Narrative GPS) ===\n"
-    
-    if gps.get('book_title') or gps.get('genre') or gps.get('book_length'):
-        context += "\n📖 PROJECT SCOPE:\n"
-        if gps.get('book_title'): context += f"- Book Title: {gps['book_title']}\n"
-        if gps.get('genre'): 
-            genre = gps['genre']
-            if genre == "Other" and gps.get('genre_other'):
-                genre = gps['genre_other']
-            context += f"- Genre: {genre}\n"
-        if gps.get('book_length'): context += f"- Length Vision: {gps['book_length']}\n"
-        if gps.get('timeline'): context += f"- Timeline/Deadlines: {gps['timeline']}\n"
-        if gps.get('completion_status'): context += f"- Current Status: {gps['completion_status']}\n"
-    
-    if gps.get('purposes') or gps.get('reader_takeaway'):
-        context += "\n🎯 PURPOSE & AUDIENCE:\n"
-        if gps.get('purposes'): 
-            context += f"- Core Purposes: {', '.join(gps['purposes'])}\n"
-        if gps.get('purpose_other'): context += f"- Other Purpose: {gps['purpose_other']}\n"
-        if gps.get('audience_family'): context += f"- Family Audience: {gps['audience_family']}\n"
-        if gps.get('audience_industry'): context += f"- Industry Audience: {gps['audience_industry']}\n"
-        if gps.get('audience_challenges'): context += f"- Audience Facing Similar Challenges: {gps['audience_challenges']}\n"
-        if gps.get('audience_general'): context += f"- General Audience: {gps['audience_general']}\n"
-        if gps.get('reader_takeaway'): context += f"- Reader Takeaway: {gps['reader_takeaway']}\n"
-    
-    if gps.get('narrative_voices') or gps.get('emotional_tone'):
-        context += "\n🎭 TONE & VOICE:\n"
-        if gps.get('narrative_voices'): 
-            context += f"- Narrative Voice: {', '.join(gps['narrative_voices'])}\n"
-        if gps.get('voice_other'): context += f"- Other Voice: {gps['voice_other']}\n"
-        if gps.get('emotional_tone'): context += f"- Emotional Tone: {gps['emotional_tone']}\n"
-        if gps.get('language_style'): context += f"- Language Style: {gps['language_style']}\n"
-    
-    if gps.get('time_coverage') or gps.get('sensitive_material') or gps.get('inclusions'):
-        context += "\n📋 CONTENT PARAMETERS:\n"
-        if gps.get('time_coverage'): context += f"- Time Coverage: {gps['time_coverage']}\n"
-        if gps.get('sensitive_material'): context += f"- Sensitive Topics: {gps['sensitive_material']}\n"
-        if gps.get('sensitive_people'): context += f"- Sensitive People: {gps['sensitive_people']}\n"
-        if gps.get('inclusions'): 
-            context += f"- Planned Inclusions: {', '.join(gps['inclusions'])}\n"
-        if gps.get('locations'): context += f"- Key Locations: {gps['locations']}\n"
-    
-    if gps.get('materials') or gps.get('people_to_interview'):
-        context += "\n📦 RESOURCES:\n"
-        if gps.get('materials'): 
-            context += f"- Available Materials: {', '.join(gps['materials'])}\n"
-        if gps.get('people_to_interview'): context += f"- People to Interview: {gps['people_to_interview']}\n"
-        if gps.get('legal'): 
-            context += f"- Legal Considerations: {', '.join(gps['legal'])}\n"
-    
-    if gps.get('involvement') or gps.get('unspoken'):
-        context += "\n🤝 COLLABORATION:\n"
-        if gps.get('involvement'): 
-            involvement = gps['involvement']
-            if involvement == "Mixed approach: [explain]" and gps.get('involvement_explain'):
-                involvement = f"Mixed approach: {gps['involvement_explain']}"
-            context += f"- Working Style: {involvement}\n"
-        if gps.get('feedback_style'): context += f"- Feedback Preference: {gps['feedback_style']}\n"
-        if gps.get('unspoken'): context += f"- Hopes for Collaboration: {gps['unspoken']}\n"
-    
-    return context
-
-# ============================================================================
-# AI REWRITE FUNCTION
-# ============================================================================
-def ai_rewrite_answer(original_text, person_option, question_text, session_title):
-    """Rewrite the user's answer in 1st, 2nd, or 3rd person using profile context"""
-    if not client:
-        return {"error": "OpenAI client not available"}
-    
-    try:
-        # Get profile context for better rewriting
-        gps_context = get_narrative_gps_for_ai()
-        
-        # Also get enhanced profile for deeper context
-        enhanced_context = ""
-        if st.session_state.user_account and 'enhanced_profile' in st.session_state.user_account:
-            ep = st.session_state.user_account['enhanced_profile']
-            if ep:
-                enhanced_context = "\n\n=== ADDITIONAL BIOGRAPHER CONTEXT ===\n"
-                if ep.get('birth_place'): enhanced_context += f"• Born: {ep['birth_place']}\n"
-                if ep.get('life_lessons'): enhanced_context += f"• Life Philosophy: {ep['life_lessons'][:200]}...\n"
-                if ep.get('legacy'): enhanced_context += f"• Legacy Hope: {ep['legacy'][:200]}...\n"
-        
-        # Clean the text (remove HTML tags)
-        clean_text = re.sub(r'<[^>]+>', '', original_text)
-        
-        if len(clean_text.split()) < 5:
-            return {"error": "Text too short to rewrite (minimum 5 words)"}
-        
-        # Person-specific instructions
-        person_instructions = {
-            "1st": {
-                "name": "First Person",
-                "instruction": "Rewrite this in FIRST PERSON ('I', 'me', 'my', 'we', 'our'). Keep the authentic voice of the author telling their own story.",
-                "example": "I remember the day clearly. The sun was setting and I felt...",
-                "emoji": "👤"
-            },
-            "2nd": {
-                "name": "Second Person",
-                "instruction": "Rewrite this in SECOND PERSON ('you', 'your') as if speaking directly to the reader. Make it feel like advice, a letter, or a conversation with the reader.",
-                "example": "You remember that day clearly. The sun was setting and you felt...",
-                "emoji": "💬"
-            },
-            "3rd": {
-                "name": "Third Person",
-                "instruction": "Rewrite this in THIRD PERSON ('he', 'she', 'they', 'the author', the person's name). Write as if telling someone else's story to readers.",
-                "example": f"They remember the day clearly. The sun was setting and they felt...",
-                "emoji": "📖"
-            }
-        }
-        
-        system_prompt = f"""You are an expert writing assistant and ghostwriter. Your task is to rewrite the author's raw answer in {person_instructions[person_option]['name']}.
-
-{person_instructions[person_option]['instruction']}
-
-EXAMPLE STYLE:
-{person_instructions[person_option]['example']}
-
-IMPORTANT GUIDELINES:
-1. Use the profile context below to understand WHO the author is
-2. Preserve all key facts, emotions, and details from the original
-3. Maintain the author's unique voice and personality
-4. Fix any grammar issues naturally
-5. Make it flow better while keeping it authentic
-6. DO NOT add fictional events or details not in the original
-7. Return ONLY the rewritten text, no explanations, no prefixes
-
-PROFILE CONTEXT (Use this to understand the author's voice and story):
-{gps_context}
-{enhanced_context}
-
-QUESTION BEING ANSWERED: {question_text}
-SESSION: {session_title}
-
-ORIGINAL ANSWER (to rewrite):
-{clean_text}
-
-REWRITTEN VERSION ({person_instructions[person_option]['name']}):"""
-
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": "Please rewrite this in the specified voice."}
-            ],
-            max_tokens=len(clean_text.split()) * 3,
-            temperature=0.7
-        )
-        
-        rewritten = response.choices[0].message.content.strip()
-        
-        # Clean up any markdown or quotes the AI might add
-        rewritten = re.sub(r'^["\']|["\']$', '', rewritten)
-        rewritten = re.sub(r'^Here\'s the rewritten version:?\s*', '', rewritten, flags=re.IGNORECASE)
-        
-        return {
-            "success": True,
-            "original": clean_text,
-            "rewritten": rewritten,
-            "person": person_instructions[person_option]["name"],
-            "emoji": person_instructions[person_option]["emoji"]
-        }
-        
-    except Exception as e:
-        return {"error": str(e)}
-
-# ============================================================================
-# AI REWRITE MODAL
-# ============================================================================
-def show_ai_rewrite_modal():
-    if not st.session_state.get('current_rewrite_data'):
-        return
-    
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([6, 1])
-    with col1:
-        st.markdown(f"### {st.session_state.current_rewrite_data.get('emoji', '✨')} AI Rewrite - {st.session_state.current_rewrite_data.get('person', '')}")
-    with col2:
-        if st.button("✕", key="close_rewrite_modal"):
-            st.session_state.show_ai_rewrite = False
-            st.session_state.current_rewrite_data = None
-            st.rerun()
-    
-    st.markdown("---")
-    
-    rewrite_data = st.session_state.current_rewrite_data
-    
-    if rewrite_data.get('error'):
-        st.error(f"Could not rewrite: {rewrite_data['error']}")
     else:
-        st.markdown("**📝 Original Version:**")
-        with st.container():
-            st.markdown(f'<div class="original-text-box">{rewrite_data["original"]}</div>', unsafe_allow_html=True)
-        
-        st.markdown("---")
-        
-        st.markdown(f"**✨ Rewritten Version ({rewrite_data['person']}):**")
-        with st.container():
-            st.markdown(f'<div class="rewritten-text-box">{rewrite_data["rewritten"]}</div>', unsafe_allow_html=True)
-        
-        st.markdown("---")
-        st.markdown("*This rewrite used your profile information to better capture your authentic voice.*")
-        
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            if st.button("📋 Copy to Clipboard", key="copy_rewrite", use_container_width=True):
-                st.info("✅ Copied! Select the text above and press Ctrl+C")
-                
-        with col2:
-            if st.button("📝 Replace Original", key="replace_rewrite", type="primary", use_container_width=True):
-                # Get the editor content key
-                current_session = SESSIONS[st.session_state.current_session]
-                current_session_id = current_session["id"]
-                current_question_text = st.session_state.current_question_override or current_session["questions"][st.session_state.current_question]
-                
-                # Save the rewritten version
-                editor_key = f"quill_{current_session_id}_{current_question_text[:20]}"
-                content_key = f"{editor_key}_content"
-                
-                # Wrap in paragraph tags if not present
-                new_content = rewrite_data["rewritten"]
-                if not new_content.startswith('<p>'):
-                    new_content = f'<p>{new_content}</p>'
-                
-                st.session_state[content_key] = new_content
-                
-                # Save to database
-                save_response(current_session_id, current_question_text, new_content)
-                
-                st.success("✅ Replaced with rewritten version!")
-                time.sleep(1)
-                st.session_state.show_ai_rewrite = False
-                st.session_state.current_rewrite_data = None
-                st.rerun()
-        
-        with col3:
-            if st.button("🔄 Try Different Voice", key="try_another", use_container_width=True):
-                st.session_state.show_ai_rewrite = False
-                st.session_state.current_rewrite_data = None
-                st.rerun()
+        # Simple text header
+        cover_html = f"""
+        <div class="book-header">
+            <h1>{book_title}</h1>
+            <div class="author">by {author_name}</div>
+            <div class="date">Generated on {datetime.now().strftime("%B %d, %Y")}</div>
+        </div>
+        """
     
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
+    # Build TOC
+    toc_html = ""
+    if include_toc and stories:
+        toc_html = "<h2>Table of Contents</h2><ul class='toc'>"
+        current_session = None
+        for i, story in enumerate(stories, 1):
+            session_id = story.get('session_id', '1')
+            if session_id != current_session:
+                session_title = story.get('session_title', f'Session {session_id}')
+                toc_html += f"<li class='toc-session'>{session_title}</li>"
+                current_session = session_id
+            question = clean_text(story.get('question', f'Story {i}'))
+            toc_html += f"<li class='toc-story'><a href='#story-{i}'>{i}. {question[:50]}...</a></li>"
+        toc_html += "</ul><hr>"
+    
+    # Build content
+    content_html = ""
+    current_session = None
+    for i, story in enumerate(stories, 1):
+        session_id = story.get('session_id', '1')
+        if session_id != current_session:
+            session_title = story.get('session_title', f'Session {session_id}')
+            content_html += f"<h1 class='session-title'>{session_title}</h1>"
+            current_session = session_id
+        
+        question = clean_text(story.get('question', ''))
+        answer_text = clean_text(story.get('answer_text', ''))
+        images = story.get('images', [])
+        
+        # Add anchor for TOC
+        content_html += f"<div class='story' id='story-{i}'>"
+        
+        if format_style == 'interview' and question:
+            content_html += f"<h2 class='question'>Q: {question}</h2>"
+        
+        # Convert newlines to paragraphs
+        paragraphs = answer_text.split('\n')
+        for p in paragraphs:
+            if p.strip():
+                content_html += f"<p>{p}</p>"
+        
+        # Add images
+        if images:
+            content_html += "<div class='image-gallery'>"
+            for img_data in images:
+                b64 = img_data.get('base64')
+                caption = clean_text(img_data.get('caption', ''))
+                if b64:
+                    content_html += f"""
+                    <div class='image-item'>
+                        <img src='data:image/jpeg;base64,{b64}' alt='{caption}'>
+                        <div class='image-caption'>📝 {caption}</div>
+                    </div>
+                    """
+            content_html += "</div>"
+        
+        content_html += "</div><hr>"
+    
+    # Complete HTML with styling
+    html = f"""<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>{book_title}</title>
+    <style>
+        body {{
+            font-family: 'Georgia', serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 40px 20px;
+            background: #fafafa;
+            color: #333;
+            line-height: 1.6;
+        }}
+        .book-header {{
+            text-align: center;
+            padding: 60px 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            margin: -40px -20px 40px -20px;
+            border-radius: 0 0 20px 20px;
+        }}
+        .cover-page {{
+            margin: -40px -20px 40px -20px;
+            text-align: center;
+        }}
+        h1 {{
+            font-size: 48px;
+            margin: 0;
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
+        }}
+        .author {{
+            font-size: 24px;
+            margin-top: 10px;
+            opacity: 0.9;
+        }}
+        .date {{
+            font-size: 14px;
+            margin-top: 20px;
+            opacity: 0.8;
+        }}
+        .toc {{
+            background: white;
+            padding: 30px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            margin: 30px 0;
+        }}
+        .toc ul {{
+            list-style: none;
+            padding: 0;
+        }}
+        .toc-session {{
+            font-weight: bold;
+            font-size: 18px;
+            margin-top: 15px;
+            color: #667eea;
+        }}
+        .toc-story {{
+            margin-left: 20px;
+        }}
+        .toc-story a {{
+            color: #333;
+            text-decoration: none;
+        }}
+        .toc-story a:hover {{
+            color: #667eea;
+            text-decoration: underline;
+        }}
+        .session-title {{
+            color: #764ba2;
+            border-bottom: 2px solid #667eea;
+            padding-bottom: 10px;
+            margin-top: 40px;
+            text-align: center;
+        }}
+        .story {{
+            margin: 30px 0;
+            max-width: 600px;
+            margin-left: auto;
+            margin-right: auto;
+        }}
+        .question {{
+            color: #667eea;
+            font-style: italic;
+        }}
+        .image-gallery {{
+            display: flex;
+            flex-wrap: wrap;
+            gap: 20px;
+            margin: 20px 0;
+            justify-content: center;
+        }}
+        .image-item {{
+            flex: 1 1 300px;
+            background: white;
+            padding: 15px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }}
+        .image-item img {{
+            max-width: 100%;
+            height: auto;
+            border-radius: 5px;
+        }}
+        .image-caption {{
+            text-align: center;
+            font-size: 14px;
+            color: #666;
+            margin-top: 10px;
+            font-style: italic;
+        }}
+        hr {{
+            border: none;
+            border-top: 1px solid #ddd;
+            margin: 40px 0;
+        }}
+        .footer {{
+            text-align: center;
+            color: #999;
+            font-size: 12px;
+            margin-top: 60px;
+        }}
+        @media print {{
+            body {{
+                background: white;
+                padding: 0;
+            }}
+            .book-header {{
+                -webkit-print-color-adjust: exact;
+                print-color-adjust: exact;
+            }}
+        }}
+    </style>
+</head>
+<body>
+    {cover_html}
+    
+    {toc_html}
+    
+    <div class="content">
+        {content_html}
+    </div>
+    
+    <div class="footer">
+        Generated by Tell My Story • {datetime.now().year}
+    </div>
+</body>
+</html>"""
+    return html
 
 # ============================================================================
-# ENHANCED BIOGRAPHER PROFILE SECTION
+# MAIN PUBLISHER INTERFACE
 # ============================================================================
-def render_enhanced_profile():
-    st.markdown("### 📋 The Biographer's Questions")
-    st.info("These questions ensure we capture the full richness of your life story.")
-    
-    if 'enhanced_profile' not in st.session_state.user_account:
-        st.session_state.user_account['enhanced_profile'] = {}
-    
-    ep = st.session_state.user_account['enhanced_profile']
-    
-    with st.expander("👶 Early Years & Family Origins", expanded=False):
-        st.markdown("**Where and when were you born?**")
-        ep['birth_place'] = st.text_input("Birth place", value=ep.get('birth_place', ''), key="ep_birth_place")
-        
-        st.markdown("**Tell me about your parents - who were they? What were their personalities, dreams, and life stories?**")
-        ep['parents'] = st.text_area("Parents", value=ep.get('parents', ''), key="ep_parents", height=100)
-        
-        st.markdown("**Did you have siblings? What was your birth order and relationship with them?**")
-        ep['siblings'] = st.text_area("Siblings", value=ep.get('siblings', ''), key="ep_siblings", height=100)
-        
-        st.markdown("**What was your childhood home like? The neighborhood, the house, the atmosphere?**")
-        ep['childhood_home'] = st.text_area("Childhood home", value=ep.get('childhood_home', ''), key="ep_home", height=100)
-        
-        st.markdown("**What family traditions, values, or cultural background shaped your early years?**")
-        ep['family_traditions'] = st.text_area("Family traditions", value=ep.get('family_traditions', ''), key="ep_traditions", height=100)
-    
-    with st.expander("🎓 Education & Formative Years", expanded=False):
-        st.markdown("**What was your school experience like? Favorite teachers? Subjects you loved or hated?**")
-        ep['school'] = st.text_area("School years", value=ep.get('school', ''), key="ep_school", height=100)
-        
-        st.markdown("**Did you pursue higher education? What influenced your choices?**")
-        ep['higher_ed'] = st.text_area("Higher education", value=ep.get('higher_ed', ''), key="ep_higher_ed", height=100)
-        
-        st.markdown("**Who were your mentors or influential figures during these years?**")
-        ep['mentors'] = st.text_area("Mentors", value=ep.get('mentors', ''), key="ep_mentors", height=100)
-        
-        st.markdown("**What books, ideas, or experiences shaped your worldview?**")
-        ep['influences'] = st.text_area("Influences", value=ep.get('influences', ''), key="ep_influences", height=100)
-    
-    with st.expander("💼 Career & Life's Work", expanded=False):
-        st.markdown("**What was your first job? What did you learn from it?**")
-        ep['first_job'] = st.text_area("First job", value=ep.get('first_job', ''), key="ep_first_job", height=100)
-        
-        st.markdown("**Describe your career path - the twists, turns, and defining moments.**")
-        ep['career_path'] = st.text_area("Career path", value=ep.get('career_path', ''), key="ep_career", height=100)
-        
-        st.markdown("**What achievements are you most proud of?**")
-        ep['achievements'] = st.text_area("Achievements", value=ep.get('achievements', ''), key="ep_achievements", height=100)
-        
-        st.markdown("**What work or projects brought you the most fulfillment?**")
-        ep['fulfillment'] = st.text_area("Fulfilling work", value=ep.get('fulfillment', ''), key="ep_fulfillment", height=100)
-    
-    with st.expander("❤️ Relationships & Love", expanded=False):
-        st.markdown("**Tell me about your romantic relationships - first loves, significant partnerships.**")
-        ep['romance'] = st.text_area("Romantic relationships", value=ep.get('romance', ''), key="ep_romance", height=100)
-        
-        st.markdown("**If married, how did you meet? What has the journey been like?**")
-        ep['marriage'] = st.text_area("Marriage story", value=ep.get('marriage', ''), key="ep_marriage", height=100)
-        
-        st.markdown("**Tell me about your children, if any - their personalities, your relationship with them.**")
-        ep['children'] = st.text_area("Children", value=ep.get('children', ''), key="ep_children", height=100)
-        
-        st.markdown("**Who are your closest friends? What makes those friendships special?**")
-        ep['friends'] = st.text_area("Friendships", value=ep.get('friends', ''), key="ep_friends", height=100)
-    
-    with st.expander("🌟 Challenges & Triumphs", expanded=False):
-        st.markdown("**What were the hardest moments in your life? How did you navigate them?**")
-        ep['challenges'] = st.text_area("Challenges", value=ep.get('challenges', ''), key="ep_challenges", height=100)
-        
-        st.markdown("**What losses have you experienced and how did they change you?**")
-        ep['losses'] = st.text_area("Losses", value=ep.get('losses', ''), key="ep_losses", height=100)
-        
-        st.markdown("**What are your proudest moments? Times when you felt truly alive?**")
-        ep['proud_moments'] = st.text_area("Proud moments", value=ep.get('proud_moments', ''), key="ep_proud", height=100)
-        
-        st.markdown("**What obstacles did you overcome that defined who you are?**")
-        ep['overcame'] = st.text_area("Obstacles overcome", value=ep.get('overcame', ''), key="ep_overcame", height=100)
-    
-    with st.expander("🌍 Life Philosophy & Wisdom", expanded=False):
-        st.markdown("**What life lessons would you want to pass on to future generations?**")
-        ep['life_lessons'] = st.text_area("Life lessons", value=ep.get('life_lessons', ''), key="ep_lessons", height=100)
-        
-        st.markdown("**What do you believe in? What are your core values?**")
-        ep['values'] = st.text_area("Core values", value=ep.get('values', ''), key="ep_values", height=100)
-        
-        st.markdown("**If you could give your younger self advice, what would it be?**")
-        ep['advice'] = st.text_area("Advice to younger self", value=ep.get('advice', ''), key="ep_advice", height=100)
-        
-        st.markdown("**How would you like to be remembered?**")
-        ep['legacy'] = st.text_area("Legacy", value=ep.get('legacy', ''), key="ep_legacy", height=100)
-    
-    if st.button("💾 Save Biographer's Questions", type="primary", use_container_width=True):
-        save_account_data(st.session_state.user_account)
-        st.success("Biographer's profile saved!")
-        st.rerun()
-
-# ============================================================================
-# NARRATIVE GPS PROFILE SECTION
-# ============================================================================
-def render_narrative_gps():
-    st.markdown("### ❤️ The Heart of Your Story")
+def main():
+    st.set_page_config(page_title="Biography Publisher", page_icon="📚", layout="wide")
     
     st.markdown("""
-    <div class="narrative-gps-box">
-    <p>Your answers to these questions help me support you properly throughout the process and make sure the finished book is exactly right for you and your readers.</p>
-    
-    <p>The more open and detailed you are here, the easier it is for your real voice and personality to come through on every page. Think of this as a conversation between you and the person who will read your story one day — and I'm here alongside you, listening, capturing what matters, and helping shape it into something lasting.</p>
-    
-    <p><strong>There's no rush.</strong> You can return and add to this whenever new thoughts or memories surface. This is where your story truly begins.</p>
-    </div>
+    <style>
+        .main-header { text-align: center; padding: 2rem 0; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                       margin: -1rem -1rem 2rem -1rem; border-radius: 0 0 20px 20px; color: white; }
+        .story-card { border-left: 4px solid #667eea; padding: 1rem; margin: 1rem 0; background: #f8f9fa; border-radius: 0 10px 10px 0; }
+        .export-box { border: 2px solid #667eea; border-radius: 10px; padding: 2rem; margin: 2rem 0; background: white; }
+    </style>
     """, unsafe_allow_html=True)
     
-    if 'narrative_gps' not in st.session_state.user_account:
-        st.session_state.user_account['narrative_gps'] = {}
+    st.markdown('<div class="main-header"><h1>📚 Biography Publisher</h1><p>Transform your stories into a beautifully formatted biography with images</p></div>', unsafe_allow_html=True)
     
-    gps = st.session_state.user_account['narrative_gps']
+    # Initialize session state
+    if 'stories_data' not in st.session_state:
+        st.session_state.stories_data = None
+    if 'formatted_text' not in st.session_state:
+        st.session_state.formatted_text = ""
+    if 'book_title' not in st.session_state:
+        st.session_state.book_title = ""
+    if 'author_name' not in st.session_state:
+        st.session_state.author_name = ""
+    if 'cover_type' not in st.session_state:
+        st.session_state.cover_type = "simple"
+    if 'custom_cover_data' not in st.session_state:
+        st.session_state.custom_cover_data = None
+    if 'format_style' not in st.session_state:
+        st.session_state.format_style = "interview"
+    if 'include_toc' not in st.session_state:
+        st.session_state.include_toc = True
+    if 'balloons_shown' not in st.session_state:
+        st.session_state.balloons_shown = False
     
-    with st.expander("📖 Section 1: The Book Itself (Project Scope)", expanded=True):
-        st.markdown("**BOOK TITLE (Working or Final):**")
-        gps['book_title'] = st.text_input(
-            "What's your working title? If unsure, what feeling or idea should the title convey?",
-            value=gps.get('book_title', ''),
-            label_visibility="collapsed",
-            placeholder="What's your working title? If unsure, what feeling or idea should the title convey?",
-            key="gps_title"
-        )
-        
-        st.markdown("**BOOK GENRE/CATEGORY:**")
-        genre_options = ["", "Memoir", "Autobiography", "Family History", "Business/Legacy Book", "Other"]
-        genre_index = 0
-        if gps.get('genre') in genre_options:
-            genre_index = genre_options.index(gps['genre'])
-        
-        gps['genre'] = st.selectbox(
-            "BOOK GENRE/CATEGORY:",
-            options=genre_options,
-            index=genre_index,
-            label_visibility="collapsed",
-            key="gps_genre"
-        )
-        if gps['genre'] == "Other":
-            gps['genre_other'] = st.text_input("Please specify:", value=gps.get('genre_other', ''), key="gps_genre_other")
-        
-        st.markdown("**BOOK LENGTH VISION:**")
-        length_options = ["", "A short book (100-150 pages)", "Standard length (200-300 pages)", "Comprehensive (300+ pages)"]
-        length_index = 0
-        if gps.get('book_length') in length_options:
-            length_index = length_options.index(gps['book_length'])
-        
-        gps['book_length'] = st.selectbox(
-            "BOOK LENGTH VISION:",
-            options=length_options,
-            index=length_index,
-            label_visibility="collapsed",
-            key="gps_length"
-        )
-        
-        st.markdown("**TIMELINE & DEADLINES:**")
-        gps['timeline'] = st.text_area(
-            "Do you have a target publication date or event this book is tied to? (e.g., birthday, retirement, anniversary)",
-            value=gps.get('timeline', ''),
-            label_visibility="collapsed",
-            placeholder="Do you have a target publication date or event this book is tied to? (e.g., birthday, retirement, anniversary)",
-            key="gps_timeline"
-        )
-        
-        st.markdown("**COMPLETION STATUS:**")
-        completion_options = ["", "Notes only", "Partial chapters", "Full draft"]
-        completion_index = 0
-        if gps.get('completion_status') in completion_options:
-            completion_index = completion_options.index(gps['completion_status'])
-        
-        gps['completion_status'] = st.selectbox(
-            "COMPLETION STATUS:",
-            options=completion_options,
-            index=completion_index,
-            label_visibility="collapsed",
-            key="gps_completion"
-        )
-    
-    with st.expander("🎯 Section 2: Purpose & Audience (The 'Why')", expanded=False):
-        st.markdown("**THE CORE PURPOSE (Choose all that apply):**")
-        
-        if 'purposes' not in gps:
-            gps['purposes'] = []
-        
-        purposes_options = [
-            "Leave a legacy for family/future generations",
-            "Share life lessons to help others",
-            "Document professional/business journey",
-            "Heal or process through writing",
-            "Establish authority/expertise",
-            "Entertain with entertaining stories"
-        ]
-        
-        for purpose in purposes_options:
-            if st.checkbox(
-                purpose,
-                value=purpose in gps.get('purposes', []),
-                key=f"gps_purpose_{purpose}"
-            ):
-                if purpose not in gps['purposes']:
-                    gps['purposes'].append(purpose)
-            else:
-                if purpose in gps['purposes']:
-                    gps['purposes'].remove(purpose)
-        
-        gps['purpose_other'] = st.text_input("Other:", value=gps.get('purpose_other', ''), key="gps_purpose_other")
-        
-        st.markdown("---")
-        st.markdown("**PRIMARY AUDIENCE:**")
-        st.markdown("*Who is your ideal reader? Be specific:*")
-        
-        gps['audience_family'] = st.text_input(
-            "Family members (which generations?):",
-            value=gps.get('audience_family', ''),
-            key="gps_audience_family"
-        )
-        
-        gps['audience_industry'] = st.text_input(
-            "People in your industry/profession:",
-            value=gps.get('audience_industry', ''),
-            key="gps_audience_industry"
-        )
-        
-        gps['audience_challenges'] = st.text_input(
-            "People facing similar challenges you overcame:",
-            value=gps.get('audience_challenges', ''),
-            key="gps_audience_challenges"
-        )
-        
-        gps['audience_general'] = st.text_input(
-            "The general public interested in:",
-            value=gps.get('audience_general', ''),
-            placeholder="your topic",
-            key="gps_audience_general"
-        )
-        
-        st.markdown("---")
-        st.markdown("**THE READER TAKEAWAY:**")
-        gps['reader_takeaway'] = st.text_area(
-            "What do you want readers to feel, think, or do after finishing your book?",
-            value=gps.get('reader_takeaway', ''),
-            label_visibility="collapsed",
-            placeholder="What do you want readers to feel, think, or do after finishing your book?",
-            key="gps_takeaway"
-        )
-    
-    with st.expander("🎭 Section 3: Tone & Voice (The 'How')", expanded=False):
-        st.markdown("**NARRATIVE VOICE:**")
-        
-        if 'narrative_voices' not in gps:
-            gps['narrative_voices'] = []
-        
-        voice_options = [
-            "Warm and conversational (like talking to a friend)",
-            "Professional and authoritative",
-            "Raw and vulnerable",
-            "Humorous/lighthearted",
-            "Philosophical/reflective"
-        ]
-        
-        for voice in voice_options:
-            if st.checkbox(
-                voice,
-                value=voice in gps.get('narrative_voices', []),
-                key=f"gps_voice_{voice}"
-            ):
-                if voice not in gps['narrative_voices']:
-                    gps['narrative_voices'].append(voice)
-            else:
-                if voice in gps['narrative_voices']:
-                    gps['narrative_voices'].remove(voice)
-        
-        gps['voice_other'] = st.text_input("Other:", value=gps.get('voice_other', ''), key="gps_voice_other")
-        
-        st.markdown("---")
-        st.markdown("**EMOTIONAL TONE:**")
-        gps['emotional_tone'] = st.text_area(
-            "Should readers laugh? Cry? Feel inspired? Get angry? All of the above?",
-            value=gps.get('emotional_tone', ''),
-            label_visibility="collapsed",
-            placeholder="Should readers laugh? Cry? Feel inspired? Get angry? All of the above?",
-            key="gps_emotional"
-        )
-        
-        st.markdown("---")
-        st.markdown("**LANGUAGE STYLE:**")
-        language_options = ["", "Simple, everyday language", "Rich, descriptive prose", "Short, punchy chapters", "Long, flowing narratives"]
-        language_index = 0
-        if gps.get('language_style') in language_options:
-            language_index = language_options.index(gps['language_style'])
-        
-        gps['language_style'] = st.selectbox(
-            "LANGUAGE STYLE:",
-            options=language_options,
-            index=language_index,
-            label_visibility="collapsed",
-            key="gps_language"
-        )
-    
-    with st.expander("📋 Section 4: Content Parameters (The 'What')", expanded=False):
-        st.markdown("**TIME COVERAGE:**")
-        time_options = ["", "Your entire life", "A specific era/decade", "One defining experience", "Your career/business journey"]
-        time_index = 0
-        if gps.get('time_coverage') in time_options:
-            time_index = time_options.index(gps['time_coverage'])
-        
-        gps['time_coverage'] = st.selectbox(
-            "TIME COVERAGE:",
-            options=time_options,
-            index=time_index,
-            label_visibility="collapsed",
-            key="gps_time"
-        )
-        
-        st.markdown("---")
-        st.markdown("**SENSITIVE MATERIAL:**")
-        gps['sensitive_material'] = st.text_area(
-            "Are there topics, people, or events you want to handle carefully or omit entirely?",
-            value=gps.get('sensitive_material', ''),
-            label_visibility="collapsed",
-            placeholder="Are there topics, people, or events you want to handle carefully or omit entirely?",
-            key="gps_sensitive"
-        )
-        
-        gps['sensitive_people'] = st.text_area(
-            "Any living people whose portrayal requires sensitivity or legal consideration?",
-            value=gps.get('sensitive_people', ''),
-            label_visibility="collapsed",
-            placeholder="Any living people whose portrayal requires sensitivity or legal consideration?",
-            key="gps_sensitive_people"
-        )
-        
-        st.markdown("---")
-        st.markdown("**INCLUSIONS:**")
-        
-        if 'inclusions' not in gps:
-            gps['inclusions'] = []
-        
-        inclusion_options = ["Photos", "Family trees", "Recipes", "Letters/documents", "Timelines", "Resources for readers"]
-        for inc in inclusion_options:
-            if st.checkbox(
-                inc,
-                value=inc in gps.get('inclusions', []),
-                key=f"gps_inc_{inc}"
-            ):
-                if inc not in gps['inclusions']:
-                    gps['inclusions'].append(inc)
-            else:
-                if inc in gps['inclusions']:
-                    gps['inclusions'].remove(inc)
-        
-        st.markdown("---")
-        st.markdown("**LOCATIONS:**")
-        gps['locations'] = st.text_area(
-            "List key places that must appear in the story (hometowns, meaningful travels, etc.)",
-            value=gps.get('locations', ''),
-            label_visibility="collapsed",
-            placeholder="List key places that must appear in the story (hometowns, meaningful travels, etc.)",
-            key="gps_locations"
-        )
-    
-    with st.expander("📦 Section 5: Assets & Access (The 'Resources')", expanded=False):
-        st.markdown("**EXISTING MATERIALS:**")
-        
-        if 'materials' not in gps:
-            gps['materials'] = []
-        
-        material_options = [
-            "Journals/diaries", "Letters or emails", "Photos (with dates/context)",
-            "Video/audio recordings", "Newspaper clippings", "Awards/certificates",
-            "Social media posts", "Previous interviews"
-        ]
-        
-        for mat in material_options:
-            if st.checkbox(
-                mat,
-                value=mat in gps.get('materials', []),
-                key=f"gps_mat_{mat}"
-            ):
-                if mat not in gps['materials']:
-                    gps['materials'].append(mat)
-            else:
-                if mat in gps['materials']:
-                    gps['materials'].remove(mat)
-        
-        st.markdown("---")
-        st.markdown("**PEOPLE TO INTERVIEW:**")
-        gps['people_to_interview'] = st.text_area(
-            "Are there family members, friends, or colleagues who should contribute their memories?",
-            value=gps.get('people_to_interview', ''),
-            label_visibility="collapsed",
-            placeholder="Are there family members, friends, or colleagues who should contribute their memories?",
-            key="gps_people"
-        )
-        
-        st.markdown("---")
-        st.markdown("**FINANCIAL & LEGAL:**")
-        
-        if 'legal' not in gps:
-            gps['legal'] = []
-        
-        legal_options = ["ISBN registration", "Copyright", "Libel review", "Permissions for quoted material"]
-        for leg in legal_options:
-            if st.checkbox(
-                leg,
-                value=leg in gps.get('legal', []),
-                key=f"gps_legal_{leg}"
-            ):
-                if leg not in gps['legal']:
-                    gps['legal'].append(leg)
-            else:
-                if leg in gps['legal']:
-                    gps['legal'].remove(leg)
-    
-    with st.expander("🤝 Section 6: Ghostwriter Relationship (The 'Collaboration')", expanded=False):
-        st.markdown("**YOUR INVOLVEMENT:**")
-        
-        involvement_options = [
-            "I'll answer questions, you write everything",
-            "I'll write drafts, you polish",
-            "We'll interview together, then you write",
-            "Mixed approach: [explain]"
-        ]
-        
-        involvement_index = 0
-        if gps.get('involvement') in involvement_options:
-            involvement_index = involvement_options.index(gps['involvement'])
-        
-        gps['involvement'] = st.radio(
-            "How do you want to work together?",
-            options=involvement_options,
-            index=involvement_index,
-            key="gps_involvement"
-        )
-        
-        if gps.get('involvement') == "Mixed approach: [explain]":
-            gps['involvement_explain'] = st.text_area(
-                "Explain your preferred approach:",
-                value=gps.get('involvement_explain', ''),
-                key="gps_involvement_explain"
-            )
-        
-        st.markdown("---")
-        
-        st.markdown("**FEEDBACK STYLE:**")
-        feedback_options = ["", "Written comments", "Phone/video discussions", "Line-by-line edits"]
-        feedback_index = 0
-        if gps.get('feedback_style') in feedback_options:
-            feedback_index = feedback_options.index(gps['feedback_style'])
-        
-        gps['feedback_style'] = st.selectbox(
-            "FEEDBACK STYLE:",
-            options=feedback_options,
-            index=feedback_index,
-            label_visibility="collapsed",
-            key="gps_feedback"
-        )
-        
-        st.markdown("---")
-        st.markdown("**THE UNSPOKEN:**")
-        gps['unspoken'] = st.text_area(
-            "What are you hoping I'll bring to this project that you can't do yourself?",
-            value=gps.get('unspoken', ''),
-            label_visibility="collapsed",
-            placeholder="What are you hoping I'll bring to this project that you can't do yourself?",
-            key="gps_unspoken"
-        )
-    
-    if st.button("💾 Save The Heart of Your Story", key="save_narrative_gps", type="primary", use_container_width=True):
-        save_account_data(st.session_state.user_account)
-        st.success("✅ The Heart of Your Story saved!")
-        st.rerun()
-
-# ============================================================================
-# STORAGE FUNCTIONS
-# ============================================================================
-def get_user_filename(user_id):
-    return f"user_data_{hashlib.md5(user_id.encode()).hexdigest()[:8]}.json"
-
-def load_user_data(user_id):
-    fname = get_user_filename(user_id)
-    try:
-        if os.path.exists(fname):
-            return json.load(open(fname, 'r'))
-        return {"responses": {}, "vignettes": [], "last_loaded": datetime.now().isoformat()}
-    except: 
-        return {"responses": {}, "vignettes": [], "last_loaded": datetime.now().isoformat()}
-
-def save_user_data(user_id, responses_data):
-    fname = get_user_filename(user_id)
-    try:
-        existing = load_user_data(user_id)
-        data = {
-            "user_id": user_id, 
-            "responses": responses_data,
-            "vignettes": existing.get("vignettes", []),
-            "beta_feedback": existing.get("beta_feedback", {}),
-            "last_saved": datetime.now().isoformat()
-        }
-        with open(fname, 'w') as f: 
-            json.dump(data, f, indent=2)
-        return True
-    except: 
-        return False
-
-# ============================================================================
-# CORE RESPONSE FUNCTIONS
-# ============================================================================
-def save_response(session_id, question, answer):
-    user_id = st.session_state.user_id
-    if not user_id: 
-        return False
-    
-    text_only = re.sub(r'<[^>]+>', '', answer) if answer else ""
-    
-    if st.session_state.user_account:
-        word_count = len(re.findall(r'\w+', text_only))
-        st.session_state.user_account["stats"]["total_words"] = st.session_state.user_account["stats"].get("total_words", 0) + word_count
-        st.session_state.user_account["stats"]["last_active"] = datetime.now().isoformat()
-        save_account_data(st.session_state.user_account)
-    
-    if session_id not in st.session_state.responses:
-        session_data = next((s for s in (st.session_state.current_question_bank or []) if s["id"] == session_id), 
-                          {"title": f"Session {session_id}", "word_target": DEFAULT_WORD_TARGET})
-        st.session_state.responses[session_id] = {
-            "title": session_data.get("title", f"Session {session_id}"),
-            "questions": {}, "summary": "", "completed": False,
-            "word_target": session_data.get("word_target", DEFAULT_WORD_TARGET)
-        }
-    
-    images = []
-    if st.session_state.image_handler:
-        images = st.session_state.image_handler.get_images_for_answer(session_id, question)
-    
-    st.session_state.responses[session_id]["questions"][question] = {
-        "answer": answer, "question": question, "timestamp": datetime.now().isoformat(),
-        "answer_index": 1, "has_images": len(images) > 0 or ('<img' in answer),
-        "image_count": len(images), "images": [{"id": img["id"], "caption": img.get("caption", "")} for img in images]
-    }
-    
-    success = save_user_data(user_id, st.session_state.responses)
-    if success: 
-        st.session_state.data_loaded = False
-    
-    return success
-
-def delete_response(session_id, question):
-    user_id = st.session_state.user_id
-    if not user_id: 
-        return False
-    
-    if session_id in st.session_state.responses and question in st.session_state.responses[session_id]["questions"]:
-        del st.session_state.responses[session_id]["questions"][question]
-        success = save_user_data(user_id, st.session_state.responses)
-        if success: 
-            st.session_state.data_loaded = False
-        return success
-    return False
-
-def calculate_author_word_count(session_id):
-    total = 0
-    if session_id in st.session_state.responses:
-        for q, d in st.session_state.responses[session_id].get("questions", {}).items():
-            if d.get("answer"): 
-                text_only = re.sub(r'<[^>]+>', '', d["answer"])
-                total += len(re.findall(r'\w+', text_only))
-    return total
-
-def get_progress_info(session_id):
-    current = calculate_author_word_count(session_id)
-    if session_id not in st.session_state.responses:
-        session_data = next((s for s in (st.session_state.current_question_bank or []) if s["id"] == session_id), {})
-        st.session_state.responses[session_id] = {
-            "title": session_data.get("title", f"Session {session_id}"),
-            "questions": {}, "summary": "", "completed": False,
-            "word_target": session_data.get("word_target", DEFAULT_WORD_TARGET)
-        }
-    
-    target = st.session_state.responses[session_id].get("word_target", DEFAULT_WORD_TARGET)
-    if target == 0: 
-        percent = 100
-    else: 
-        percent = (current / target) * 100
-    
-    return {
-        "current_count": current, "target": target, "progress_percent": percent,
-        "emoji": "🟢" if percent >= 100 else "🟡" if percent >= 70 else "🔴",
-        "color": "#27ae60" if percent >= 100 else "#f39c12" if percent >= 70 else "#e74c3c",
-        "remaining_words": max(0, target - current),
-        "status_text": "Target achieved!" if current >= target else f"{max(0, target - current)} words remaining"
-    }
-
-def auto_correct_text(text):
-    if not text: 
-        return text
-    text_only = re.sub(r'<[^>]+>', '', text)
-    try:
-        resp = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Fix spelling and grammar. Return only corrected text."},
-                {"role": "user", "content": text_only}
-            ],
-            max_tokens=len(text_only) + 100, temperature=0.1
-        )
-        return resp.choices[0].message.content
-    except: 
-        return text
-
-# ============================================================================
-# SEARCH FUNCTIONALITY
-# ============================================================================
-def search_all_answers(search_query):
-    if not search_query or len(search_query) < 2: 
-        return []
-    
-    results = []
-    search_query = search_query.lower()
-    
-    for session in (st.session_state.current_question_bank or []):
-        session_id = session["id"]
-        session_data = st.session_state.responses.get(session_id, {})
-        
-        for question_text, answer_data in session_data.get("questions", {}).items():
-            html_answer = answer_data.get("answer", "")
-            text_answer = re.sub(r'<[^>]+>', '', html_answer)
-            has_images = answer_data.get("has_images", False) or ('<img' in html_answer)
-            
-            if search_query in text_answer.lower() or search_query in question_text.lower():
-                results.append({
-                    "session_id": session_id, "session_title": session["title"],
-                    "question": question_text, "answer": text_answer[:300] + "..." if len(text_answer) > 300 else text_answer,
-                    "timestamp": answer_data.get("timestamp", ""), "word_count": len(text_answer.split()),
-                    "has_images": has_images, "image_count": answer_data.get("image_count", 0)
-                })
-    
-    results.sort(key=lambda x: x["timestamp"], reverse=True)
-    return results
-
-# ============================================================================
-# QUESTION BANK LOADING
-# ============================================================================
-def initialize_question_bank():
-    if 'current_question_bank' in st.session_state and st.session_state.current_question_bank:
-        return True
-    
-    if QuestionBankManager:
-        try:
-            qb_manager = QuestionBankManager(st.session_state.get('user_id'))
-            st.session_state.qb_manager = qb_manager
-            
-            if os.path.exists("sessions/sessions.csv"):
-                shutil.copy("sessions/sessions.csv", "question_banks/default/life_story_comprehensive.csv")
-            
-            default = qb_manager.load_default_bank("life_story_comprehensive")
-            if default:
-                st.session_state.current_question_bank = default
-                st.session_state.current_bank_name = "📖 Life Story - Comprehensive"
-                st.session_state.current_bank_type = "default"
-                st.session_state.current_bank_id = "life_story_comprehensive"
-                st.session_state.qb_manager_initialized = True
+    # Sidebar
+    with st.sidebar:
+        st.header("📂 Upload")
+        uploaded_file = st.file_uploader("Upload JSON from Tell My Story", type=['json'])
+        if uploaded_file:
+            try:
+                st.session_state.stories_data = json.load(uploaded_file)
+                st.success("✅ Uploaded successfully!")
+                user_profile = st.session_state.stories_data.get('user_profile', {})
+                if user_profile:
+                    first = user_profile.get('first_name', '')
+                    last = user_profile.get('last_name', '')
+                    if first and last:
+                        st.session_state.author_name = f"{first} {last}"
+                        st.session_state.book_title = f"The Story of {first} {last}"
                 
-                for s in default:
-                    sid = s["id"]
-                    if sid not in st.session_state.responses:
-                        st.session_state.responses[sid] = {
-                            "title": s["title"], "questions": {}, "summary": "",
-                            "completed": False, "word_target": s.get("word_target", DEFAULT_WORD_TARGET)
-                        }
-                return True
-        except: 
-            pass
-    
-    if SessionLoader:
-        try:
-            legacy = SessionLoader().load_sessions_from_csv()
-            if legacy:
-                st.session_state.current_question_bank = legacy
-                st.session_state.current_bank_name = "Legacy Bank"
-                st.session_state.current_bank_type = "legacy"
-                for s in legacy:
-                    sid = s["id"]
-                    if sid not in st.session_state.responses:
-                        st.session_state.responses[sid] = {
-                            "title": s["title"], "questions": {}, "summary": "",
-                            "completed": False, "word_target": s.get("word_target", DEFAULT_WORD_TARGET)
-                        }
-                return True
-        except: 
-            pass
-    return False
-
-def load_question_bank(sessions, bank_name, bank_type, bank_id=None):
-    st.session_state.current_question_bank = sessions
-    st.session_state.current_bank_name = bank_name
-    st.session_state.current_bank_type = bank_type
-    st.session_state.current_bank_id = bank_id
-    st.session_state.current_session = 0
-    st.session_state.current_question = 0
-    st.session_state.current_question_override = None
-    
-    for s in sessions:
-        sid = s["id"]
-        if sid not in st.session_state.responses:
-            st.session_state.responses[sid] = {
-                "title": s["title"], "questions": {}, "summary": "",
-                "completed": False, "word_target": s.get("word_target", DEFAULT_WORD_TARGET)
-            }
-
-# ============================================================================
-# BETA READER FUNCTIONS
-# ============================================================================
-def generate_beta_reader_feedback(session_title, session_text, feedback_type="comprehensive"):
-    if not beta_reader: 
-        return {"error": "BetaReader not available"}
-    
-    # Track what profile information was accessed
-    accessed_profile_sections = []
-    profile_context = "\n\n" + "="*80 + "\n"
-    profile_context += "📋 BIOGRAPHER'S INTELLIGENCE BRIEFING\n"
-    profile_context += "="*80 + "\n"
-    profile_context += "The Beta Reader has accessed the following profile information to provide contextual feedback:\n\n"
-    
-    if st.session_state.user_account:
-        # Get Narrative GPS (Heart of Your Story)
-        gps = st.session_state.user_account.get('narrative_gps', {})
-        if gps:
-            profile_context += "\n📖 SECTION 1: BOOK PROJECT CONTEXT (From Narrative GPS)\n"
-            profile_context += "-" * 50 + "\n"
-            
-            if gps.get('book_title'):
-                profile_context += f"• Book Title: {gps['book_title']}\n"
-                accessed_profile_sections.append("Book Title")
-            if gps.get('genre'):
-                genre = gps['genre']
-                if genre == "Other" and gps.get('genre_other'):
-                    genre = gps['genre_other']
-                profile_context += f"• Genre: {genre}\n"
-                accessed_profile_sections.append("Genre")
-            if gps.get('purposes'):
-                profile_context += f"• Purpose: {', '.join(gps['purposes'])}\n"
-                accessed_profile_sections.append("Book Purpose")
-            if gps.get('reader_takeaway'):
-                profile_context += f"• Reader Takeaway: {gps['reader_takeaway']}\n"
-                accessed_profile_sections.append("Reader Takeaway")
-            if gps.get('emotional_tone'):
-                profile_context += f"• Emotional Tone: {gps['emotional_tone']}\n"
-                accessed_profile_sections.append("Emotional Tone")
-            if gps.get('narrative_voices'):
-                profile_context += f"• Narrative Voice: {', '.join(gps['narrative_voices'])}\n"
-                accessed_profile_sections.append("Narrative Voice")
-            if gps.get('time_coverage'):
-                profile_context += f"• Time Coverage: {gps['time_coverage']}\n"
-                accessed_profile_sections.append("Time Coverage")
-            if gps.get('audience_family') or gps.get('audience_industry'):
-                profile_context += f"• Target Audience: "
-                audiences = []
-                if gps.get('audience_family'): audiences.append(f"Family ({gps['audience_family']})")
-                if gps.get('audience_industry'): audiences.append(f"Industry ({gps['audience_industry']})")
-                if gps.get('audience_general'): audiences.append(f"General ({gps['audience_general']})")
-                profile_context += f"{', '.join(audiences)}\n"
-                accessed_profile_sections.append("Target Audience")
+                # Load custom cover if available
+                if 'cover_design' in st.session_state.stories_data:
+                    st.session_state.custom_cover_data = st.session_state.stories_data['cover_design']
+            except Exception as e:
+                st.error(f"Error loading file: {e}")
         
-        # Get Enhanced Biographer Profile
-        ep = st.session_state.user_account.get('enhanced_profile', {})
-        if ep:
-            profile_context += "\n\n👤 SECTION 2: SUBJECT BIOGRAPHY (From Enhanced Profile)\n"
-            profile_context += "-" * 50 + "\n"
-            
-            if ep.get('birth_place'):
-                profile_context += f"• Birth Place: {ep['birth_place']}\n"
-                accessed_profile_sections.append("Birth Place")
-            if ep.get('parents'):
-                profile_context += f"• Parents: {ep['parents'][:150]}...\n" if len(ep['parents']) > 150 else f"• Parents: {ep['parents']}\n"
-                accessed_profile_sections.append("Family Background")
-            if ep.get('childhood_home'):
-                profile_context += f"• Childhood Home: {ep['childhood_home'][:150]}...\n" if len(ep['childhood_home']) > 150 else f"• Childhood Home: {ep['childhood_home']}\n"
-                accessed_profile_sections.append("Childhood")
-            if ep.get('family_traditions'):
-                profile_context += f"• Family Traditions: {ep['family_traditions'][:150]}...\n" if len(ep['family_traditions']) > 150 else f"• Family Traditions: {ep['family_traditions']}\n"
-                accessed_profile_sections.append("Family Traditions")
-            if ep.get('school'):
-                profile_context += f"• Education: {ep['school'][:150]}...\n" if len(ep['school']) > 150 else f"• Education: {ep['school']}\n"
-                accessed_profile_sections.append("Education")
-            if ep.get('career_path'):
-                profile_context += f"• Career: {ep['career_path'][:150]}...\n" if len(ep['career_path']) > 150 else f"• Career: {ep['career_path']}\n"
-                accessed_profile_sections.append("Career")
-            if ep.get('romance') or ep.get('marriage'):
-                profile_context += f"• Relationships: "
-                if ep.get('marriage'): profile_context += f"Married - {ep['marriage'][:100]}... " if len(ep['marriage']) > 100 else f"Married - {ep['marriage']} "
-                if ep.get('children'): profile_context += f"Children - {ep['children'][:100]}... " if len(ep['children']) > 100 else f"Children - {ep['children']} "
-                profile_context += "\n"
-                accessed_profile_sections.append("Relationships")
-            if ep.get('challenges'):
-                profile_context += f"• Life Challenges: {ep['challenges'][:150]}...\n" if len(ep['challenges']) > 150 else f"• Life Challenges: {ep['challenges']}\n"
-                accessed_profile_sections.append("Challenges")
-            if ep.get('life_lessons'):
-                profile_context += f"• Life Philosophy: {ep['life_lessons'][:150]}...\n" if len(ep['life_lessons']) > 150 else f"• Life Philosophy: {ep['life_lessons']}\n"
-                accessed_profile_sections.append("Life Philosophy")
-            if ep.get('legacy'):
-                profile_context += f"• Legacy Hope: {ep['legacy'][:150]}...\n" if len(ep['legacy']) > 150 else f"• Legacy Hope: {ep['legacy']}\n"
-                accessed_profile_sections.append("Legacy Hope")
-    
-    # Add summary of accessed sections
-    if accessed_profile_sections:
-        profile_context += f"\n📊 PROFILE SECTIONS USED: {', '.join(set(accessed_profile_sections))}\n"
-    else:
-        profile_context += "\n⚠️ No profile information found. Complete your profile for personalized feedback!\n"
-    
-    profile_context += "\n" + "="*80 + "\n"
-    profile_context += "📝 BETA READER INSTRUCTIONS: Use the above profile information to provide personalized feedback.\n"
-    profile_context += "When your feedback is influenced by specific profile details, mark it with [PROFILE: section_name]\n"
-    profile_context += "="*80 + "\n\n"
-    
-    # Combine profile context with session text
-    full_context = profile_context + "\n=== SESSION CONTENT TO REVIEW ===\n\n" + session_text
-    
-    return beta_reader.generate_feedback(session_title, full_context, feedback_type, accessed_profile_sections)
-
-def save_beta_feedback(user_id, session_id, feedback_data):
-    if not user_id:
-        return False
-    
-    try:
-        filename = get_user_filename(user_id)
-        
-        if os.path.exists(filename):
-            with open(filename, 'r') as f:
-                user_data = json.load(f)
-        else:
-            user_data = {"responses": {}, "vignettes": [], "beta_feedback": {}}
-        
-        if "beta_feedback" not in user_data:
-            user_data["beta_feedback"] = {}
-        
-        session_key = str(session_id)
-        
-        if session_key not in user_data["beta_feedback"]:
-            user_data["beta_feedback"][session_key] = []
-        
-        feedback_copy = feedback_data.copy()
-        if "generated_at" not in feedback_copy:
-            feedback_copy["generated_at"] = datetime.now().isoformat()
-        if "feedback_type" not in feedback_copy:
-            feedback_copy["feedback_type"] = "comprehensive"
-        
-        for s in SESSIONS:
-            if str(s["id"]) == session_key:
-                feedback_copy["session_title"] = s["title"]
-                break
-        
-        user_data["beta_feedback"][session_key].append(feedback_copy)
-        
-        with open(filename, 'w') as f:
-            json.dump(user_data, f, indent=2)
-        
-        return True
-    except Exception as e:
-        print(f"Error saving feedback: {e}")
-        return False
-
-def get_previous_beta_feedback(user_id, session_id):
-    if not beta_reader: 
-        return None
-    return beta_reader.get_previous_feedback(user_id, session_id, get_user_filename, load_user_data)
-
-def display_saved_feedback(user_id, session_id):
-    user_data = load_user_data(user_id)
-    feedback_data = user_data.get("beta_feedback", {})
-    session_feedback = feedback_data.get(str(session_id), [])
-    
-    if not session_feedback:
-        st.info("No saved feedback for this session yet.")
-        return
-    
-    st.markdown("### 📚 Saved Beta Reader Feedback")
-    
-    session_feedback.sort(key=lambda x: x.get('generated_at', ''), reverse=True)
-    
-    for i, fb in enumerate(session_feedback):
-        with st.expander(f"Feedback from {datetime.fromisoformat(fb['generated_at']).strftime('%B %d, %Y at %I:%M %p')}"):
-            col1, col2, col3 = st.columns([1, 1, 1])
-            
-            with col1:
-                st.markdown(f"**Type:** {fb.get('feedback_type', 'comprehensive').title()}")
-            with col2:
-                st.markdown(f"**Overall Score:** {fb.get('overall_score', 'N/A')}/10")
-            with col3:
-                if st.button(f"🗑️ Delete", key=f"del_fb_{i}_{fb.get('generated_at')}"):
-                    session_feedback.pop(i)
-                    user_data["beta_feedback"][str(session_id)] = session_feedback
-                    save_user_data(user_id, user_data.get("responses", {}))
-                    st.rerun()
-            
-            if 'summary' in fb:
-                st.markdown("**Summary:**")
-                st.markdown(fb['summary'])
-            
-            if 'strengths' in fb:
-                st.markdown("**Strengths:**")
-                for s in fb['strengths']:
-                    st.markdown(f"✅ {s}")
-            
-            if 'areas_for_improvement' in fb:
-                st.markdown("**Areas for Improvement:**")
-                for a in fb['areas_for_improvement']:
-                    st.markdown(f"📝 {a}")
-            
-            if 'suggestions' in fb:
-                st.markdown("**Suggestions:**")
-                for sug in fb['suggestions']:
-                    st.markdown(f"💡 {sug}")
-
-def save_vignette_beta_feedback(user_id, vignette_id, feedback_data, vignette_title):
-    if not user_id:
-        return False
-    
-    try:
-        filename = get_user_filename(user_id)
-        
-        if os.path.exists(filename):
-            with open(filename, 'r') as f:
-                user_data = json.load(f)
-        else:
-            user_data = {"responses": {}, "vignettes": [], "beta_feedback": {}, "vignette_beta_feedback": {}}
-        
-        if "vignette_beta_feedback" not in user_data:
-            user_data["vignette_beta_feedback"] = {}
-        
-        vignette_key = str(vignette_id)
-        
-        if vignette_key not in user_data["vignette_beta_feedback"]:
-            user_data["vignette_beta_feedback"][vignette_key] = []
-        
-        feedback_copy = feedback_data.copy()
-        if "generated_at" not in feedback_copy:
-            feedback_copy["generated_at"] = datetime.now().isoformat()
-        if "feedback_type" not in feedback_copy:
-            feedback_copy["feedback_type"] = "comprehensive"
-        
-        feedback_copy["vignette_title"] = vignette_title
-        
-        user_data["vignette_beta_feedback"][vignette_key].append(feedback_copy)
-        
-        with open(filename, 'w') as f:
-            json.dump(user_data, f, indent=2)
-        
-        return True
-    except Exception as e:
-        print(f"Error saving vignette feedback: {e}")
-        return False
-
-def display_beta_feedback(feedback_data):
-    """Display beta feedback in a styled container below the answer box"""
-    if not feedback_data:
-        return
-    
-    st.markdown("---")
-    st.markdown("### 🦋 Beta Reader Feedback")
-    
-    with st.container():
-        col1, col2 = st.columns([6, 1])
-        with col2:
-            if st.button("✕", key="close_beta_feedback"):
-                st.session_state.beta_feedback_display = None
-                if "beta_feedback_storage" in st.session_state:
-                    st.session_state.beta_feedback_storage = {}
-                st.rerun()
-        
-        if 'error' in feedback_data:
-            st.error(f"Error: {feedback_data['error']}")
-            return
-        
-        if feedback_data.get('profile_sections_used'):
-            with st.expander("📋 **PROFILE INFORMATION ACCESSED**", expanded=True):
-                st.markdown("The Beta Reader used these profile sections to personalize this feedback:")
-                cols = st.columns(3)
-                for i, section in enumerate(feedback_data['profile_sections_used']):
-                    cols[i % 3].markdown(f"✅ **{section}**")
-                st.markdown("\n*Look for highlighted **[PROFILE: ...]** markers in the feedback below to see where specific profile information influenced the analysis.*")
-        
-        col_save1, col_save2, col_save3 = st.columns([1, 2, 1])
-        with col_save2:
-            if st.button("💾 Save This Feedback to History", key="save_beta_feedback", type="primary", use_container_width=True):
-                result = save_beta_feedback(
-                    st.session_state.user_id,
-                    st.session_state.current_question_bank[st.session_state.current_session]["id"],
-                    feedback_data
-                )
-                if result:
-                    st.success("✅ Feedback saved to history!")
-                    time.sleep(1)
-                    st.rerun()
-                else:
-                    st.error("Failed to save feedback")
-        
-        st.markdown("---")
-        
-        if 'feedback' in feedback_data and feedback_data['feedback']:
-            feedback_text = feedback_data['feedback']
-            
-            parts = re.split(r'(\[PROFILE:.*?\])', feedback_text)
-            formatted_feedback = ""
-            for i, part in enumerate(parts):
-                if part.startswith('[PROFILE:') and part.endswith(']'):
-                    formatted_feedback += f'<span style="background-color: #e8f4fd; color: #0366d6; font-weight: bold; padding: 2px 6px; border-radius: 4px; border-left: 3px solid #0366d6;">{part}</span>'
-                else:
-                    formatted_feedback += part
-            
-            st.markdown(formatted_feedback, unsafe_allow_html=True)
-        else:
-            if 'summary' in feedback_data and feedback_data['summary']:
-                st.markdown("**Summary:**")
-                st.info(feedback_data['summary'])
-            
-            if 'strengths' in feedback_data and feedback_data['strengths']:
-                st.markdown("**Strengths:**")
-                for s in feedback_data['strengths']:
-                    st.markdown(f"✅ {s}")
-            
-            if 'areas_for_improvement' in feedback_data and feedback_data['areas_for_improvement']:
-                st.markdown("**Areas for Improvement:**")
-                for a in feedback_data['areas_for_improvement']:
-                    st.markdown(f"📝 {a}")
-            
-            if 'suggestions' in feedback_data and feedback_data['suggestions']:
-                st.markdown("**Suggestions:**")
-                for sug in feedback_data['suggestions']:
-                    st.markdown(f"💡 {sug}")
-            
-            if 'overall_score' in feedback_data and feedback_data['overall_score']:
-                st.markdown(f"**Overall Score:** {feedback_data['overall_score']}/10")
-
-# ============================================================================
-# VIGNETTE FUNCTIONS
-# ============================================================================
-def on_vignette_select(vignette_id):
-    st.session_state.selected_vignette_id = vignette_id
-    st.session_state.show_vignette_detail = True
-    st.session_state.show_vignette_manager = False
-    st.rerun()
-
-def on_vignette_edit(vignette_id):
-    st.session_state.editing_vignette_id = vignette_id
-    st.session_state.show_vignette_detail = False
-    st.session_state.show_vignette_manager = False
-    st.session_state.show_vignette_modal = True
-    st.rerun()
-
-def on_vignette_delete(vignette_id):
-    if VignetteManager and st.session_state.get('vignette_manager', VignetteManager(st.session_state.user_id)).delete_vignette(vignette_id):
-        st.success("Deleted!"); 
-        st.rerun()
-    else: 
-        st.error("Failed to delete")
-
-def on_vignette_publish(vignette):
-    st.session_state.published_vignette = vignette
-    st.success(f"Published '{vignette['title']}'!"); 
-    st.rerun()
-
-def show_vignette_modal():
-    if not VignetteManager: 
-        st.error("Vignette module not available"); 
-        st.session_state.show_vignette_modal = False; 
-        return
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    if st.button("←", key="vign_modal_back"): 
-        st.session_state.show_vignette_modal = False; 
-        st.session_state.editing_vignette_id = None; 
-        st.rerun()
-    st.title("✏️ Edit Vignette" if st.session_state.get('editing_vignette_id') else "✍️ Create Vignette")
-    if 'vignette_manager' not in st.session_state: 
-        st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
-    edit = st.session_state.vignette_manager.get_vignette_by_id(st.session_state.editing_vignette_id) if st.session_state.get('editing_vignette_id') else None
-    st.session_state.vignette_manager.display_vignette_creator(on_publish=on_vignette_publish, edit_vignette=edit)
-    
-    # ADD BETA READER SECTION FOR EDIT MODE
-    if st.session_state.get('editing_vignette_id') and edit:
         st.divider()
-        st.markdown("## 🦋 Beta Reader Feedback for This Vignette")
+        st.header("⚙️ Settings")
+        st.session_state.book_title = st.text_input("Book Title", value=st.session_state.book_title)
+        st.session_state.author_name = st.text_input("Author Name", value=st.session_state.author_name)
         
-        tab1, tab2 = st.tabs(["📝 Get Feedback", "📚 Feedback History"])
-        
-        with tab1:
-            col1, col2 = st.columns([2, 1])
-            with col1:
-                fb_type = st.selectbox(
-                    "Feedback Type", 
-                    ["comprehensive", "concise", "developmental"], 
-                    key=f"beta_vignette_edit_type_{edit['id']}"
-                )
-            with col2:
-                if st.button("🦋 Get Beta Read", key=f"beta_vignette_edit_btn_{edit['id']}", type="primary", use_container_width=True):
-                    with st.spinner("Beta Reader is analyzing your vignette with profile context..."):
-                        if beta_reader:
-                            vignette_text = edit.get('content', '')
-                            if vignette_text and len(vignette_text.strip()) > 50:
-                                fb = generate_beta_reader_feedback(
-                                    f"Vignette: {edit['title']}", 
-                                    vignette_text,
-                                    fb_type
-                                )
-                                if "error" not in fb: 
-                                    st.session_state[f"beta_vignette_edit_{edit['id']}"] = fb
-                                    st.rerun()
-                                else: 
-                                    st.error(f"Failed: {fb['error']}")
-                            else:
-                                st.warning("Vignette too short for feedback (minimum 50 words)")
-                        else:
-                            st.error("Beta reader not available")
-            
-            if f"beta_vignette_edit_{edit['id']}" in st.session_state:
-                fb = st.session_state[f"beta_vignette_edit_{edit['id']}"]
-                st.markdown("---")
-                st.markdown("### 📋 Beta Reader Results")
-                
-                if fb.get('profile_sections_used'):
-                    with st.expander("📋 **PROFILE INFORMATION ACCESSED**", expanded=True):
-                        st.markdown("The Beta Reader used these profile sections to personalize this feedback:")
-                        cols = st.columns(3)
-                        for i, section in enumerate(fb['profile_sections_used']):
-                            cols[i % 3].markdown(f"✅ **{section}**")
-                
-                if st.button("💾 Save to History", key=f"save_vignette_edit_fb_{edit['id']}"):
-                    if save_vignette_beta_feedback(st.session_state.user_id, edit['id'], fb, edit['title']):
-                        st.success("✅ Saved!")
-                        st.rerun()
-                
-                st.markdown("---")
-                
-                if 'feedback' in fb and fb['feedback']:
-                    feedback_text = fb['feedback']
-                    parts = re.split(r'(\[PROFILE:.*?\])', feedback_text)
-                    formatted_feedback = ""
-                    for part in parts:
-                        if part.startswith('[PROFILE:') and part.endswith(']'):
-                            formatted_feedback += f'<span style="background-color: #e8f4fd; color: #0366d6; font-weight: bold; padding: 2px 6px; border-radius: 4px; border-left: 3px solid #0366d6;">{part}</span>'
-                        else:
-                            formatted_feedback += part
-                    st.markdown(formatted_feedback, unsafe_allow_html=True)
-                else:
-                    if 'summary' in fb:
-                        st.info(fb['summary'])
-                    if 'strengths' in fb:
-                        for s in fb['strengths']:
-                            st.markdown(f"✅ {s}")
-                    if 'areas_for_improvement' in fb:
-                        for a in fb['areas_for_improvement']:
-                            st.markdown(f"📝 {a}")
-        
-        with tab2:
-            st.markdown("### Saved Feedback")
-            user_data = load_user_data(st.session_state.user_id) if st.session_state.user_id else {}
-            vignette_feedback = user_data.get("vignette_beta_feedback", {})
-            this_vignette_feedback = vignette_feedback.get(str(edit['id']), [])
-            
-            if not this_vignette_feedback:
-                st.info("No saved feedback yet")
-            else:
-                for i, fb in enumerate(this_vignette_feedback):
-                    with st.expander(f"Feedback {i+1}"):
-                        if st.button(f"Delete", key=f"del_vignette_edit_fb_{i}"):
-                            this_vignette_feedback.pop(i)
-                            user_data["vignette_beta_feedback"] = vignette_feedback
-                            save_user_data(st.session_state.user_id, user_data.get("responses", {}))
-                            st.rerun()
-                        if 'feedback' in fb:
-                            st.markdown(fb['feedback'])
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def show_vignette_manager():
-    if not VignetteManager: 
-        st.error("Vignette module not available"); 
-        st.session_state.show_vignette_manager = False; 
-        return
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    if st.button("←", key="vign_mgr_back"): 
-        st.session_state.show_vignette_manager = False; 
-        st.rerun()
-    st.title("📚 Your Vignettes")
-    if 'vignette_manager' not in st.session_state: 
-        st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
-    filter_map = {"All Stories": "all", "Published": "published", "Drafts": "drafts"}
-    filter_option = st.radio("Show:", ["All Stories", "Published", "Drafts"], horizontal=True, key="vign_filter")
-    st.session_state.vignette_manager.display_vignette_gallery(
-        filter_by=filter_map.get(filter_option, "all"),
-        on_select=on_vignette_select, 
-        on_edit=on_vignette_edit, 
-        on_delete=on_vignette_delete
-    )
-    st.divider()
-    if st.button("➕ Create New Vignette", type="primary", use_container_width=True):
-        st.session_state.show_vignette_manager = False; 
-        st.session_state.show_vignette_modal = True; 
-        st.session_state.editing_vignette_id = None; 
-        st.rerun()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def show_vignette_detail():
-    if not VignetteManager or not st.session_state.get('selected_vignette_id'): 
-        st.session_state.show_vignette_detail = False
-        return
-    
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([6, 1])
-    with col1:
-        st.title("📖 Read Vignette")
-    with col2:
-        if st.button("✕", key="close_vignette_detail"):
-            st.session_state.show_vignette_detail = False
-            st.session_state.selected_vignette_id = None
-            st.rerun()
-    
-    if 'vignette_manager' not in st.session_state: 
-        st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
-    
-    vignette = st.session_state.vignette_manager.get_vignette_by_id(st.session_state.selected_vignette_id)
-    if not vignette: 
-        st.error("Vignette not found")
-        st.session_state.show_vignette_detail = False
-        return
-    
-    st.session_state.vignette_manager.display_full_vignette(
-        st.session_state.selected_vignette_id,
-        on_back=lambda: st.session_state.update(show_vignette_detail=False, selected_vignette_id=None),
-        on_edit=on_vignette_edit
-    )
-    
-    st.divider()
-    
-    st.markdown("## 🦋 Beta Reader Feedback for This Vignette")
-    
-    tab1, tab2 = st.tabs(["📝 Get Feedback", "📚 Feedback History"])
-    
-    with tab1:
-        col1, col2 = st.columns([2, 1])
-        with col1:
-            fb_type = st.selectbox(
-                "Feedback Type", 
-                ["comprehensive", "concise", "developmental"], 
-                key=f"beta_vignette_type_{vignette['id']}"
-            )
-        with col2:
-            if st.button("🦋 Get Beta Read", key=f"beta_vignette_btn_{vignette['id']}", type="primary", use_container_width=True):
-                with st.spinner("Beta Reader is analyzing your vignette with profile context..."):
-                    if beta_reader:
-                        vignette_text = vignette.get('content', '')
-                        if vignette_text and len(vignette_text.strip()) > 50:
-                            fb = generate_beta_reader_feedback(
-                                f"Vignette: {vignette['title']}", 
-                                vignette_text,
-                                fb_type
-                            )
-                            if "error" not in fb: 
-                                st.session_state[f"beta_vignette_{vignette['id']}"] = fb
-                                st.rerun()
-                            else: 
-                                st.error(f"Failed: {fb['error']}")
-                        else:
-                            st.warning("Vignette too short for feedback (minimum 50 words)")
-                    else:
-                        st.error("Beta reader not available")
-        
-        if f"beta_vignette_{vignette['id']}" in st.session_state:
-            fb = st.session_state[f"beta_vignette_{vignette['id']}"]
-            st.markdown("---")
-            st.markdown("### 📋 Beta Reader Results")
-            
-            if fb.get('profile_sections_used'):
-                with st.expander("📋 **PROFILE INFORMATION ACCESSED**", expanded=True):
-                    st.markdown("The Beta Reader used these profile sections to personalize this feedback:")
-                    cols = st.columns(3)
-                    for i, section in enumerate(fb['profile_sections_used']):
-                        cols[i % 3].markdown(f"✅ **{section}**")
-            
-            if st.button("💾 Save to History", key=f"save_vignette_fb_{vignette['id']}"):
-                if save_vignette_beta_feedback(st.session_state.user_id, vignette['id'], fb, vignette['title']):
-                    st.success("✅ Saved!")
-                    st.rerun()
-            
-            st.markdown("---")
-            
-            if 'feedback' in fb and fb['feedback']:
-                feedback_text = fb['feedback']
-                parts = re.split(r'(\[PROFILE:.*?\])', feedback_text)
-                formatted_feedback = ""
-                for part in parts:
-                    if part.startswith('[PROFILE:') and part.endswith(']'):
-                        formatted_feedback += f'<span style="background-color: #e8f4fd; color: #0366d6; font-weight: bold; padding: 2px 6px; border-radius: 4px; border-left: 3px solid #0366d6;">{part}</span>'
-                    else:
-                        formatted_feedback += part
-                st.markdown(formatted_feedback, unsafe_allow_html=True)
-            else:
-                if 'summary' in fb:
-                    st.info(fb['summary'])
-                if 'strengths' in fb:
-                    for s in fb['strengths']:
-                        st.markdown(f"✅ {s}")
-                if 'areas_for_improvement' in fb:
-                    for a in fb['areas_for_improvement']:
-                        st.markdown(f"📝 {a}")
-    
-    with tab2:
-        st.markdown("### Saved Feedback")
-        user_data = load_user_data(st.session_state.user_id) if st.session_state.user_id else {}
-        vignette_feedback = user_data.get("vignette_beta_feedback", {})
-        this_vignette_feedback = vignette_feedback.get(str(vignette['id']), [])
-        
-        if not this_vignette_feedback:
-            st.info("No saved feedback yet")
-        else:
-            for i, fb in enumerate(this_vignette_feedback):
-                with st.expander(f"Feedback {i+1}"):
-                    if st.button(f"Delete", key=f"del_vignette_fb_{i}"):
-                        this_vignette_feedback.pop(i)
-                        user_data["vignette_beta_feedback"] = vignette_feedback
-                        save_user_data(st.session_state.user_id, user_data.get("responses", {}))
-                        st.rerun()
-                    if 'feedback' in fb:
-                        st.markdown(fb['feedback'])
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
-
-def switch_to_vignette(vignette_topic, content=""):
-    st.session_state.current_question_override = f"Vignette: {vignette_topic}"
-    if content:
-        save_response(st.session_state.current_question_bank[st.session_state.current_session]["id"], 
-                     f"Vignette: {vignette_topic}", content)
-    st.rerun()
-
-def switch_to_custom_topic(topic_text):
-    st.session_state.current_question_override = topic_text
-    st.rerun()
-
-# ============================================================================
-# TOPIC BROWSER & SESSION MANAGER
-# ============================================================================
-def show_topic_browser():
-    if not TopicBank: 
-        st.error("Topic module not available"); 
-        st.session_state.show_topic_browser = False; 
-        return
-    
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    
-    col1, col2 = st.columns([6, 1])
-    with col1:
-        st.title("📚 Topic Bank")
-    with col2:
-        if st.button("✕", key="close_topic_browser"):
-            st.session_state.show_topic_browser = False
-            st.rerun()
-    
-    st.markdown("Browse and load topics into your current session.")
-    st.divider()
-    
-    topic_bank = TopicBank(st.session_state.user_id)
-    
-    def on_topic_selected(topic_text):
-        switch_to_custom_topic(topic_text)
-        st.session_state.show_topic_browser = False
-        st.rerun()
-    
-    topic_bank.display_topic_browser(
-        on_topic_select=on_topic_selected,
-        unique_key="topic_bank_browser"
-    )
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
-
-def show_session_creator():
-    if not SessionManager: 
-        st.error("Session module not available"); 
-        st.session_state.show_session_creator = False; 
-        return
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    if st.button("← Back", key="session_creator_back"): 
-        st.session_state.show_session_creator = False; 
-        st.rerun()
-    st.title("📋 Create Custom Session")
-    SessionManager(st.session_state.user_id, "sessions/sessions.csv").display_session_creator()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def show_session_manager():
-    if not SessionManager: 
-        st.error("Session module not available"); 
-        st.session_state.show_session_manager = False; 
-        return
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    if st.button("← Back", key="session_manager_back"): 
-        st.session_state.show_session_manager = False; 
-        st.rerun()
-    st.title("📖 Session Manager")
-    mgr = SessionManager(st.session_state.user_id, "sessions/sessions.csv")
-    if st.button("➕ Create New Session", type="primary", use_container_width=True):
-        st.session_state.show_session_manager = False; 
-        st.session_state.show_session_creator = True; 
-        st.rerun()
-    st.divider()
-    mgr.display_session_grid(cols=2, on_session_select=lambda sid: [st.session_state.update(
-        current_session=i, current_question=0, current_question_override=None) for i, s in enumerate(st.session_state.current_question_bank) if s["id"] == sid][0])
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# ============================================================================
-# QUESTION BANK UI FUNCTIONS
-# ============================================================================
-def show_bank_manager():
-    if not QuestionBankManager: 
-        st.error("Question Bank Manager not available"); 
-        st.session_state.show_bank_manager = False; 
-        return
-    user_id = st.session_state.get('user_id')
-    if st.session_state.qb_manager is None: 
-        st.session_state.qb_manager = QuestionBankManager(user_id)
-    else: 
-        st.session_state.qb_manager.user_id = user_id
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    if st.button("←", key="bank_manager_back"): 
-        st.session_state.show_bank_manager = False; 
-        st.rerun()
-    st.session_state.qb_manager.display_bank_selector()
-    st.markdown('</div>', unsafe_allow_html=True)
-
-def show_bank_editor():
-    if not QuestionBankManager or not st.session_state.get('editing_bank_id'): 
-        st.session_state.show_bank_editor = False; 
-        return
-    user_id = st.session_state.get('user_id')
-    if st.session_state.qb_manager is None: 
-        st.session_state.qb_manager = QuestionBankManager(user_id)
-    else: 
-        st.session_state.qb_manager.user_id = user_id
-    st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
-    st.session_state.qb_manager.display_bank_editor(st.session_state.editing_bank_id)
-    st.markdown('</div>', unsafe_allow_html=True)
-
-# ============================================================================
-# FILE IMPORT FUNCTION FOR MAIN EDITOR
-# ============================================================================
-def import_text_file_main(uploaded_file):
-    """Import text from common document formats into the main editor"""
-    try:
-        file_extension = uploaded_file.name.split('.')[-1].lower()
-        file_content = ""
-        file_size_mb = len(uploaded_file.getvalue()) / (1024 * 1024)
-        
-        st.info(f"📄 Importing: {uploaded_file.name} ({file_size_mb:.1f}MB)")
-        
-        if file_extension == 'txt':
-            file_content = uploaded_file.read().decode('utf-8', errors='ignore')
-        
-        elif file_extension == 'docx':
-            try:
-                import io
-                from docx import Document
-                docx_bytes = io.BytesIO(uploaded_file.getvalue())
-                doc = Document(docx_bytes)
-                paragraphs = [para.text for para in doc.paragraphs if para.text.strip()]
-                file_content = '\n\n'.join(paragraphs)
-            except ImportError:
-                st.error("Please install: pip install python-docx")
-                return None
-        
-        elif file_extension == 'rtf':
-            try:
-                from striprtf.striprtf import rtf_to_text
-                rtf_content = uploaded_file.read().decode('utf-8', errors='ignore')
-                file_content = rtf_to_text(rtf_content)
-            except ImportError:
-                st.warning("RTF support needs: pip install striprtf")
-                return None
-        
-        elif file_extension in ['vtt', 'srt']:
-            file_content = uploaded_file.read().decode('utf-8', errors='ignore')
-            lines = file_content.split('\n')
-            clean_lines = [line.strip() for line in lines if '-->' not in line and not line.strip().isdigit() and line.strip()]
-            file_content = ' '.join(clean_lines)
-        
-        elif file_extension == 'json':
-            try:
-                import json
-                data = json.loads(uploaded_file.read().decode('utf-8'))
-                if isinstance(data, dict):
-                    file_content = data.get('text', data.get('transcript', str(data)))
-                else:
-                    file_content = str(data)
-            except Exception as e:
-                st.error(f"Error parsing JSON: {e}")
-                return None
-        
-        elif file_extension == 'md':
-            file_content = uploaded_file.read().decode('utf-8', errors='ignore')
-            file_content = re.sub(r'#{1,6}\s*', '', file_content)
-            file_content = re.sub(r'\[([^\]]+)\]\([^\)]+\)', r'\1', file_content)
-        
-        else:
-            st.error(f"Unsupported format: .{file_extension}")
-            st.info("Supported: .txt, .docx, .rtf, .vtt, .srt, .json, .md")
-            return None
-        
-        if not file_content or not file_content.strip():
-            st.warning("File is empty")
-            return None
-        
-        if file_size_mb > 10:
-            st.warning(f"⚠️ Large file ({file_size_mb:.1f}MB) - processing may be slow")
-        
-        file_content = re.sub(r'\s+', ' ', file_content)
-        sentences = re.split(r'[.!?]+', file_content)
-        paragraphs = []
-        current_para = []
-        
-        for sentence in sentences:
-            if sentence.strip():
-                current_para.append(sentence.strip() + '.')
-                if len(current_para) >= 4:
-                    paragraphs.append(' '.join(current_para))
-                    current_para = []
-        
-        if current_para:
-            paragraphs.append(' '.join(current_para))
-        
-        if not paragraphs:
-            paragraphs = [file_content]
-        
-        html_content = ''
-        for para in paragraphs:
-            if para.strip():
-                para = para.replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                html_content += f'<p>{para.strip()}</p>'
-        
-        return html_content
-        
-    except Exception as e:
-        st.error(f"Import error: {str(e)}")
-        return None
-
-# ============================================================================
-# PAGE CONFIG - ALREADY SET AT TOP
-# ============================================================================
-
-if not st.session_state.qb_manager_initialized: 
-    initialize_question_bank()
-SESSIONS = st.session_state.get('current_question_bank', [])
-
-if st.session_state.logged_in and st.session_state.user_id and not st.session_state.data_loaded:
-    user_data = load_user_data(st.session_state.user_id)
-    if "responses" in user_data:
-        for sid_str, sdata in user_data["responses"].items():
-            try: 
-                sid = int(sid_str)
-            except: 
-                continue
-            if sid in st.session_state.responses and "questions" in sdata and sdata["questions"]:
-                st.session_state.responses[sid]["questions"] = sdata["questions"]
-    st.session_state.data_loaded = True
-    init_image_handler()
-
-if not SESSIONS:
-    st.error("❌ No question bank loaded. Use Bank Manager.")
-    if st.button("📋 Open Bank Manager", type="primary", use_container_width=True): 
-        st.session_state.show_bank_manager = True; 
-        st.rerun()
-    st.stop()
-
-# ============================================================================
-# AUTHENTICATION UI
-# ============================================================================
-if not st.session_state.logged_in:
-    st.markdown('<div class="auth-container"><h1>Tell My Story</h1><p>Your Life Timeline • Preserve Your Legacy</p></div>', unsafe_allow_html=True)
-    if 'auth_tab' not in st.session_state: 
-        st.session_state.auth_tab = 'login'
-    
-    col1, col2 = st.columns(2)
-    with col1: 
-        st.button("🔐 Login", use_container_width=True, type="primary" if st.session_state.auth_tab=='login' else "secondary", 
-                        on_click=lambda: st.session_state.update(auth_tab='login'))
-    with col2: 
-        st.button("📝 Sign Up", use_container_width=True, type="primary" if st.session_state.auth_tab=='signup' else "secondary",
-                        on_click=lambda: st.session_state.update(auth_tab='signup'))
-    st.divider()
-    
-    if st.session_state.auth_tab == 'login':
-        with st.form("login_form"):
-            st.subheader("Welcome Back")
-            email = st.text_input("Email Address")
-            password = st.text_input("Password", type="password")
-            if st.form_submit_button("Login", type="primary", use_container_width=True):
-                if email and password:
-                    result = authenticate_user(email, password)
-                    if result["success"]:
-                        st.session_state.update(user_id=result["user_id"], 
-                                              user_account=result["user_record"],
-                                              logged_in=True, 
-                                              data_loaded=False, 
-                                              qb_manager=None, 
-                                              qb_manager_initialized=False)
-                        st.success("Login successful!"); 
-                        st.rerun()
-                    else: 
-                        st.error(f"Login failed: {result.get('error', 'Unknown error')}")
-    else:
-        with st.form("signup_form"):
-            st.subheader("Create New Account")
-            col1, col2 = st.columns(2)
-            with col1: 
-                first_name = st.text_input("First Name*")
-            with col2: 
-                last_name = st.text_input("Last Name*")
-            email = st.text_input("Email Address*")
-            col1, col2 = st.columns(2)
-            with col1: 
-                password = st.text_input("Password*", type="password")
-            with col2: 
-                confirm = st.text_input("Confirm Password*", type="password")
-            accept = st.checkbox("I agree to the Terms*")
-            
-            if st.form_submit_button("Create Account", type="primary", use_container_width=True):
-                errors = []
-                if not first_name: errors.append("First name required")
-                if not last_name: errors.append("Last name required")
-                if not email or "@" not in email: errors.append("Valid email required")
-                if not password or len(password) < 8: errors.append("Password must be 8+ characters")
-                if password != confirm: errors.append("Passwords don't match")
-                if not accept: errors.append("Must accept terms")
-                if get_account_data(email=email): errors.append("Email already exists")
-                
-                if errors: 
-                    [st.error(e) for e in errors]
-                else:
-                    result = create_user_account({"first_name": first_name, "last_name": last_name, "email": email, "account_for": "self"}, password)
-                    if result["success"]:
-                        send_welcome_email({"first_name": first_name, "email": email}, 
-                                         {"user_id": result["user_id"], "password": password})
-                        st.session_state.update(user_id=result["user_id"], 
-                                              user_account=result["user_record"],
-                                              logged_in=True, 
-                                              data_loaded=False, 
-                                              show_profile_setup=True,
-                                              qb_manager=None, 
-                                              qb_manager_initialized=False)
-                        st.success("Account created!"); 
-                        st.balloons(); 
-                        st.rerun()
-                    else: 
-                        st.error(f"Error: {result.get('error', 'Unknown error')}")
-    st.stop()
-
-# ============================================================================
-# PROFILE SETUP MODAL
-# ============================================================================
-if st.session_state.get('show_profile_setup', False):
-    st.markdown('<div class="profile-setup-modal">', unsafe_allow_html=True)
-    st.title("👤 Your Complete Life Story Profile")
-    
-    st.markdown("### 📝 Basic Information")
-    with st.form("profile_setup_form"):
-        col1, col2 = st.columns(2)
-        with col1:
-            gender = st.radio("Gender", ["Male", "Female", "Other", "Prefer not to say"], horizontal=True, key="modal_gender")
-        with col2:
-            account_for = st.radio("Account Type", ["For me", "For someone else"], key="modal_account_type", horizontal=True)
-        
-        col1, col2, col3 = st.columns(3)
-        with col1: 
-            birth_month = st.selectbox("Birth Month", ["January","February","March","April","May","June","July","August","September","October","November","December"], key="modal_month")
-        with col2: 
-            birth_day = st.selectbox("Birth Day", list(range(1,32)), key="modal_day")
-        with col3: 
-            birth_year = st.selectbox("Birth Year", list(range(datetime.now().year, datetime.now().year-120, -1)), key="modal_year")
-        
-        col_save, col_close = st.columns([3, 1])
-        with col_save:
-            if st.form_submit_button("💾 Save Basic Information", type="primary", use_container_width=True):
-                if birth_month and birth_day and birth_year:
-                    birthdate = f"{birth_month} {birth_day}, {birth_year}"
-                    if st.session_state.user_account:
-                        st.session_state.user_account['profile'].update({
-                            'gender': gender, 'birthdate': birthdate, 'timeline_start': birthdate
-                        })
-                        st.session_state.user_account['account_type'] = "self" if account_for == "For me" else "other"
-                        save_account_data(st.session_state.user_account)
-                    st.success("Basic information saved!")
-                    st.rerun()
-        with col_close:
-            if st.form_submit_button("✕ Close Profile", use_container_width=True):
-                st.session_state.show_profile_setup = False
-                st.rerun()
-    
-    st.divider()
-    render_narrative_gps()
-    st.divider()
-    render_enhanced_profile()
-    st.divider()
-    
-    with st.expander("🔒 Privacy & Security Settings", expanded=False):
-        if 'privacy_settings' not in st.session_state.user_account:
-            st.session_state.user_account['privacy_settings'] = {
-                "profile_public": False, "stories_public": False, "allow_sharing": False,
-                "data_collection": True, "encryption": True
-            }
-        
-        privacy = st.session_state.user_account['privacy_settings']
-        
-        privacy['profile_public'] = st.checkbox("Make profile public", value=privacy.get('profile_public', False),
-                                               help="Allow others to see your basic profile information")
-        privacy['stories_public'] = st.checkbox("Share stories publicly", value=privacy.get('stories_public', False),
-                                               help="Make your stories visible to the public (coming soon)")
-        privacy['allow_sharing'] = st.checkbox("Allow sharing via link", value=privacy.get('allow_sharing', False),
-                                              help="Generate shareable links to your stories")
-        privacy['data_collection'] = st.checkbox("Allow anonymous usage data", value=privacy.get('data_collection', True),
-                                                help="Help us improve by sharing anonymous usage statistics")
-        
-        st.markdown("**🔐 Security Status:** Your data is encrypted at rest and never shared with third parties.")
-        
-        if st.button("💾 Save Privacy Settings", type="primary", use_container_width=True):
-            save_account_data(st.session_state.user_account)
-            st.success("Privacy settings saved!")
-            st.rerun()
-    
-    st.divider()
-    
-    with st.expander("💾 Backup & Restore", expanded=False):
-        st.markdown("**Create a complete backup of all your data:**")
-        backup_json = create_backup()
-        if backup_json:
-            st.download_button(
-                label="📥 Download Complete Backup",
-                data=backup_json,
-                file_name=f"tell_my_story_backup_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json",
-                mime="application/json",
-                use_container_width=True
-            )
-        
-        st.markdown("---")
-        st.markdown("**Restore from backup:**")
-        backup_file = st.file_uploader("Upload backup file", type=['json'])
-        if backup_file and st.button("🔄 Restore from Backup", type="primary", use_container_width=True):
-            backup_content = backup_file.read().decode('utf-8')
-            if restore_from_backup(backup_content):
-                st.success("Backup restored successfully!")
-                st.rerun()
-            else:
-                st.error("Failed to restore backup")
-        
-        st.markdown("---")
-        st.markdown("**Previous backups:**")
-        backups = list_backups()
-        if backups:
-            for b in backups:
-                col1, col2 = st.columns([3, 1])
-                with col1:
-                    st.text(f"📅 {b['date']} ({(b['size']/1024):.1f} KB)")
-                with col2:
-                    if st.button(f"Restore", key=f"restore_{b['filename']}"):
-                        with open(f"backups/{b['filename']}", 'r') as f:
-                            backup_content = f.read()
-                        if restore_from_backup(backup_content):
-                            st.success("Restored!")
-                            st.rerun()
-        else:
-            st.info("No previous backups found")
-    
-    if st.button("← Close Profile", key="close_profile", use_container_width=True):
-        st.session_state.show_profile_setup = False
-        st.rerun()
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
-
-# ============================================================================
-# MODAL HANDLING
-# ============================================================================
-if st.session_state.get('show_publisher', False):
-    # The publisher page handles itself, we just need to let it run
-    pass  # This will be handled by the publisher section above
-
-if st.session_state.show_ai_rewrite and st.session_state.current_rewrite_data:
-    show_ai_rewrite_modal()
-    st.stop()
-
-if st.session_state.show_privacy_settings:
-    show_privacy_settings()
-    st.stop()
-
-if st.session_state.show_cover_designer:
-    show_cover_designer()
-    st.stop()
-
-if st.session_state.show_bank_manager:
-    show_bank_manager()
-    if st.session_state.show_bank_manager:
-        st.stop()
-
-if st.session_state.show_bank_editor:
-    show_bank_editor()
-    if st.session_state.show_bank_editor:
-        st.stop()
-
-if st.session_state.show_vignette_detail:
-    show_vignette_detail()
-    if st.session_state.show_vignette_detail:
-        st.stop()
-
-if st.session_state.show_vignette_manager:
-    show_vignette_manager()
-    if st.session_state.show_vignette_manager:
-        st.stop()
-
-if st.session_state.show_vignette_modal:
-    show_vignette_modal()
-    if st.session_state.show_vignette_modal:
-        st.stop()
-
-if st.session_state.show_topic_browser:
-    show_topic_browser()
-    if st.session_state.show_topic_browser:
-        st.stop()
-
-if st.session_state.show_session_manager:
-    show_session_manager()
-    if st.session_state.show_session_manager:
-        st.stop()
-
-if st.session_state.show_session_creator:
-    show_session_creator()
-    if st.session_state.show_session_creator:
-        st.stop()
-
-# ============================================================================
-# MAIN HEADER
-# ============================================================================
-st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
-
-# ============================================================================
-# SIDEBAR
-# ============================================================================
-with st.sidebar:
-    st.markdown('<div class="sidebar-header"><h2>Tell My Story</h2><p>Your Life Timeline</p></div>', unsafe_allow_html=True)
-    
-    st.header("👤 Your Profile")
-    if st.session_state.user_account:
-        profile = st.session_state.user_account['profile']
-        st.success(f"✓ **{profile['first_name']} {profile['last_name']}**")
-    if st.button("📝 Complete Profile", use_container_width=True): 
-        st.session_state.show_profile_setup = True
-        st.rerun()
-    if st.button("🚪 Log Out", use_container_width=True): 
-        logout_user()
-    
-    st.divider()
-    st.header("🔧 Tools")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("🔒 Privacy", use_container_width=True):
-            st.session_state.show_privacy_settings = True
-            st.rerun()
-    with col2:
-        if st.button("🎨 Cover", use_container_width=True):
-            st.session_state.show_cover_designer = True
-            st.rerun()
-    
-    st.divider()
-    st.header("📚 Question Banks")
-    if st.button("📋 Bank Manager", use_container_width=True, type="primary"): 
-        st.session_state.show_bank_manager = True
-        st.rerun()
-    if st.session_state.get('current_bank_name'): 
-        st.info(f"**Current Bank:**\n{st.session_state.current_bank_name}")
-    
-    st.divider()
-    st.header("📖 Sessions")
-    if st.session_state.current_question_bank:
-        for i, s in enumerate(st.session_state.current_question_bank):
-            sid = s["id"]
-            sdata = st.session_state.responses.get(sid, {})
-            resp_cnt = len(sdata.get("questions", {}))
-            total_q = len(s["questions"])
-            status = "🟢" if resp_cnt == total_q and total_q > 0 else "🟡" if resp_cnt > 0 else "🔴"
-            if i == st.session_state.current_session: 
-                status = "▶️"
-            if st.button(f"{status} Session {sid}: {s['title']}", key=f"sel_sesh_{i}", use_container_width=True):
-                st.session_state.update(current_session=i, current_question=0, editing=False, current_question_override=None, show_ai_rewrite_menu=False)
-                st.rerun()
-    
-    st.divider()
-    st.header("✨ Vignettes")
-    if st.button("📝 New Vignette", use_container_width=True): 
-        import uuid
-        new_id = str(uuid.uuid4())[:8]
-        
-        if 'vignette_manager' not in st.session_state:
-            from vignettes import VignetteManager
-            st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
-        
-        st.session_state.vignette_manager.create_vignette_with_id(
-            id=new_id,
-            title="Untitled Vignette",
-            content="<p>Write your story here...</p>",
-            theme="Life Lesson",
-            mood="Reflective",
-            is_draft=True
+        st.session_state.format_style = st.radio(
+            "Format Style",
+            ["interview", "biography"],
+            format_func=lambda x: {"interview": "📝 Show Questions & Answers", "biography": "📖 Just Answers (Biography Style)"}[x],
+            index=0 if st.session_state.format_style == "interview" else 1
         )
         
-        st.session_state.editing_vignette_id = new_id
-        st.session_state.show_vignette_modal = True
-        st.rerun()
-    
-    if st.button("📖 View All Vignettes", use_container_width=True): 
-        st.session_state.show_vignette_manager = True
-        st.rerun()
-    
-    st.divider()
-    st.header("📖 Session Management")
-    if st.button("📋 All Sessions", use_container_width=True): 
-        st.session_state.show_session_manager = True
-        st.rerun()
-    if st.button("➕ Custom Session", use_container_width=True): 
-        st.session_state.show_session_creator = True
-        st.rerun()
-    
-    # ============================================================================
-    # PUBLISH YOUR BOOK SECTION
-    # ============================================================================
-    st.divider()
-    st.subheader("📤 Publish Your Book")
-
-    if st.session_state.logged_in and st.session_state.user_id:
-        # Prepare export data for the publisher
-        export_data = []
-        for session in SESSIONS:
-            sid = session["id"]
-            sdata = st.session_state.responses.get(sid, {})
-            for q, a in sdata.get("questions", {}).items():
-                images_with_data = []
-                if a.get("images"):
-                    for img_ref in a.get("images", []):
-                        img_id = img_ref.get("id")
-                        b64 = st.session_state.image_handler.get_image_base64(img_id) if st.session_state.image_handler else None
-                        caption = img_ref.get("caption", "")
-                        if b64:
-                            images_with_data.append({
-                                "id": img_id, "base64": b64, "caption": caption
-                            })
-                
-                export_item = {
-                    "question": q, 
-                    "answer_text": re.sub(r'<[^>]+>', '', a.get("answer", "")),
-                    "timestamp": a.get("timestamp", ""), 
-                    "session_id": sid, 
-                    "session_title": session["title"],
-                    "has_images": a.get("has_images", False), 
-                    "image_count": a.get("image_count", 0),
-                    "images": images_with_data
-                }
-                export_data.append(export_item)
+        st.session_state.include_toc = st.checkbox("Include Table of Contents", value=st.session_state.include_toc)
         
-        if export_data:
-            # Save export data to session state for the publisher
-            complete_data = {
-                "user": st.session_state.user_id, 
-                "user_profile": st.session_state.user_account.get('profile', {}),
-                "narrative_gps": st.session_state.user_account.get('narrative_gps', {}),
-                "enhanced_profile": st.session_state.user_account.get('enhanced_profile', {}),
-                "cover_design": st.session_state.user_account.get('cover_design', {}),
-                "stories": export_data, 
-                "export_date": datetime.now().isoformat(),
-                "summary": {
-                    "total_stories": len(export_data), 
-                    "total_sessions": len(set(s['session_id'] for s in export_data))
-                }
-            }
-            
-            # Save to a temp file and store path in session state
-            temp_file = f"temp_export_{st.session_state.user_id}.json"
-            with open(temp_file, 'w') as f:
-                json.dump(complete_data, f)
-            
-            # Store in session state for the publisher
-            st.session_state.publisher_data = complete_data
-            st.session_state.publisher_data_path = temp_file
-            
-            # Button to open publisher in main screen
-            if st.button("📚 Open Book Publisher", type="primary", use_container_width=True):
-                st.session_state.show_publisher = True
-                st.rerun()
-            
-            # Optional: Keep JSON backup
-            with st.expander("📦 JSON Backup", expanded=False):
-                json_data = json.dumps(complete_data, indent=2)
-                st.download_button(
-                    label="📥 Download JSON Backup", 
-                    data=json_data,
-                    file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
-                    mime="application/json", 
-                    use_container_width=True
-                )
-        else: 
-            st.warning("No stories yet! Start writing to publish.")
-    else: 
-        st.warning("Please log in to export your data.")
+        # Custom cover info
+        if st.session_state.custom_cover_data:
+            with st.expander("🎨 Custom Cover Preview"):
+                if st.session_state.custom_cover_data.get('cover_image') and os.path.exists(st.session_state.custom_cover_data['cover_image']):
+                    st.image(st.session_state.custom_cover_data['cover_image'], width=200)
+                st.markdown(f"**Title:** {st.session_state.custom_cover_data.get('title', 'N/A')}")
+                st.markdown(f"**Author:** {st.session_state.custom_cover_data.get('author', 'N/A')}")
     
-    # ============================================================================
-    # CLEAR DATA SECTION
-    # ============================================================================
-    st.divider()
-    st.subheader("⚠️ Clear Data")
-    if st.session_state.confirming_clear == "session":
-        st.warning("**Delete ALL answers in current session?**")
-        if st.button("✅ Confirm", type="primary", key="conf_sesh", use_container_width=True): 
-            sid = SESSIONS[st.session_state.current_session]["id"]
-            st.session_state.responses[sid]["questions"] = {}
-            save_user_data(st.session_state.user_id, st.session_state.responses)
-            st.session_state.confirming_clear = None
-            st.rerun()
-        if st.button("❌ Cancel", key="can_sesh", use_container_width=True): 
-            st.session_state.confirming_clear = None
-            st.rerun()
-    elif st.session_state.confirming_clear == "all":
-        st.warning("**Delete ALL answers for ALL sessions?**")
-        if st.button("✅ Confirm All", type="primary", key="conf_all", use_container_width=True): 
-            for s in SESSIONS:
-                st.session_state.responses[s["id"]]["questions"] = {}
-            save_user_data(st.session_state.user_id, st.session_state.responses)
-            st.session_state.confirming_clear = None
-            st.rerun()
-        if st.button("❌ Cancel", key="can_all", use_container_width=True): 
-            st.session_state.confirming_clear = None
-            st.rerun()
-    else:
-        if st.button("🗑️ Clear Session", use_container_width=True): 
-            st.session_state.confirming_clear = "session"
-            st.rerun()
-        if st.button("🔥 Clear All", use_container_width=True): 
-            st.session_state.confirming_clear = "all"
-            st.rerun()
-    
-    # ============================================================================
-    # SEARCH SECTION
-    # ============================================================================
-    st.divider()
-    st.subheader("🔍 Search Your Stories")
-    search_query = st.text_input("Search answers & captions...", placeholder="e.g., childhood, wedding, photo", key="global_search")
-    if search_query and len(search_query) >= 2:
-        results = search_all_answers(search_query)
-        if results:
-            st.success(f"Found {len(results)} matches")
-            with st.expander(f"📖 {len(results)} Results", expanded=True):
-                for i, r in enumerate(results[:10]):
-                    st.markdown(f"**Session {r['session_id']}: {r['session_title']}**  \n*{r['question']}*")
-                    if r.get('has_images'):
-                        st.caption(f"📸 Contains {r.get('image_count', 1)} photo(s)")
-                    st.markdown(f"{r['answer'][:150]}...")
-                    if st.button(f"Go to Session", key=f"srch_go_{i}_{r['session_id']}", use_container_width=True):
-                        for idx, s in enumerate(SESSIONS):
-                            if s["id"] == r['session_id']:
-                                st.session_state.update(current_session=idx, current_question_override=r['question'], show_ai_rewrite_menu=False)
-                                st.rerun()
-                    st.divider()
-                if len(results) > 10: 
-                    st.info(f"... and {len(results)-10} more matches")
-        else: 
-            st.info("No matches found")
-
-# ============================================================================
-# PUBLISHER PAGE - SHOW ON MAIN SCREEN WHEN ACTIVATED
-# ============================================================================
-if st.session_state.get('show_publisher', False):
-    # Hide sidebar when in publisher mode
-    st.markdown("""
-    <style>
-        section[data-testid="stSidebar"] { display: none !important; }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Import publisher functions
-    from biography_publisher import generate_docx, generate_html, show_celebration
-    
-    # Back button at top
-    col1, col2, col3 = st.columns([1, 6, 1])
-    with col1:
-        if st.button("← Back to Writing", use_container_width=True):
-            st.session_state.show_publisher = False
-            st.rerun()
-    
-    st.markdown("""
-    <div style="text-align: center; padding: 2rem; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); margin: 0 -1rem 2rem -1rem; border-radius: 0 0 20px 20px; color: white;">
-        <h1>📚 Book Publisher</h1>
-        <p>Transform your stories into a beautifully formatted book</p>
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Get data from session state
-    if st.session_state.get('publisher_data'):
-        data = st.session_state.publisher_data
-        stories = data.get('stories', [])
-        user_profile = data.get('user_profile', {})
+    # Main content
+    if st.session_state.stories_data:
+        stories_data = st.session_state.stories_data
+        stories = stories_data.get('stories', [])
         
-        # Book details
-        col1, col2 = st.columns(2)
-        with col1:
-            default_title = f"{user_profile.get('first_name', 'My')}'s Story"
-            book_title = st.text_input("Book Title", value=default_title)
-        with col2:
-            default_author = f"{user_profile.get('first_name', '')} {user_profile.get('last_name', '')}".strip()
-            book_author = st.text_input("Author Name", value=default_author if default_author else "Author Name")
-        
-        # Format options
-        st.markdown("---")
+        # Summary
         col1, col2, col3 = st.columns(3)
-        with col1:
-            format_style = st.radio(
-                "📝 Format Style",
-                ["interview", "biography"],
-                format_func=lambda x: {
-                    "interview": "Show Questions & Answers", 
-                    "biography": "Just Answers (Biography Style)"
-                }[x],
-                horizontal=True
-            )
-        with col2:
-            include_toc = st.checkbox("📖 Table of Contents", value=True)
-        with col3:
-            cover_choice = st.radio(
-                "🎨 Cover Type",
-                ["simple", "uploaded"],
-                format_func=lambda x: {
-                    "simple": "Simple Gradient Cover",
-                    "uploaded": "Use My Uploaded Image"
-                }[x],
-                horizontal=True
-            )
-        
-        # Show upload option only if user selects "uploaded"
-        if cover_choice == "uploaded":
-            st.markdown("---")
-            st.markdown("### 🖼️ Upload Cover Image")
-            uploaded_image = st.file_uploader("Choose an image (JPG or PNG)", type=['jpg', 'jpeg', 'png'], key="publisher_image_upload")
-            if uploaded_image:
-                st.session_state.cover_image_data = uploaded_image.getvalue()
-                st.image(uploaded_image, width=200, caption="Your cover image")
-                st.success("✅ Cover image ready")
-        else:
-            st.session_state.cover_image_data = None
-        
-        # Summary stats
-        st.markdown("---")
-        col1, col2, col3, col4 = st.columns(4)
         with col1:
             st.metric("Total Stories", len(stories))
         with col2:
-            st.metric("Sessions", data.get('summary', {}).get('total_sessions', 1))
+            st.metric("Sessions", stories_data.get('summary', {}).get('total_sessions', 1))
         with col3:
-            total_images = sum(len(s.get('images', [])) for s in stories)
-            st.metric("Images", total_images)
-        with col4:
-            total_words = sum(len(s.get('answer_text', '').split()) for s in stories)
-            st.metric("Words", f"{total_words:,}")
+            st.metric("Export Date", stories_data.get('export_date', 'Unknown')[:10])
         
-        # Preview section
-        with st.expander("📖 Preview First 3 Stories", expanded=False):
+        # Preview
+        with st.expander("📖 Preview Stories", expanded=False):
             for i, story in enumerate(stories[:3]):
-                if format_style == "interview":
-                    st.markdown(f"**Q: {story.get('question', '')}**")
-                else:
-                    st.markdown(f"**{story.get('session_title', 'Session')}**")
-                st.markdown(f"{story.get('answer_text', '')[:300]}...")
+                st.markdown(f"**{'Q: ' + story.get('question', '') if st.session_state.format_style == 'interview' else story.get('session_title', 'Session')}**")
+                st.markdown(f"*{story.get('answer_text', '')[:200]}...*")
                 if story.get('images'):
-                    st.caption(f"📸 {len(story['images'])} image(s)")
-                if i < 2:
-                    st.divider()
+                    st.caption(f"📸 {len(story['images'])} image(s) attached")
+                st.divider()
+            if len(stories) > 3:
+                st.info(f"... and {len(stories) - 3} more stories")
         
         # Generate buttons
-        st.markdown("---")
-        st.markdown("### 🖨️ Generate Your Book")
-        
-        col1, col2 = st.columns(2)
+        st.subheader("🖨️ Generate Your Book")
+        col1, col2, col3 = st.columns(3)
         
         with col1:
             if st.button("📊 Generate DOCX", type="primary", use_container_width=True):
-                with st.spinner("Creating Word document..."):
-                    cover_image = st.session_state.cover_image_data if cover_choice == "uploaded" else None
-                    
+                with st.spinner("Creating Word document with images..."):
                     docx_bytes = generate_docx(
-                        book_title,
-                        book_author,
+                        st.session_state.book_title,
+                        st.session_state.author_name,
                         stories,
-                        format_style,
-                        include_toc,
-                        True,
-                        cover_image,
-                        cover_choice
+                        st.session_state.format_style,
+                        st.session_state.include_toc,
+                        False,
+                        "custom" if st.session_state.custom_cover_data else "simple",
+                        st.session_state.custom_cover_data
                     )
-                    filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
+                    filename = f"{st.session_state.book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
                     st.download_button(
                         "📥 Download DOCX", 
                         data=docx_bytes, 
@@ -3424,25 +793,52 @@ if st.session_state.get('show_publisher', False):
                         use_container_width=True,
                         key="docx_download"
                     )
+                    # Show celebration AFTER download button appears
+                    st.session_state.balloons_shown = False
+                    time.sleep(0.5)
                     show_celebration()
         
         with col2:
+            if st.button("📕 Generate PDF", type="primary", use_container_width=True):
+                with st.spinner("Creating PDF with images..."):
+                    pdf_bytes = generate_pdf(
+                        st.session_state.book_title,
+                        st.session_state.author_name,
+                        stories,
+                        st.session_state.format_style,
+                        st.session_state.include_toc,
+                        False,
+                        "custom" if st.session_state.custom_cover_data else "simple",
+                        st.session_state.custom_cover_data
+                    )
+                    filename = f"{st.session_state.book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
+                    st.download_button(
+                        "📥 Download PDF", 
+                        data=pdf_bytes, 
+                        file_name=filename, 
+                        mime="application/pdf", 
+                        use_container_width=True,
+                        key="pdf_download"
+                    )
+                    # Show celebration AFTER download button appears
+                    st.session_state.balloons_shown = False
+                    time.sleep(0.5)
+                    show_celebration()
+        
+        with col3:
             if st.button("🌐 Generate HTML", type="primary", use_container_width=True):
                 with st.spinner("Creating HTML page..."):
-                    cover_image = st.session_state.cover_image_data if cover_choice == "uploaded" else None
-                    
                     html_content = generate_html(
-                        book_title,
-                        book_author,
+                        st.session_state.book_title,
+                        st.session_state.author_name,
                         stories,
-                        format_style,
-                        include_toc,
-                        True,
-                        None,
-                        cover_image,
-                        cover_choice
+                        st.session_state.format_style,
+                        st.session_state.include_toc,
+                        False,
+                        "custom" if st.session_state.custom_cover_data else "simple",
+                        st.session_state.custom_cover_data
                     )
-                    filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
+                    filename = f"{st.session_state.book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
                     st.download_button(
                         "📥 Download HTML", 
                         data=html_content, 
@@ -3451,653 +847,35 @@ if st.session_state.get('show_publisher', False):
                         use_container_width=True,
                         key="html_download"
                     )
-                    show_celebration()
-    
-    else:
-        st.warning("No story data found. Please return to the main app and export your stories first.")
-        if st.button("← Return to Main App"):
-            st.session_state.show_publisher = False
-            st.rerun()
-    
-    # Stop here - don't show main content
-    st.stop()
-
-# ============================================================================
-# MAIN CONTENT AREA
-# ============================================================================
-
-if (st.session_state.show_vignette_modal or 
-    st.session_state.show_vignette_manager or 
-    st.session_state.show_vignette_detail or
-    st.session_state.show_topic_browser or 
-    st.session_state.show_session_manager or 
-    st.session_state.show_session_creator or
-    st.session_state.show_bank_manager or 
-    st.session_state.show_bank_editor or
-    st.session_state.show_privacy_settings or
-    st.session_state.show_cover_designer or
-    st.session_state.show_profile_setup or
-    st.session_state.show_ai_rewrite):
-    
-    st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
-    st.stop()
-
-if st.session_state.current_session >= len(SESSIONS): 
-    st.session_state.current_session = 0
-
-current_session = SESSIONS[st.session_state.current_session]
-current_session_id = current_session["id"]
-
-if st.session_state.current_question_override:
-    current_question_text = st.session_state.current_question_override
-    question_source = "custom"
-else:
-    if st.session_state.current_question >= len(current_session["questions"]): 
-        st.session_state.current_question = 0
-    current_question_text = current_session["questions"][st.session_state.current_question]
-    question_source = "regular"
-
-st.markdown("---")
-
-col1, col2 = st.columns([3, 1])
-with col1:
-    st.subheader(f"Session {current_session_id}: {current_session['title']}")
-    sdata = st.session_state.responses.get(current_session_id, {})
-    answered = len(sdata.get("questions", {}))
-    total = len(current_session["questions"])
-    if total > 0: 
-        st.progress(answered/total)
-        st.caption(f"📝 Topics explored: {answered}/{total} ({answered/total*100:.0f}%)")
-with col2:
-    if question_source == "custom":
-        st.markdown(f'<div class="custom-topic-badge">{"📝 Vignette" if "Vignette:" in st.session_state.current_question_override else "✨ Custom Topic"}</div>', unsafe_allow_html=True)
-    else:
-        st.markdown(f'<div class="topic-counter">Topic {st.session_state.current_question+1} of {len(current_session["questions"])}</div>', unsafe_allow_html=True)
-
-st.markdown(f'<div class="question-box">{current_question_text}</div>', unsafe_allow_html=True)
-
-if question_source == "regular":
-    st.markdown(f'<div class="chapter-guidance">{current_session.get("guidance", "")}</div>', unsafe_allow_html=True)
-else:
-    if "Vignette:" in current_question_text:
-        st.info("📝 **Vignette Mode** - Write a short, focused story about a specific moment or memory.")
-    else:
-        st.info("✨ **Custom Topic** - Write about whatever comes to mind!")
-
-st.write("")
-st.write("")
-
-existing_answer = ""
-if current_session_id in st.session_state.responses:
-    if current_question_text in st.session_state.responses[current_session_id]["questions"]:
-        existing_answer = st.session_state.responses[current_session_id]["questions"][current_question_text]["answer"]
-
-if st.session_state.logged_in:
-    init_image_handler()
-    existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
-
-# ============================================================================
-# QUILL EDITOR
-# ============================================================================
-import logging
-
-editor_base_key = f"quill_{current_session_id}_{current_question_text[:20]}"
-content_key = f"{editor_base_key}_content"
-
-version_key = f"{editor_base_key}_version"
-if version_key not in st.session_state:
-    st.session_state[version_key] = 0
-
-existing_answer = ""
-if current_session_id in st.session_state.responses:
-    if current_question_text in st.session_state.responses[current_session_id]["questions"]:
-        existing_answer = st.session_state.responses[current_session_id]["questions"][current_question_text]["answer"]
-
-if content_key not in st.session_state:
-    if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
-        st.session_state[content_key] = existing_answer
-    else:
-        st.session_state[content_key] = "<p>Start writing your story here...</p>"
-
-st.markdown("### ✍️ Your Story")
-st.markdown("""
-<div class="image-drop-info">
-    📸 <strong>Drag & drop images</strong> directly into the editor.
-</div>
-""", unsafe_allow_html=True)
-
-question_text_safe = "".join(c for c in current_question_text if c.isalnum() or c.isspace()).replace(" ", "_")[:30]
-editor_component_key = f"quill_editor_{current_session_id}_{question_text_safe}_v{st.session_state[version_key]}"
-
-print(f"Creating Quill editor with key: {editor_component_key}")
-
-try:
-    content = st_quill(
-        value=st.session_state[content_key],
-        key=editor_component_key,
-        placeholder="Start writing your story here...",
-        html=True
-    )
-    
-    if content is not None and content != st.session_state[content_key]:
-        st.session_state[content_key] = content
-        
-except Exception as e:
-    st.error(f"Error loading editor: {str(e)}")
-    content = st.text_area(
-        "Your story (fallback editor):",
-        value=re.sub(r'<[^>]+>', '', st.session_state[content_key]),
-        height=300,
-        key=f"fallback_{editor_base_key}"
-    )
-    if content:
-        st.session_state[content_key] = f"<p>{content}</p>"
-
-st.markdown("---")
-
-# ============================================================================
-# BUTTONS ROW
-# ============================================================================
-col1, col2, col3, col4, col5, col6, col7 = st.columns([1, 1, 1, 1, 1, 1, 2])
-
-spellcheck_base = f"spell_{editor_base_key}"
-spell_result_key = f"{spellcheck_base}_result"
-current_content = st.session_state.get(content_key, "")
-has_content = current_content and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>"
-showing_results = spell_result_key in st.session_state and st.session_state[spell_result_key].get("show", False)
-
-import_key = f"import_{editor_base_key}"
-if import_key not in st.session_state:
-    st.session_state[import_key] = False
-show_import = st.session_state[import_key]
-
-with col1:
-    if st.button("💾 Save", key=f"save_btn_{editor_base_key}", type="primary", use_container_width=True):
-        current_content = st.session_state[content_key]
-        if current_content and current_content.strip() and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>":
-            with st.spinner("Saving your story..."):
-                if save_response(current_session_id, current_question_text, current_content):
-                    st.success("✅ Saved!")
+                    # Show celebration AFTER download button appears
+                    st.session_state.balloons_shown = False
                     time.sleep(0.5)
-                    st.rerun()
-                else: 
-                    st.error("Failed to save")
-        else: 
-            st.warning("Please write something!")
-
-with col2:
-    if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
-        if st.button("🗑️ Delete", key=f"del_btn_{editor_base_key}", use_container_width=True):
-            if delete_response(current_session_id, current_question_text):
-                st.session_state[content_key] = "<p>Start writing your story here...</p>"
-                st.success("✅ Deleted!")
-                st.rerun()
-    else: 
-        st.button("🗑️ Delete", key=f"del_disabled_{editor_base_key}", disabled=True, use_container_width=True)
-
-with col3:
-    if has_content and not showing_results:
-        if st.button("🔍 Spell Check", key=f"spell_{editor_base_key}", use_container_width=True):
-            with st.spinner("Checking spelling and grammar..."):
-                text_only = re.sub(r'<[^>]+>', '', current_content)
-                if len(text_only.split()) >= 3:
-                    corrected = auto_correct_text(text_only)
-                    if corrected and corrected != text_only:
-                        st.session_state[spell_result_key] = {
-                            "original": text_only,
-                            "corrected": corrected,
-                            "show": True
-                        }
-                    else:
-                        st.session_state[spell_result_key] = {
-                            "message": "✅ No spelling or grammar issues found!",
-                            "show": True
-                        }
-                    st.rerun()
-                else:
-                    st.warning("Text too short for spell check (minimum 3 words)")
-    else:
-        st.button("🔍 Spell Check", key=f"spell_disabled_{editor_base_key}", disabled=True, use_container_width=True)
-
-with col4:
-    if has_content:
-        if st.button("✨ AI Rewrite", key=f"rewrite_btn_{editor_base_key}", use_container_width=True):
-            st.session_state.show_ai_rewrite_menu = True
-            st.rerun()
-    else:
-        st.button("✨ AI Rewrite", key=f"rewrite_disabled_{editor_base_key}", disabled=True, use_container_width=True)
-
-with col5:
-    button_label = "📂 Close Import" if show_import else "📂 Import File"
-    if st.button(button_label, key=f"import_btn_{editor_base_key}", use_container_width=True):
-        st.session_state[import_key] = not show_import
-        st.rerun()
-
-with col6:
-    if st.session_state.get('show_ai_rewrite_menu', False):
-        person_option = st.selectbox(
-            "Voice:",
-            options=["1st", "2nd", "3rd"],
-            format_func=lambda x: {"1st": "👤 First Person", "2nd": "💬 Second Person", "3rd": "📖 Third Person"}[x],
-            key=f"person_select_{editor_base_key}",
-            label_visibility="collapsed"
-        )
+                    show_celebration()
         
-        if st.button("Go", key=f"go_rewrite_{editor_base_key}", type="primary", use_container_width=True):
-            with st.spinner(f"Rewriting in {person_option} person..."):
-                current_content = st.session_state[content_key]
-                result = ai_rewrite_answer(
-                    current_content, 
-                    person_option, 
-                    current_question_text, 
-                    current_session['title']
-                )
-                
-                if result.get('success'):
-                    st.session_state.current_rewrite_data = result
-                    st.session_state.show_ai_rewrite = True
-                    st.session_state.show_ai_rewrite_menu = False
-                    st.rerun()
-                else:
-                    st.error(result.get('error', 'Failed to rewrite'))
-    else:
-        st.markdown("")
-
-with col7:
-    nav1, nav2 = st.columns(2)
-    with nav1: 
-        prev_disabled = st.session_state.current_question == 0
-        if st.button("← Previous", disabled=prev_disabled, key=f"prev_{editor_base_key}", use_container_width=True):
-            if not prev_disabled:
-                st.session_state.current_question -= 1
-                st.session_state.current_question_override = None
-                st.session_state.show_ai_rewrite_menu = False
-                st.rerun()
-    with nav2:
-        next_disabled = st.session_state.current_question >= len(current_session["questions"]) - 1
-        if st.button("Next →", disabled=next_disabled, key=f"next_{editor_base_key}", use_container_width=True):
-            if not next_disabled:
-                st.session_state.current_question += 1
-                st.session_state.current_question_override = None
-                st.session_state.show_ai_rewrite_menu = False
-                st.rerun()
-
-if showing_results:
-    result = st.session_state[spell_result_key]
-    if "corrected" in result:
-        st.markdown("---")
-        st.markdown("### ✅ Suggested Corrections:")
-        st.markdown(f'<div style="background-color: #f0f9ff; padding: 15px; border-radius: 8px; border-left: 4px solid #4CAF50;">{result["corrected"]}</div>', unsafe_allow_html=True)
+        # Preview text
+        if st.button("📄 Preview Text"):
+            preview = f"{st.session_state.book_title}\nby {st.session_state.author_name}\n\n"
+            for i, story in enumerate(stories[:5]):
+                if st.session_state.format_style == 'interview':
+                    preview += f"Q: {story.get('question', '')}\n"
+                preview += f"{story.get('answer_text', '')[:200]}...\n\n"
+            st.session_state.formatted_text = preview
         
-        col_apply1, col_apply2, col_apply3 = st.columns([1, 1, 1])
-        with col_apply2:
-            if st.button("📋 Apply Corrections", key=f"{spellcheck_base}_apply", type="primary", use_container_width=True):
-                corrected = result["corrected"]
-                if not corrected.startswith('<p>'):
-                    corrected = f'<p>{corrected}</p>'
-                
-                st.session_state[content_key] = corrected
-                save_response(current_session_id, current_question_text, corrected)
-                st.session_state[version_key] += 1
-                st.session_state[spell_result_key] = {"show": False}
-                st.success("✅ Corrections applied!")
-                st.rerun()
-            
-            if st.button("❌ Dismiss", key=f"{spellcheck_base}_dismiss", use_container_width=True):
-                st.session_state[spell_result_key] = {"show": False}
-                st.rerun()
+        if st.session_state.formatted_text:
+            with st.expander("📄 Text Preview", expanded=True):
+                st.text_area("Preview", st.session_state.formatted_text, height=300)
     
-    elif "message" in result:
-        st.success(result["message"])
-        if st.button("Dismiss", key=f"{spellcheck_base}_dismiss_msg"):
-            st.session_state[spell_result_key] = {"show": False}
-            st.rerun()
-
-if show_import:
-    st.markdown("---")
-    st.markdown("### 📂 Import Text File")
-    
-    with st.expander("📋 Supported File Formats", expanded=True):
+    else:
+        st.info("📚 Upload your stories JSON file using the sidebar to begin.")
         st.markdown("""
-        | Format | Description |
-        |--------|-------------|
-        | **.txt** | Plain text |
-        | **.docx** | Microsoft Word |
-        | **.rtf** | Rich Text Format |
-        | **.vtt/.srt** | Subtitle files |
-        | **.json** | Transcription JSON |
-        | **.md** | Markdown |
-        
-        **Maximum file size:** 50MB
+        ### Features:
+        - 🎨 **Custom Cover Support** - Use your designed cover exactly as created
+        - 📝 **Interview Format** - Shows questions and answers
+        - 📖 **Biography Format** - Just the answers with session titles as chapter headings
+        - 🖼️ **Embedded Images** - All your photos included
+        - 🌐 **HTML Export** - Beautiful, printable web pages
+        - 🎈 **Celebration Animation** - Balloons when your book is ready!
         """)
-    
-    uploaded_file = st.file_uploader(
-        "Choose a file to import",
-        type=['txt', 'docx', 'rtf', 'vtt', 'srt', 'json', 'md'],
-        key=f"file_uploader_{editor_base_key}",
-        help="Select a file from your computer to import into this topic"
-    )
-    
-    if uploaded_file:
-        col_imp1, col_imp2, col_imp3 = st.columns([1, 1, 2])
-        with col_imp1:
-            if st.button("📥 Import", key=f"do_import_{editor_base_key}", type="primary", use_container_width=True):
-                with st.spinner("Importing file..."):
-                    imported_html = import_text_file_main(uploaded_file)
-                    if imported_html:
-                        current = st.session_state.get(content_key, "")
-                        if current and current != "<p>Start writing your story here...</p>" and current != "<p><br></p>":
-                            st.session_state[f"{import_key}_pending"] = imported_html
-                            st.session_state[f"{import_key}_show_options"] = True
-                            st.rerun()
-                        else:
-                            st.session_state[content_key] = imported_html
-                            st.session_state[version_key] += 1
-                            st.session_state[import_key] = False
-                            st.success("✅ File imported successfully!")
-                            st.rerun()
-        
-        with col_imp2:
-            if st.button("❌ Cancel", key=f"cancel_import_{editor_base_key}", use_container_width=True):
-                st.session_state[import_key] = False
-                st.rerun()
-        
-        if st.session_state.get(f"{import_key}_show_options", False):
-            st.markdown("---")
-            st.markdown("**This topic already has content. What would you like to do?**")
-            
-            col_opt1, col_opt2, col_opt3 = st.columns(3)
-            with col_opt1:
-                if st.button("📝 Replace Current", key=f"import_replace_{editor_base_key}", use_container_width=True):
-                    st.session_state[content_key] = st.session_state[f"{import_key}_pending"]
-                    st.session_state[version_key] += 1
-                    st.session_state[import_key] = False
-                    st.session_state[f"{import_key}_pending"] = None
-                    st.session_state[f"{import_key}_show_options"] = False
-                    st.success("✅ File imported (replaced current content)!")
-                    st.rerun()
-            
-            with col_opt2:
-                if st.button("➕ Append to Current", key=f"import_append_{editor_base_key}", use_container_width=True):
-                    current = st.session_state.get(content_key, "")
-                    current = current.replace('</p>', '')
-                    new_content = current + st.session_state[f"{import_key}_pending"]
-                    st.session_state[content_key] = new_content
-                    st.session_state[version_key] += 1
-                    st.session_state[import_key] = False
-                    st.session_state[f"{import_key}_pending"] = None
-                    st.session_state[f"{import_key}_show_options"] = False
-                    st.success("✅ File imported (appended to current content)!")
-                    st.rerun()
-            
-            with col_opt3:
-                if st.button("❌ Cancel Import", key=f"import_cancel_options_{editor_base_key}", use_container_width=True):
-                    st.session_state[f"{import_key}_pending"] = None
-                    st.session_state[f"{import_key}_show_options"] = False
-                    st.rerun()
 
-st.markdown("---")
-
-# ============================================================================
-# IMAGE UPLOAD SECTION
-# ============================================================================
-if st.session_state.logged_in and st.session_state.image_handler:
-    
-    if existing_images:
-        st.markdown("### 📸 Your Uploaded Photos")
-        st.markdown("*Drag and drop photos directly into the editor above*")
-        
-        for idx, img in enumerate(existing_images):
-            col1, col2, col3 = st.columns([2, 3, 1])
-            
-            with col1:
-                st.markdown(img.get("thumb_html", ""), unsafe_allow_html=True)
-            
-            with col2:
-                caption_text = img.get("caption", "")
-                if caption_text:
-                    st.markdown(f"**📝 Caption:** {caption_text}")
-                else:
-                    st.markdown("*No caption*")
-            
-            with col3:
-                if st.button(f"🗑️", key=f"del_img_{img['id']}_{idx}"):
-                    st.session_state.image_handler.delete_image(img['id'])
-                    st.rerun()
-        
-        st.markdown("---")
-    
-    with st.expander("📤 Upload New Photos", expanded=len(existing_images) == 0):
-        st.markdown("**Add new photos to your story:**")
-        
-        uploaded_file = st.file_uploader(
-            "Choose an image...", 
-            type=['jpg', 'jpeg', 'png'], 
-            key=f"up_{current_session_id}_{hash(current_question_text)}",
-            label_visibility="collapsed"
-        )
-        
-        if uploaded_file:
-            col1, col2 = st.columns([3, 1])
-            with col1:
-                caption = st.text_input(
-                    "Caption / Description:",
-                    placeholder="What does this photo show? When was it taken?",
-                    key=f"cap_{current_session_id}_{hash(current_question_text)}"
-                )
-                usage = st.radio(
-                    "Image size:",
-                    ["Full Page", "Inline"],
-                    horizontal=True,
-                    key=f"usage_{current_session_id}_{hash(current_question_text)}",
-                    help="Full Page: 1600px wide, Inline: 800px wide"
-                )
-            with col2:
-                if st.button("📤 Upload", key=f"btn_{current_session_id}_{hash(current_question_text)}", type="primary", use_container_width=True):
-                    with st.spinner("Uploading and optimizing..."):
-                        usage_type = "full_page" if usage == "Full Page" else "inline"
-                        result = st.session_state.image_handler.save_image(
-                            uploaded_file, current_session_id, current_question_text, caption, usage_type
-                        )
-                        if result:
-                            st.success("✅ Photo uploaded and optimized!")
-                            time.sleep(1.5)
-                            st.rerun()
-                        else:
-                            st.error("Upload failed")
-    
-    st.markdown("---")
-
-# ============================================================================
-# PREVIEW SECTION
-# ============================================================================
-current_content = st.session_state.get(content_key, "")
-if current_content and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>":
-    with st.expander("👁️ Preview your story", expanded=False):
-        st.markdown("### 📖 Preview")
-        st.markdown(current_content, unsafe_allow_html=True)
-        st.markdown("---")
-
-# ============================================================================
-# BETA READER FEEDBACK SECTION
-# ============================================================================
-st.subheader("🦋 Beta Reader Feedback")
-
-tab1, tab2 = st.tabs(["📝 Current Session", "📚 Feedback History"])
-
-with tab1:
-    sdata = st.session_state.responses.get(current_session_id, {})
-    answered_cnt = len(sdata.get("questions", {}))
-    total_q = len(current_session["questions"])
-
-    st.markdown(f"**Progress:** {answered_cnt}/{total_q} topics answered")
-    
-    beta_key = f"beta_{current_session_id}_{current_question_text}"
-    
-    if "beta_feedback_storage" not in st.session_state:
-        st.session_state.beta_feedback_storage = {}
-    
-    col1, col2 = st.columns([2, 1])
-    with col1: 
-        fb_type = st.selectbox("Feedback Type", ["comprehensive", "concise", "developmental"], 
-                              key=f"beta_type_{beta_key}")
-    with col2:
-        if st.button("🦋 Get Beta Read", key=f"beta_btn_{beta_key}", use_container_width=True, type="primary"):
-            with st.spinner("Beta Reader is analyzing your stories with full profile context..."):
-                if beta_reader:
-                    session_text = ""
-                    for q, a in sdata.get("questions", {}).items():
-                        text_only = re.sub(r'<[^>]+>', '', a.get("answer", ""))
-                        session_text += f"Question: {q}\nAnswer: {text_only}\n\n"
-                    
-                    if session_text.strip():
-                        fb = generate_beta_reader_feedback(current_session["title"], session_text, fb_type)
-                        if "error" not in fb: 
-                            st.session_state.beta_feedback_display = fb
-                            st.session_state.beta_feedback_storage[beta_key] = fb
-                            st.rerun()
-                        else: 
-                            st.error(f"Failed: {fb['error']}")
-                    else: 
-                        st.warning("No content to analyze. Write some stories first!")
-                else:
-                    st.error("Beta reader not available")
-    
-    if beta_key in st.session_state.beta_feedback_storage:
-        display_beta_feedback(st.session_state.beta_feedback_storage[beta_key])
-    elif st.session_state.beta_feedback_display and not st.session_state.beta_feedback_storage:
-        display_beta_feedback(st.session_state.beta_feedback_display)
-
-with tab2:
-    st.markdown("### 📚 Your Saved Beta Reader Feedback")
-    
-    user_data = load_user_data(st.session_state.user_id) if st.session_state.user_id else {}
-    all_feedback = user_data.get("beta_feedback", {})
-    
-    if not all_feedback:
-        st.info("No saved feedback yet. Generate feedback from any session and click 'Save This Feedback to History' to keep it forever.")
-    else:
-        all_entries = []
-        for session_id_str, feedback_list in all_feedback.items():
-            session_title = "Unknown Session"
-            for s in SESSIONS:
-                if str(s["id"]) == session_id_str:
-                    session_title = s["title"]
-                    break
-            
-            for fb in feedback_list:
-                all_entries.append({
-                    "session_id": session_id_str, "session_title": session_title,
-                    "date": fb.get('generated_at', datetime.now().isoformat()), "feedback": fb
-                })
-        
-        all_entries.sort(key=lambda x: x['date'], reverse=True)
-        
-        for i, entry in enumerate(all_entries):
-            fb = entry['feedback']
-            fb_date = datetime.fromisoformat(entry['date']).strftime('%B %d, %Y at %I:%M %p')
-            
-            with st.expander(f"📖 {entry['session_title']} - {fb_date} ({fb.get('feedback_type', 'comprehensive').title()})"):
-                col1, col2, col3 = st.columns([2, 2, 1])
-                
-                with col1:
-                    st.markdown(f"**Session:** {entry['session_title']}")
-                with col2:
-                    st.markdown(f"**Type:** {fb.get('feedback_type', 'comprehensive').title()}")
-                with col3:
-                    if st.button(f"🗑️ Delete", key=f"del_fb_history_{i}_{entry['date']}", use_container_width=True):
-                        session_id_str = entry['session_id']
-                        feedback_list = all_feedback.get(session_id_str, [])
-                        
-                        feedback_list = [f for f in feedback_list if f.get('generated_at') != entry['date']]
-                        
-                        if feedback_list:
-                            all_feedback[session_id_str] = feedback_list
-                        else:
-                            del all_feedback[session_id_str]
-                        
-                        user_data["beta_feedback"] = all_feedback
-                        save_user_data(st.session_state.user_id, st.session_state.responses)
-                        st.success("Feedback deleted!")
-                        st.rerun()
-                
-                if 'feedback' in fb and fb['feedback']:
-                    st.markdown(fb['feedback'])
-                else:
-                    if 'summary' in fb and fb['summary']:
-                        st.markdown("**Summary:**")
-                        st.markdown(fb['summary'])
-                    
-                    if 'strengths' in fb and fb['strengths']:
-                        st.markdown("**Strengths:**")
-                        for s in fb['strengths']:
-                            st.markdown(f"✅ {s}")
-                    
-                    if 'areas_for_improvement' in fb and fb['areas_for_improvement']:
-                        st.markdown("**Areas for Improvement:**")
-                        for a in fb['areas_for_improvement']:
-                            st.markdown(f"📝 {a}")
-                    
-                    if 'suggestions' in fb and fb['suggestions']:
-                        st.markdown("**Suggestions:**")
-                        for sug in fb['suggestions']:
-                            st.markdown(f"💡 {sug}")
-                    
-                    if 'overall_score' in fb and fb['overall_score']:
-                        st.markdown(f"**Overall Score:** {fb['overall_score']}/10")
-
-# ============================================================================
-# SESSION PROGRESS
-# ============================================================================
-progress_info = get_progress_info(current_session_id)
-st.markdown(f"""
-<div class="progress-container">
-<div class="progress-header">📊 Session Progress</div>
-<div class="progress-status">{progress_info['emoji']} {progress_info['progress_percent']:.0f}% complete • {progress_info['remaining_words']} words remaining</div>
-<div class="progress-bar-container"><div class="progress-bar-fill" style="width: {min(progress_info['progress_percent'], 100)}%; background-color: {progress_info['color']};"></div></div>
-<div class="progress-stats">{progress_info['current_count']} / {progress_info['target']} words</div>
-</div>
-""", unsafe_allow_html=True)
-
-if st.button("✏️ Change Word Target", key="edit_target", use_container_width=True): 
-    st.session_state.editing_word_target = not st.session_state.editing_word_target
-    st.rerun()
-
-if st.session_state.editing_word_target:
-    new_target = st.number_input("Target words:", min_value=100, max_value=5000, value=progress_info['target'], key="target_edit")
-    col_s, col_c = st.columns(2)
-    with col_s:
-        if st.button("💾 Save", key="save_target", type="primary", use_container_width=True):
-            st.session_state.responses[current_session_id]["word_target"] = new_target
-            save_user_data(st.session_state.user_id, st.session_state.responses)
-            st.session_state.editing_word_target = False
-            st.rerun()
-    with col_c:
-        if st.button("❌ Cancel", key="cancel_target", use_container_width=True): 
-            st.session_state.editing_word_target = False
-            st.rerun()
-
-st.divider()
-
-col1, col2, col3, col4 = st.columns(4)
-with col1: 
-    st.metric("Total Words", sum(calculate_author_word_count(s["id"]) for s in SESSIONS))
-with col2: 
-    unique_q = set()
-    for s in SESSIONS:
-        for q, _ in st.session_state.responses.get(s["id"], {}).get("questions", {}).items():
-            unique_q.add((s["id"], q))
-    comp = sum(1 for s in SESSIONS if len([x for (sid,x) in unique_q if sid == s["id"]]) == len(s["questions"]))
-    st.metric("Completed Sessions", f"{comp}/{len(SESSIONS)}")
-with col3: 
-    st.metric("Topics Explored", f"{len(unique_q)}/{sum(len(s['questions']) for s in SESSIONS)}")
-with col4: 
-    st.metric("Total Answers", sum(len(st.session_state.responses.get(s["id"], {}).get("questions", {})) for s in SESSIONS))
-
-st.markdown("---")
-if st.session_state.user_account:
-    profile = st.session_state.user_account['profile']
-    age = (datetime.now() - datetime.fromisoformat(st.session_state.user_account['created_at'])).days
-    st.caption(f"Tell My Story Timeline • 👤 {profile['first_name']} {profile['last_name']} • 📅 Account Age: {age} days • 📚 Bank: {st.session_state.get('current_bank_name', 'None')}")
-else: 
-    st.caption(f"Tell My Story Timeline • User: {st.session_state.user_id}")
+if __name__ == "__main__":
+    main()
