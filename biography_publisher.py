@@ -1,13 +1,38 @@
-# biography_publisher.py
 import streamlit as st
 from datetime import datetime
 import io
 import base64
 import os
 import re
+import html  # Add this import
 from docx import Document
 from docx.shared import Inches, Pt, RGBColor
 from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+def clean_text(text):
+    """Clean HTML entities from text for clean display in documents"""
+    if not text:
+        return text
+    
+    # First unescape HTML entities (&nbsp; -> space, &amp; -> &, etc.)
+    text = html.unescape(text)
+    
+    # Replace <p> and <br> with newlines for better formatting
+    text = text.replace('</p>', '\n\n').replace('<br>', '\n').replace('<br/>', '\n').replace('<br />', '\n')
+    
+    # Remove any remaining HTML tags
+    text = re.sub(r'<[^>]+>', '', text)
+    
+    # Clean up multiple newlines
+    text = re.sub(r'\n\s*\n\s*\n', '\n\n', text)
+    
+    # Clean up multiple spaces
+    text = re.sub(r'[ \t]+', ' ', text)
+    
+    # Remove leading/trailing whitespace
+    text = text.strip()
+    
+    return text
 
 def show_celebration():
     """Show a celebration animation when book is generated"""
@@ -143,14 +168,21 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
             q_run.font.bold = True
             q_run.font.italic = True
         
-        # Add answer
+        # Add answer - CLEAN IT HERE
         answer_text = story.get('answer_text', '')
         if answer_text:
+            # Clean the text before adding to document
+            clean_answer = clean_text(answer_text)
+            
             # Split into paragraphs
-            paragraphs = answer_text.split('\n')
+            paragraphs = clean_answer.split('\n\n')
             for para in paragraphs:
                 if para.strip():
-                    doc.add_paragraph(para.strip())
+                    # Further split by single newlines if needed
+                    sub_paras = para.split('\n')
+                    for sub_para in sub_paras:
+                        if sub_para.strip():
+                            doc.add_paragraph(sub_para.strip())
         
         # Add images if any
         if include_images and story.get('images'):
@@ -395,15 +427,24 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
         if format_style == "interview":
             html_parts.append(f'<div class="question">{story.get("question", "")}</div>')
         
-        # Format answer with paragraphs
+        # Format answer with paragraphs - CLEAN IT HERE
         answer_text = story.get('answer_text', '')
         if answer_text:
+            # Clean the text before adding to HTML
+            clean_answer = clean_text(answer_text)
+            
             html_parts.append('<div>')
-            paragraphs = answer_text.split('\n')
+            paragraphs = clean_answer.split('\n\n')
             for para in paragraphs:
                 if para.strip():
+                    # Escape any remaining HTML special characters
                     escaped_para = para.strip().replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                    html_parts.append(f'<p>{escaped_para}</p>')
+                    
+                    # Handle single newlines within paragraphs
+                    sub_paras = escaped_para.split('\n')
+                    for i, sub_para in enumerate(sub_paras):
+                        if sub_para.strip():
+                            html_parts.append(f'<p>{sub_para.strip()}</p>')
             html_parts.append('</div>')
         
         # Add images
@@ -428,4 +469,3 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
     html_content = '\n'.join(html_parts)
     
     return html_content
-
