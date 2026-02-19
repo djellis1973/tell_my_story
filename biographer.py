@@ -1981,15 +1981,15 @@ if st.session_state.logged_in and st.session_state.image_handler:
     with st.expander("📤 Upload New Photos", expanded=not existing_images):
         st.markdown("**Add photos to your story:**")
         
-uploaded_file = st.file_uploader(
-    "Choose an image",  # Add your parameters here
-    type=["jpg", "png", "jpeg"],  # Example parameter
-    key=f"img_{current_session_id}_{st.session_state.current_question}"  # Example parameter
-)  # <-- This closing parenthesis is crucial!
-
-if uploaded_file:
-    caption = st.text_input("Caption (optional):", key=f"img_cap_{current_session_id}_{st.session_state.current_question}")
-    usage = st.radio("Size:", ["Full Page", "Inline"], horizontal=True, key=f"img_usage_{current_session_id}_{st.session_state.current_question}")
+        uploaded_file = st.file_uploader(
+            "Choose an image",
+            type=["jpg", "png", "jpeg"],
+            key=f"img_{current_session_id}_{st.session_state.current_question}"
+        )
+        
+        if uploaded_file:
+            caption = st.text_input("Caption (optional):", key=f"img_cap_{current_session_id}_{st.session_state.current_question}")
+            usage = st.radio("Size:", ["Full Page", "Inline"], horizontal=True, key=f"img_usage_{current_session_id}_{st.session_state.current_question}")
             
             if st.button("📤 Upload Image", type="primary"):
                 with st.spinner("Uploading..."):
