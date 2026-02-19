@@ -1663,7 +1663,7 @@ if st.session_state.show_publisher:
 st.markdown(f'<div style="text-align:center;"><img src="{LOGO_URL}" style="max-width:300px;"></div>', unsafe_allow_html=True)
 
 # ============================================================================
-# SIDEBAR - COMPLETE VERSION WITH ALL BUTTONS FIXED
+# SIDEBAR - CONNECTED TO EXISTING FUNCTIONS (NO NEW FUNCTIONS NEEDED)
 # ============================================================================
 with st.sidebar:
     st.markdown('<div class="sidebar-header"><h2>Tell My Story</h2><p>Your Life Timeline</p></div>', unsafe_allow_html=True)
@@ -1678,22 +1678,22 @@ with st.sidebar:
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("📝 Profile", use_container_width=True, key="sidebar_profile"): 
+        if st.button("📝 Profile", use_container_width=True): 
             st.session_state.show_profile_setup = True
             st.rerun()
     with col2:
-        if st.button("🔒 Privacy", use_container_width=True, key="sidebar_privacy"):
+        if st.button("🔒 Privacy", use_container_width=True):
             st.session_state.show_privacy_settings = True
             st.rerun()
     
-    if st.button("🚪 Log Out", use_container_width=True, key="sidebar_logout"): 
+    if st.button("🚪 Log Out", use_container_width=True): 
         logout_user()
     
     st.divider()
     
     # ===== PUBLISHING SECTION =====
     st.header("📚 Publishing")
-    if st.button("🎨 Publish Your Book", type="primary", use_container_width=True, key="sidebar_publish"):
+    if st.button("🎨 Publish Your Book", type="primary", use_container_width=True):
         st.session_state.show_publisher = True
         st.rerun()
     
@@ -1718,7 +1718,7 @@ with st.sidebar:
     # ===== SESSIONS SECTION =====
     st.header("📖 Sessions")
     
-    # Quick session navigation - FIXED to show full titles
+    # Quick session navigation
     sessions_per_row = 2
     session_cols = st.columns(sessions_per_row)
     
@@ -1740,18 +1740,15 @@ with st.sidebar:
             else:
                 status = "⚪"
             
-            # FIXED: Show session number AND title in the button
-            button_label = f"{status} {i+1}. {session['title'][:15]}..." if len(session['title']) > 15 else f"{status} {i+1}. {session['title']}"
-            
-            if st.button(button_label, key=f"session_{i}", help=session["title"], use_container_width=True):
+            # FIXED: Show full session title
+            if st.button(f"{status} {i+1}. {session['title']}", key=f"session_{i}", help=session["title"], use_container_width=True):
                 st.session_state.current_session = i
                 st.session_state.current_question = 0
                 st.session_state.current_question_override = None
                 st.rerun()
     
-    # Session manager button - FIXED: Added missing functionality
-    if st.button("📋 All Sessions", use_container_width=True, key="sidebar_session_manager"):
-        # Create a session manager view
+    # Session manager button
+    if st.button("📋 All Sessions", use_container_width=True):
         st.session_state.show_session_manager = True
         st.rerun()
     
@@ -1762,32 +1759,25 @@ with st.sidebar:
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("📚 Topic Bank", use_container_width=True, key="sidebar_topic_bank"):
+        if st.button("📚 Topic Bank", use_container_width=True):
             st.session_state.show_topic_browser = True
             st.rerun()
     with col2:
-        if st.button("📖 Vignettes", use_container_width=True, key="sidebar_vignettes"):
+        if st.button("📖 Vignettes", use_container_width=True):
             st.session_state.show_vignette_manager = True
             st.rerun()
     
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("✨ New Vignette", use_container_width=True, key="sidebar_new_vignette"):
+        if st.button("✨ New Vignette", use_container_width=True):
             import uuid
             new_id = str(uuid.uuid4())[:8]
-            
-            # Initialize vignette manager if needed
             if 'vignette_manager' not in st.session_state:
                 try:
-                    # Try to import VignetteManager
                     from vignettes import VignetteManager
                     st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
-                except ImportError:
-                    # Create a simple fallback
-                    st.session_state.vignette_manager = type('SimpleVignetteManager', (), {
-                        'create_vignette_with_id': lambda self, **kwargs: None
-                    })()
-                    st.warning("Vignette module not found. Using simple mode.")
+                except:
+                    st.session_state.vignette_manager = None
             
             if st.session_state.vignette_manager:
                 st.session_state.vignette_manager.create_vignette_with_id(
@@ -1803,8 +1793,8 @@ with st.sidebar:
                 st.rerun()
     
     with col2:
-        if st.button("📂 Import File", use_container_width=True, key="sidebar_import"):
-            # Set import flag for current question
+        if st.button("📂 Import File", use_container_width=True):
+            # This will be handled in the main area
             current_session = st.session_state.current_question_bank[st.session_state.current_session]
             current_session_id = current_session["id"]
             if st.session_state.current_question_override:
@@ -1822,7 +1812,7 @@ with st.sidebar:
     # ===== QUESTION BANK SECTION =====
     st.header("📚 Question Banks")
     
-    if st.button("📋 Bank Manager", use_container_width=True, key="sidebar_bank_manager"):
+    if st.button("📋 Bank Manager", use_container_width=True):
         st.session_state.show_bank_manager = True
         st.rerun()
     
@@ -1902,12 +1892,12 @@ with st.sidebar:
         st.metric("Word Count", f"{progress_info['current_count']}/{progress_info['target']}")
         st.progress(min(progress_info['progress_percent'] / 100, 1.0))
         
-        if st.button("✏️ Edit Target", use_container_width=True, key="sidebar_edit_target"):
+        if st.button("✏️ Edit Target", use_container_width=True):
             st.session_state.editing_word_target = not st.session_state.editing_word_target
         
         if st.session_state.editing_word_target:
-            new_target = st.number_input("Target:", min_value=100, max_value=5000, value=progress_info['target'], key="sidebar_target_input")
-            if st.button("💾 Save", use_container_width=True, key="sidebar_save_target"):
+            new_target = st.number_input("Target:", min_value=100, max_value=5000, value=progress_info['target'])
+            if st.button("💾 Save", use_container_width=True):
                 st.session_state.responses[current_session_id]["word_target"] = new_target
                 save_user_data(st.session_state.user_id, st.session_state.responses)
                 st.session_state.editing_word_target = False
@@ -1920,7 +1910,7 @@ with st.sidebar:
     
     if st.session_state.logged_in and total_answered > 0:
         # Simple text export
-        if st.button("📝 Download as Text", use_container_width=True, key="sidebar_export_text"):
+        if st.button("📝 Download as Text", use_container_width=True):
             text_content = "Tell My Story - Life Timeline\n\n"
             for session in st.session_state.current_question_bank:
                 sid = session["id"]
@@ -1940,7 +1930,7 @@ with st.sidebar:
             )
         
         # JSON backup
-        if st.button("💾 JSON Backup", use_container_width=True, key="sidebar_export_json"):
+        if st.button("💾 JSON Backup", use_container_width=True):
             backup_data = {
                 "user_id": st.session_state.user_id,
                 "export_date": datetime.now().isoformat(),
@@ -1968,14 +1958,14 @@ with st.sidebar:
         st.warning("**Clear current session?**")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("✅ Yes", type="primary", use_container_width=True, key="confirm_clear_session_yes"):
+            if st.button("✅ Yes", type="primary", use_container_width=True):
                 sid = st.session_state.current_question_bank[st.session_state.current_session]["id"]
                 st.session_state.responses[sid]["questions"] = {}
                 save_user_data(st.session_state.user_id, st.session_state.responses)
                 st.session_state.confirming_clear = None
                 st.rerun()
         with col2:
-            if st.button("❌ No", use_container_width=True, key="confirm_clear_session_no"):
+            if st.button("❌ No", use_container_width=True):
                 st.session_state.confirming_clear = None
                 st.rerun()
     
@@ -1983,25 +1973,25 @@ with st.sidebar:
         st.warning("**Clear ALL data?**")
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("✅ Yes All", type="primary", use_container_width=True, key="confirm_clear_all_yes"):
+            if st.button("✅ Yes All", type="primary", use_container_width=True):
                 for s in st.session_state.current_question_bank:
                     st.session_state.responses[s["id"]]["questions"] = {}
                 save_user_data(st.session_state.user_id, st.session_state.responses)
                 st.session_state.confirming_clear = None
                 st.rerun()
         with col2:
-            if st.button("❌ No", use_container_width=True, key="confirm_clear_all_no"):
+            if st.button("❌ No", use_container_width=True):
                 st.session_state.confirming_clear = None
                 st.rerun()
     
     else:
         col1, col2 = st.columns(2)
         with col1:
-            if st.button("🗑️ Clear Session", use_container_width=True, key="sidebar_clear_session"):
+            if st.button("🗑️ Clear Session", use_container_width=True):
                 st.session_state.confirming_clear = "session"
                 st.rerun()
         with col2:
-            if st.button("🔥 Clear All", use_container_width=True, key="sidebar_clear_all"):
+            if st.button("🔥 Clear All", use_container_width=True):
                 st.session_state.confirming_clear = "all"
                 st.rerun()
     
