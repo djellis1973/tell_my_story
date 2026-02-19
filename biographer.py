@@ -1929,12 +1929,12 @@ if st.session_state.get('show_ai_rewrite_menu', False):
 if st.session_state.get(import_key, False):
     st.markdown("---")
     st.markdown("### 📂 Import Text File")
-     
-uploaded_file = st.file_uploader(
-    "Choose a file", 
-    type=['txt', 'docx'],
-    key=f"file_upload_{editor_base_key}"
-)
+    
+    uploaded_file = st.file_uploader(
+        "Choose a file", 
+        type=['txt', 'docx'],
+        key=f"file_upload_{editor_base_key}"
+    )
     
     if uploaded_file:
         col1, col2 = st.columns(2)
