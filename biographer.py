@@ -92,7 +92,9 @@ default_state = {
     "current_rewrite_data": None, "show_ai_rewrite": False, "show_ai_rewrite_menu": False,
     "editor_content": {}, "show_privacy_settings": False, "show_cover_designer": False,
     "beta_feedback_display": None, "beta_feedback_storage": {},
-    "auth_tab": 'login'  # Added for authentication
+    "auth_tab": 'login',  # Added for authentication
+    "show_publisher": False,  # <-- ADD THIS LINE
+    "cover_image_data": None  # <-- ADD THIS LINE
 }
 for key, value in default_state.items():
     if key not in st.session_state:
@@ -532,7 +534,7 @@ def logout_user():
             'current_bank_type', 'current_bank_id', 'show_bank_manager', 'show_bank_editor',
             'editing_bank_id', 'editing_bank_name', 'show_image_manager', 'editor_content',
             'current_rewrite_data', 'show_ai_rewrite', 'show_ai_rewrite_menu',
-            'show_publisher']  # <-- ADD THIS
+            'show_publisher', 'cover_image_data']  # <-- ADD THESE
     for key in keys:
         if key in st.session_state: 
             del st.session_state[key]
@@ -952,6 +954,7 @@ def show_cover_designer():
     
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
+
 # ============================================================================
 # NARRATIVE GPS HELPER FUNCTIONS
 # ============================================================================
@@ -3278,6 +3281,7 @@ with st.sidebar:
                     st.info(f"... and {len(results)-10} more matches")
         else: 
             st.info("No matches found")
+
 # ============================================================================
 # PUBLISHER PAGE - SHOW ON MAIN SCREEN WHEN ACTIVATED
 # ============================================================================
