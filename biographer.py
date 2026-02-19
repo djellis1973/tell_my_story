@@ -782,6 +782,28 @@ def prepare_stories_for_publishing(responses_data, sessions_data):
         session_data = responses_data.get(session_id, {})
         
         for question_text, answer_data in session_data.get("questions", {}).items():
+            # Clean the answer text right here, once
+            raw_answer = answer_data.get("answer", "")
+            
+            # Simple but effective cleaning
+            if raw_answer:
+                # Replace HTML entities
+                clean_text = raw_answer.replace('&nbsp;', ' ')
+                clean_text = clean_text.replace('&amp;', '&')
+                clean_text = clean_text.replace('&lt;', '<')
+                clean_text = clean_text.replace('&gt;', '>')
+                clean_text = clean_text.replace('&quot;', '"')
+                
+                # Remove HTML tags
+                import re
+                clean_text = re.sub(r'<[^>]+>', ' ', clean_text)
+                
+                # Clean up whitespace
+                clean_text = re.sub(r'\s+', ' ', clean_text)
+                clean_text = clean_text.strip()
+            else:
+                clean_text = ""
+            
             # Get images if available
             images = []
             if answer_data.get("images") and st.session_state.image_handler:
@@ -797,7 +819,7 @@ def prepare_stories_for_publishing(responses_data, sessions_data):
             
             stories.append({
                 "question": question_text,
-                "answer_text": re.sub(r'<[^>]+>', '', answer_data.get("answer", "")),
+                "answer_text": clean_text,  # Already clean!
                 "timestamp": answer_data.get("timestamp", ""),
                 "session_id": session_id,
                 "session_title": session["title"],
