@@ -6,6 +6,65 @@ import os
 import re
 import hashlib
 import smtplib
+
+# ===== TOPIC TOOLS SECTION =====
+st.header("📝 Writing Tools")
+
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("📚 Topic Bank", use_container_width=True):
+        st.session_state.show_topic_browser = True
+        st.rerun()
+with col2:
+    if st.button("📖 Vignettes", use_container_width=True):
+        st.session_state.show_vignette_manager = True
+        st.rerun()
+
+col1, col2 = st.columns(2)
+with col1:
+    if st.button("✨ New Vignette", use_container_width=True):
+        try:
+            import uuid
+            from vignettes import VignetteManager
+            
+            new_id = str(uuid.uuid4())[:8]
+            
+            # Initialize vignette manager if needed
+            if 'vignette_manager' not in st.session_state or st.session_state.vignette_manager is None:
+                st.session_state.vignette_manager = VignetteManager(st.session_state.user_id)
+            
+            # Create new vignette
+            st.session_state.vignette_manager.create_vignette_with_id(
+                id=new_id,
+                title="Untitled Vignette",
+                content="<p>Write your story here...</p>",
+                theme="Life Lesson",
+                mood="Reflective",
+                is_draft=True
+            )
+            
+            # Set editing state
+            st.session_state.editing_vignette_id = new_id
+            st.session_state.show_vignette_modal = True
+            st.rerun()
+            
+        except Exception as e:
+            st.error(f"Could not create vignette: {str(e)}")
+
+with col2:
+    if st.button("📂 Import File", use_container_width=True):
+        # This will be handled in the main area
+        current_session = st.session_state.current_question_bank[st.session_state.current_session]
+        current_session_id = current_session["id"]
+        if st.session_state.current_question_override:
+            current_question_text = st.session_state.current_question_override
+        else:
+            current_question_text = current_session["questions"][st.session_state.current_question]
+        
+        editor_base_key = f"quill_{current_session_id}_{current_question_text[:20]}"
+        import_key = f"import_{editor_base_key}"
+        st.session_state[import_key] = True
+        st.rerun()
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
 import secrets
