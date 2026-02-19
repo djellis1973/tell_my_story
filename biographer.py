@@ -990,98 +990,222 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
         return None
 
 def generate_html(title, author, stories, format_style="interview", include_toc=True, include_images=True, cover_image=None, cover_choice="simple"):
-    """Generate HTML document from stories"""
+    """Generate an HTML document from stories with proper formatting and cover"""
     
-    html = f"""<!DOCTYPE html>
-<html>
-<head>
-    <meta charset="UTF-8">
-    <title>{title}</title>
-    <style>
-        body {{
-            font-family: 'Georgia', serif;
-            line-height: 1.6;
-            color: #333;
-            max-width: 800px;
-            margin: 0 auto;
-            padding: 40px 20px;
-        }}
-        h1 {{
-            font-size: 42px;
-            text-align: center;
-            margin-bottom: 10px;
-        }}
-        h2 {{
-            font-size: 28px;
-            margin-top: 40px;
-            color: #444;
-            border-bottom: 2px solid #eee;
-            padding-bottom: 10px;
-        }}
-        .author {{
-            text-align: center;
-            font-size: 18px;
-            color: #666;
-            margin-bottom: 40px;
-            font-style: italic;
-        }}
-        .question {{
-            font-weight: bold;
-            font-size: 18px;
-            margin-top: 30px;
-            color: #2c3e50;
-            border-left: 4px solid #3498db;
-            padding-left: 15px;
-        }}
-        .story-image {{
-            max-width: 100%;
-            height: auto;
-            display: block;
-            margin: 20px auto;
-            border-radius: 5px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-        }}
-        .image-caption {{
-            text-align: center;
-            font-size: 14px;
-            color: #666;
-            font-style: italic;
-        }}
-        .cover-page {{
-            text-align: center;
-            margin-bottom: 50px;
-        }}
-        .copyright {{
-            text-align: center;
-            font-size: 12px;
-            color: #999;
-            margin-top: 50px;
-            padding-top: 20px;
-            border-top: 1px solid #eee;
-        }}
-        .toc {{
-            background: #f9f9f9;
-            padding: 20px;
-            border-radius: 5px;
-            margin: 30px 0;
-        }}
-    </style>
-</head>
-<body>
-    <div class="cover-page">
-        <h1>{title}</h1>
-        <p class="author">by {author}</p>
+    # Start building HTML
+    html_parts = []
+    
+    # HTML header with styling for book layout
+    html_parts.append(f"""
+    <!DOCTYPE html>
+    <html>
+    <head>
+        <meta charset="UTF-8">
+        <title>{title}</title>
+        <style>
+            body {{
+                font-family: 'Georgia', serif;
+                line-height: 1.6;
+                color: #333;
+                max-width: 800px;
+                margin: 0 auto;
+                padding: 40px 20px;
+                background: #fff;
+            }}
+            .cover-page {{
+                text-align: center;
+                margin-bottom: 50px;
+                page-break-after: always;
+                min-height: 100vh;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+            }}
+            .cover-image {{
+                max-width: 100%;
+                max-height: 80vh;
+                object-fit: contain;
+                margin: 0 auto 30px auto;
+                display: block;
+                box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+            }}
+            .simple-cover {{
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                padding: 60px 20px;
+                border-radius: 10px;
+                color: white;
+                margin: 20px;
+            }}
+            .simple-cover h1 {{
+                color: white;
+                margin-bottom: 20px;
+            }}
+            .simple-cover .author {{
+                color: rgba(255,255,255,0.9);
+                font-size: 20px;
+            }}
+            .copyright-page {{
+                text-align: center;
+                page-break-after: always;
+                min-height: 90vh;
+                display: flex;
+                flex-direction: column;
+                justify-content: center;
+                color: #999;
+                font-size: 12px;
+            }}
+            .book-content {{
+                max-width: 600px;
+                margin: 0 auto;
+                padding: 0 20px;
+            }}
+            h1 {{
+                font-size: 42px;
+                text-align: center;
+                margin-bottom: 10px;
+                color: #000;
+                font-weight: bold;
+            }}
+            h2 {{
+                font-size: 28px;
+                text-align: center;
+                margin-top: 50px;
+                margin-bottom: 30px;
+                color: #444;
+                font-weight: bold;
+                border-bottom: 2px solid #eee;
+                padding-bottom: 10px;
+            }}
+            .question {{
+                font-weight: bold;
+                font-size: 18px;
+                margin-top: 30px;
+                margin-bottom: 15px;
+                color: #2c3e50;
+                border-left: 4px solid #3498db;
+                padding-left: 15px;
+            }}
+            .story-text {{
+                text-align: left;
+                margin-bottom: 30px;
+            }}
+            .story-text p {{
+                margin-bottom: 15px;
+                text-align: left;
+            }}
+            .story-image {{
+                max-width: 100%;
+                height: auto;
+                display: block;
+                margin: 30px auto;
+                border-radius: 5px;
+                box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+            }}
+            .image-caption {{
+                text-align: center;
+                font-size: 14px;
+                color: #666;
+                margin-top: -20px;
+                margin-bottom: 30px;
+                font-style: italic;
+            }}
+            .toc {{
+                background: #f9f9f9;
+                padding: 30px;
+                border-radius: 5px;
+                margin: 30px 0 50px 0;
+                page-break-after: always;
+            }}
+            .toc h3 {{
+                text-align: center;
+                font-size: 24px;
+                margin-bottom: 20px;
+                color: #333;
+            }}
+            .toc ul {{
+                list-style-type: none;
+                padding-left: 0;
+                max-width: 400px;
+                margin: 0 auto;
+            }}
+            .toc li {{
+                margin-bottom: 15px;
+                text-align: left;
+                font-size: 16px;
+            }}
+            .toc a {{
+                color: #3498db;
+                text-decoration: none;
+                border-bottom: 1px dotted #3498db;
+            }}
+            .toc a:hover {{
+                text-decoration: underline;
+            }}
+            hr {{
+                margin: 40px 0;
+                border: none;
+                border-top: 1px dashed #ccc;
+            }}
+            @media print {{
+                body {{
+                    padding: 0;
+                }}
+                .cover-page, .copyright-page, .toc {{
+                    page-break-after: always;
+                }}
+            }}
+        </style>
+    </head>
+    <body>
+    """)
+    
+    # COVER PAGE
+    html_parts.append('<div class="cover-page">')
+    
+    if cover_choice == "uploaded" and cover_image:
+        try:
+            # Use uploaded image as cover
+            img_base64 = base64.b64encode(cover_image).decode()
+            html_parts.append(f'''
+                <img src="data:image/jpeg;base64,{img_base64}" class="cover-image" alt="Book Cover">
+                <!-- No title or author text on cover when image is used -->
+            ''')
+        except Exception as e:
+            # Fallback to simple cover if image fails
+            html_parts.append(f'''
+                <div class="simple-cover">
+                    <h1>{title}</h1>
+                    <p class="author">by {author}</p>
+                </div>
+            ''')
+    else:
+        # Simple gradient cover
+        html_parts.append(f'''
+            <div class="simple-cover">
+                <h1>{title}</h1>
+                <p class="author">by {author}</p>
+            </div>
+        ''')
+    
+    html_parts.append('</div>')  # Close cover-page
+    
+    # COPYRIGHT PAGE (blank for now)
+    html_parts.append(f'''
+    <div class="copyright-page">
+        <div class="book-content">
+            <p> </p>
+            <!-- Blank page for future copyright info -->
+        </div>
     </div>
+    ''')
     
-    <p class="copyright">© {datetime.now().year} {author}. All rights reserved.</p>
-"""
-    
+    # TABLE OF CONTENTS
     if include_toc:
-        html += """
-    <div class="toc">
-        <h3>Table of Contents</h3>
-        <ul>
-"""
+        html_parts.append('<div class="toc">')
+        html_parts.append('<h3>Table of Contents</h3>')
+        html_parts.append('<ul>')
+        
+        # Group by session
         sessions = {}
         for story in stories:
             session_title = story.get('session_title', 'Untitled Session')
@@ -1091,50 +1215,68 @@ def generate_html(title, author, stories, format_style="interview", include_toc=
         
         for session_title in sessions.keys():
             anchor = session_title.lower().replace(' ', '-').replace('?', '').replace('!', '').replace(',', '')
-            html += f'            <li><a href="#{anchor}">{session_title}</a></li>\n'
+            html_parts.append(f'<li><a href="#{anchor}">{session_title}</a></li>')
         
-        html += """
-        </ul>
-    </div>
-"""
+        html_parts.append('</ul>')
+        html_parts.append('</div>')
+    
+    # MAIN CONTENT
+    html_parts.append('<div class="book-content">')
     
     current_session = None
     for story in stories:
         session_title = story.get('session_title', 'Untitled Session')
         anchor = session_title.lower().replace(' ', '-').replace('?', '').replace('!', '').replace(',', '')
         
+        # Add session header if new session
         if session_title != current_session:
             current_session = session_title
-            html += f'    <h2 id="{anchor}">{session_title}</h2>\n'
+            html_parts.append(f'<h2 id="{anchor}">{session_title}</h2>')
         
         if format_style == "interview":
-            html += f'    <div class="question">{story.get("question", "")}</div>\n'
+            html_parts.append(f'<div class="question">{story.get("question", "")}</div>')
         
-        # Format answer
+        # Format answer - already cleaned in prepare_stories_for_publishing
         answer_text = story.get('answer_text', '')
         if answer_text:
-            paragraphs = answer_text.split('\n')
+            html_parts.append('<div class="story-text">')
+            # Split by double newlines for paragraphs
+            paragraphs = answer_text.split('\n\n')
             for para in paragraphs:
                 if para.strip():
-                    escaped_para = para.strip().replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                    html += f'    <p>{escaped_para}</p>\n'
+                    # Further split by single newlines within paragraphs
+                    lines = para.strip().split('\n')
+                    for line in lines:
+                        if line.strip():
+                            # Escape HTML special characters but preserve formatting
+                            escaped_line = line.strip().replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
+                            html_parts.append(f'<p>{escaped_line}</p>')
+            html_parts.append('</div>')
         
         # Add images
         if include_images and story.get('images'):
             for img in story.get('images', []):
                 if img.get('base64'):
-                    html += f'    <img src="data:image/jpeg;base64,{img["base64"]}" class="story-image">\n'
+                    html_parts.append(f'<img src="data:image/jpeg;base64,{img["base64"]}" class="story-image">')
                     if img.get('caption'):
                         caption = img['caption'].replace('&', '&amp;').replace('<', '&lt;').replace('>', '&gt;')
-                        html += f'    <p class="image-caption">{caption}</p>\n'
+                        html_parts.append(f'<p class="image-caption">{caption}</p>')
         
-        html += '    <hr style="margin: 30px 0; border: none; border-top: 1px dashed #ccc;">\n'
+        # Add separator between stories
+        html_parts.append('<hr>')
     
-    html += """
-</body>
-</html>"""
+    html_parts.append('</div>')  # Close book-content
     
-    return html
+    # Close HTML
+    html_parts.append("""
+    </body>
+    </html>
+    """)
+    
+    # Join all parts
+    html_content = '\n'.join(html_parts)
+    
+    return html_content
 
 def generate_zip(title, author, stories, format_style="interview", include_toc=True, include_images=True, cover_image=None, cover_choice="simple"):
     """Generate ZIP package with HTML and images"""
