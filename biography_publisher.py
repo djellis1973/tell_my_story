@@ -44,17 +44,18 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
     for section in sections:
         section.top_margin = Inches(1)
         section.bottom_margin = Inches(1)
-        section.left_margin = Inches(1)
-        section.right_margin = Inches(1)
+        section.left_margin = Inches(1.25)  # Slightly larger left margin
+        section.right_margin = Inches(1.25)  # Slightly larger right margin
+        section.gutter = Inches(0)  # No gutter
     
     # Set document styling
     style = doc.styles['Normal']
     style.font.name = 'Times New Roman'
     style.font.size = Pt(12)
-    style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Text inside is left-aligned
-    style.paragraph_format.first_line_indent = Inches(0.25)  # Add paragraph indents
+    style.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
+    style.paragraph_format.first_line_indent = Inches(0.25)
     
-    # COVER PAGE - Based on user choice
+    # COVER PAGE
     if cover_choice == "uploaded" and cover_image:
         try:
             image_stream = io.BytesIO(cover_image)
@@ -64,7 +65,6 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
             last_paragraph = doc.paragraphs[-1]
             last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
             
-            # Add a page break after the cover image only
             doc.add_page_break()
             
         except Exception as e:
@@ -83,7 +83,7 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
             
             doc.add_page_break()
     else:
-        # Simple text cover only
+        # Simple text cover
         cover_para = doc.add_paragraph()
         cover_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         cover_run = cover_para.add_run(title)
@@ -98,22 +98,19 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
         
         doc.add_page_break()
     
-    # Add publication info (on its own page after cover)
+    # Copyright page
     copyright_para = doc.add_paragraph()
     copyright_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
     copyright_para.add_run(f"© {datetime.now().year} {author}. All rights reserved.")
-    
-    # Add a blank line after copyright
-    doc.add_paragraph()
+    doc.add_page_break()
     
     # Table of Contents
     if include_toc:
-        doc.add_page_break()
         toc_para = doc.add_paragraph()
         toc_run = toc_para.add_run("Table of Contents")
         toc_run.font.size = Pt(18)
         toc_run.font.bold = True
-        toc_para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center the TOC title
+        toc_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
         toc_para.paragraph_format.space_after = Pt(12)
         
         # Group by session for TOC
@@ -126,55 +123,72 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
         
         for session_title in sessions.keys():
             p = doc.add_paragraph(f"  {session_title}", style='List Bullet')
-            p.paragraph_format.left_indent = Inches(0.5)  # Indent the TOC entries
-            p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Keep TOC text left-aligned
+            p.paragraph_format.left_indent = Inches(0.5)
+            p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
+        
+        doc.add_page_break()
     
     # Add stories
-    doc.add_page_break()
-    
     current_session = None
     for story in stories:
         session_title = story.get('session_title', 'Untitled Session')
         
-        # Add session header if new session
+        # Add session header if new session - CENTERED BLOCK
         if session_title != current_session:
             current_session = session_title
             session_para = doc.add_paragraph()
             session_run = session_para.add_run(session_title)
             session_run.font.size = Pt(16)
             session_run.font.bold = True
-            session_para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Center the session title
+            session_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
             session_para.paragraph_format.space_before = Pt(12)
             session_para.paragraph_format.space_after = Pt(6)
         
-        if format_style == "interview":
-            # Add question
-            question_text = story.get('question', '')
-            clean_question = clean_text(question_text)
-            q_para = doc.add_paragraph()
-            q_run = q_para.add_run(clean_question)
-            q_run.font.bold = True
-            q_run.font.italic = True
-            q_para.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Questions left-aligned
-            q_para.paragraph_format.space_before = Pt(6)
-            q_para.paragraph_format.space_after = Pt(3)
-        
-        # Add answer - CLEAN IT HERE
-        answer_text = story.get('answer_text', '')
-        if answer_text:
-            # Clean the text before adding to document
-            clean_answer = clean_text(answer_text)
+        # Create a table for the content block to achieve centered block with left-aligned text
+        if format_style == "interview" or answer_text:
+            # Create a 1-cell table that acts as a centered container
+            table = doc.add_table(rows=1, cols=1)
+            table.autofit = False
+            table.allow_autofit = False
+            table.columns[0].width = Inches(5.5)  # Set a fixed width for the text block
             
-            # Split into paragraphs and add
-            paragraphs = clean_answer.split('\n')
-            for para in paragraphs:
-                if para.strip():
-                    p = doc.add_paragraph(para.strip())
-                    p.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Text inside left-aligned
-                    p.paragraph_format.first_line_indent = Inches(0.25)  # Indent first line
-                    p.paragraph_format.space_after = Pt(6)
+            # Center the table on the page
+            table.alignment = WD_ALIGN_PARAGRAPH.CENTER
+            
+            # Get the cell and set its properties
+            cell = table.cell(0, 0)
+            cell.vertical_alignment = WD_ALIGN_PARAGRAPH.TOP
+            
+            # Add question inside the cell if interview format
+            if format_style == "interview":
+                question_text = story.get('question', '')
+                clean_question = clean_text(question_text)
+                q_para = cell.paragraphs[0]  # Use the existing paragraph
+                q_run = q_para.add_run(clean_question)
+                q_run.font.bold = True
+                q_run.font.italic = True
+                q_para.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                q_para.paragraph_format.space_before = Pt(6)
+                q_para.paragraph_format.space_after = Pt(3)
+            
+            # Add answer inside the cell
+            answer_text = story.get('answer_text', '')
+            if answer_text:
+                clean_answer = clean_text(answer_text)
+                paragraphs = clean_answer.split('\n')
+                
+                for para in paragraphs:
+                    if para.strip():
+                        if format_style == "interview" and len(cell.paragraphs) == 1:
+                            # Add new paragraph for answer
+                            p = cell.add_paragraph(para.strip())
+                        else:
+                            p = cell.add_paragraph(para.strip())
+                        p.alignment = WD_ALIGN_PARAGRAPH.LEFT
+                        p.paragraph_format.first_line_indent = Inches(0.25)
+                        p.paragraph_format.space_after = Pt(6)
         
-        # Add images if any
+        # Add images outside the table (they should be centered independently)
         if include_images and story.get('images'):
             for img in story.get('images', []):
                 if img.get('base64'):
@@ -182,7 +196,7 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
                         img_data = base64.b64decode(img['base64'])
                         img_stream = io.BytesIO(img_data)
                         
-                        # Add image centered (the image block is centered)
+                        # Add image centered
                         doc.add_picture(img_stream, width=Inches(4))
                         last_paragraph = doc.paragraphs[-1]
                         last_paragraph.alignment = WD_ALIGN_PARAGRAPH.CENTER
@@ -194,7 +208,7 @@ def generate_docx(title, author, stories, format_style="interview", include_toc=
                             caption_run = caption_para.add_run(clean_caption)
                             caption_run.font.size = Pt(10)
                             caption_run.font.italic = True
-                            caption_para.alignment = WD_ALIGN_PARAGRAPH.CENTER  # Caption centered under image
+                            caption_para.alignment = WD_ALIGN_PARAGRAPH.CENTER
                             caption_para.paragraph_format.space_before = Pt(3)
                             caption_para.paragraph_format.space_after = Pt(6)
                     except:
