@@ -8,7 +8,7 @@ import re
 import hashlib
 import smtplib
 from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart  # This is the corrected line
+from email.mime.multipart import MIMEMultipart
 import secrets
 import string
 import time
@@ -17,6 +17,7 @@ import base64
 from PIL import Image
 import io
 import zipfile
+
 # ============================================================================
 # PAGE CONFIG - MUST BE FIRST
 # ============================================================================
@@ -26,7 +27,7 @@ st.set_page_config(page_title="Tell My Story - Your Life Timeline", page_icon="
 # IMPORT BIOGRAPHY PUBLISHER
 # ============================================================================
 try:
-    from biography_publisher import generate_docx, generate_html
+    from biography_publisher import generate_docx, generate_html, show_celebration
     PUBLISHER_AVAILABLE = True
 except ImportError as e:
     st.error(f"‚ùå Please ensure biography_publisher.py is in the same directory")
@@ -93,8 +94,8 @@ default_state = {
     "editor_content": {}, "show_privacy_settings": False, "show_cover_designer": False,
     "beta_feedback_display": None, "beta_feedback_storage": {},
     "auth_tab": 'login',  # Added for authentication
-    "show_publisher": False,  # <-- ADD THIS LINE
-    "cover_image_data": None  # <-- ADD THIS LINE
+    "show_publisher": False,
+    "cover_image_data": None
 }
 for key, value in default_state.items():
     if key not in st.session_state:
@@ -534,7 +535,7 @@ def logout_user():
             'current_bank_type', 'current_bank_id', 'show_bank_manager', 'show_bank_editor',
             'editing_bank_id', 'editing_bank_name', 'show_image_manager', 'editor_content',
             'current_rewrite_data', 'show_ai_rewrite', 'show_ai_rewrite_menu',
-            'show_publisher', 'cover_image_data']  # <-- ADD THESE
+            'show_publisher', 'cover_image_data']
     for key in keys:
         if key in st.session_state: 
             del st.session_state[key]
@@ -954,7 +955,6 @@ def show_cover_designer():
     
     st.markdown('</div>', unsafe_allow_html=True)
     st.stop()
-
 # ============================================================================
 # NARRATIVE GPS HELPER FUNCTIONS
 # ============================================================================
@@ -2995,6 +2995,10 @@ if st.session_state.get('show_profile_setup', False):
 # ============================================================================
 # MODAL HANDLING
 # ============================================================================
+if st.session_state.get('show_publisher', False):
+    # The publisher page handles itself, we just need to let it run
+    pass  # This will be handled by the publisher section above
+
 if st.session_state.show_ai_rewrite and st.session_state.current_rewrite_data:
     show_ai_rewrite_modal()
     st.stop()
