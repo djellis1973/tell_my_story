@@ -2965,14 +2965,28 @@ if st.session_state.get('show_profile_setup', False):
         
         st.markdown("---")
         st.markdown("**Restore from backup:**")
-        backup_file = st.file_uploader("Upload backup file", type=['json'])
-        if backup_file and st.button("🔄 Restore from Backup", type="primary", use_container_width=True):
-            backup_content = backup_file.read().decode('utf-8')
-            if restore_from_backup(backup_content):
-                st.success("Backup restored successfully!")
-                st.rerun()
-            else:
-                st.error("Failed to restore backup")
+        backup_file = st.file_uploader("Upload backup file", type=['json'], key="restore_uploader")
+        
+        if backup_file:
+            # Show file info
+            file_size_kb = len(backup_file.getvalue()) / 1024
+            st.info(f"📄 Selected: {backup_file.name} ({file_size_kb:.1f} KB)")
+            
+            # WARNING MESSAGE
+            st.warning("⚠️ **WARNING:** This will COMPLETELY OVERWRITE all your current stories and profile data. This action CANNOT be undone!")
+            
+            if st.button("🔄 RESTORE BACKUP (I understand the risk)", type="primary", use_container_width=True):
+                with st.spinner("Restoring your data..."):
+                    try:
+                        backup_content = backup_file.read().decode('utf-8')
+                        if restore_from_backup(backup_content):
+                            st.success("✅ Backup restored successfully! Your data has been recovered.")
+                            time.sleep(2)
+                            st.rerun()
+                        else:
+                            st.error("❌ Failed to restore backup. File may be corrupted or for wrong user.")
+                    except Exception as e:
+                        st.error(f"❌ Error: {str(e)}")
         
         st.markdown("---")
         st.markdown("**Previous backups:**")
@@ -2984,20 +2998,14 @@ if st.session_state.get('show_profile_setup', False):
                     st.text(f"📅 {b['date']} ({(b['size']/1024):.1f} KB)")
                 with col2:
                     if st.button(f"Restore", key=f"restore_{b['filename']}"):
-                        with open(f"backups/{b['filename']}", 'r') as f:
-                            backup_content = f.read()
-                        if restore_from_backup(backup_content):
-                            st.success("Restored!")
-                            st.rerun()
-        else:
-            st.info("No previous backups found")
-    
-    if st.button("← Close Profile", key="close_profile", use_container_width=True):
-        st.session_state.show_profile_setup = False
-        st.rerun()
-    
-    st.markdown('</div>', unsafe_allow_html=True)
-    st.stop()
+                        # WARNING for previous backups too
+                        st.warning("⚠️ This will overwrite ALL current data!")
+                        if st.button(f"✅ CONFIRM Restore {b['filename']}", key=f"confirm_{b['filename']}"):
+                            with open(f"backups/{b['filename']}", 'r') as f:
+                                backup_content = f.read()
+                            if restore_from_backup(backup_content):
+                                st.success("✅ Restored successfully!")
+                                st.rerun()
 
 # ============================================================================
 # MODAL HANDLING
