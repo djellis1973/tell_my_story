@@ -3305,25 +3305,26 @@ def clean_text_for_export(text):
 def generate_docx_book(title, author, stories, format_style="interview", include_toc=True, include_images=True, cover_image=None, cover_choice="simple"):
     """Generate a Word document from stories with proper formatting"""
     from docx import Document
-    from docx.shared import Inches, Pt, RGBColor
+    from docx.shared import Inches, Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     
     doc = Document()
     
-    # Set document margins
+    # Set document margins (these create the centered container)
     sections = doc.sections
     for section in sections:
         section.top_margin = Inches(1)
         section.bottom_margin = Inches(1)
-        section.left_margin = Inches(1)
-        section.right_margin = Inches(1)
+        section.left_margin = Inches(1.25)  # Slightly larger left margin
+        section.right_margin = Inches(1.25)  # Slightly larger right margin
+        # This creates a centered text area on the page
     
     # Set default font
     style = doc.styles['Normal']
     style.font.name = 'Times New Roman'
     style.font.size = Pt(12)
     
-    # COVER PAGE
+    # COVER PAGE - Centered
     if cover_choice == "uploaded" and cover_image:
         try:
             image_stream = io.BytesIO(cover_image)
@@ -3334,14 +3335,14 @@ def generate_docx_book(title, author, stories, format_style="interview", include
             r = p.add_run()
             r.add_picture(image_stream, width=Inches(5))
             
-            # Title below image
+            # Title below image - centered
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             run = p.add_run(title)
             run.font.size = Pt(42)
             run.font.bold = True
             
-            # Author
+            # Author - centered
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             run = p.add_run(f"by {author}")
@@ -3349,7 +3350,7 @@ def generate_docx_book(title, author, stories, format_style="interview", include
             run.font.italic = True
             
         except Exception as e:
-            # Fallback to text cover
+            # Fallback to text cover - centered
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             run = p.add_run(title)
@@ -3362,7 +3363,7 @@ def generate_docx_book(title, author, stories, format_style="interview", include
             run.font.size = Pt(24)
             run.font.italic = True
     else:
-        # Simple text cover
+        # Simple text cover - centered
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = p.add_run(title)
@@ -3377,7 +3378,7 @@ def generate_docx_book(title, author, stories, format_style="interview", include
     
     doc.add_page_break()
     
-    # Copyright page
+    # Copyright page - Centered
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.add_run(f"© {datetime.now().year} {author}. All rights reserved.")
@@ -3385,6 +3386,7 @@ def generate_docx_book(title, author, stories, format_style="interview", include
     
     # Table of Contents
     if include_toc:
+        # TOC title - centered
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = p.add_run("Table of Contents")
@@ -3400,11 +3402,11 @@ def generate_docx_book(title, author, stories, format_style="interview", include
                 sessions[session_title] = []
             sessions[session_title].append(story)
         
-        # Add TOC entries
+        # Add TOC entries - left-aligned but within centered margins
         for session_title in sessions.keys():
             p = doc.add_paragraph(f"  {session_title}", style='List Bullet')
             p.paragraph_format.left_indent = Inches(0.5)
-            p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT
+            p.paragraph_format.alignment = WD_ALIGN_PARAGRAPH.LEFT  # Left-aligned text
         
         doc.add_page_break()
     
@@ -3413,7 +3415,7 @@ def generate_docx_book(title, author, stories, format_style="interview", include
     for story in stories:
         session_title = story.get('session_title', 'Untitled Session')
         
-        # Add session header if new session
+        # Add session header if new session - centered
         if session_title != current_session:
             current_session = session_title
             p = doc.add_paragraph()
@@ -3425,7 +3427,7 @@ def generate_docx_book(title, author, stories, format_style="interview", include
             p.paragraph_format.space_after = Pt(6)
         
         if format_style == "interview":
-            # Add question (bold, italic, left-aligned)
+            # Add question - left-aligned (but within centered margins)
             question_text = story.get('question', '')
             clean_question = clean_text_for_export(question_text)
             p = doc.add_paragraph()
@@ -3436,7 +3438,7 @@ def generate_docx_book(title, author, stories, format_style="interview", include
             p.paragraph_format.space_before = Pt(6)
             p.paragraph_format.space_after = Pt(3)
         
-        # Add answer (with proper paragraph formatting)
+        # Add answer - left-aligned with first line indent (within centered margins)
         answer_text = story.get('answer_text', '')
         if answer_text:
             clean_answer = clean_text_for_export(answer_text)
@@ -3464,7 +3466,7 @@ def generate_docx_book(title, author, stories, format_style="interview", include
                         run = p.add_run()
                         run.add_picture(img_stream, width=Inches(4))
                         
-                        # Add caption
+                        # Add caption centered under image
                         if img.get('caption'):
                             clean_caption = clean_text_for_export(img['caption'])
                             p = doc.add_paragraph(clean_caption)
