@@ -4300,45 +4300,30 @@ with col5:
                     mime="application/rtf", use_container_width=True, key="rtf_download"
                 )
                 show_celebration()
-            
-            # Optional: JSON backup
-            with st.expander("📦 JSON Backup", expanded=False):
-                complete_data = {
-                    "user": st.session_state.user_id,
-                    "user_profile": st.session_state.user_account.get('profile', {}),
-                    "book_title": book_title,
-                    "book_author": book_author,
-                    "stories": stories_for_export,
-                    "export_date": datetime.now().isoformat(),
-                    "summary": {
-                        "total_stories": len(stories_for_export),
-                        "total_sessions": total_sessions,
-                        "total_words": total_words
-                    }
-                }
-                json_data = json.dumps(complete_data, indent=2)
-                st.download_button(
-                    label="📥 Download JSON Backup", 
-                    data=json_data,
-                    file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
-                    mime="application/json", 
-                    use_container_width=True
-                )
-        
-        else:  # This else is for "if stories_for_export:"
-            st.warning("No stories found! Start writing to publish your book.")
-            if st.button("← Return to Main App"):
-                st.session_state.show_publisher = False
-                st.rerun()
-    
-    else:  # This else is for "if st.session_state.logged_in and st.session_state.user_id:"
-        st.warning("Please log in to publish your book.")
-        if st.button("← Return to Main App"):
-            st.session_state.show_publisher = False
-            st.rerun()
-    
-    # Stop here - don't show main content
-    st.stop()
+
+# Optional: JSON backup
+with st.expander("📦 JSON Backup", expanded=False):
+    complete_data = {
+        "user": st.session_state.user_id,
+        "user_profile": st.session_state.user_account.get('profile', {}),
+        "book_title": book_title,
+        "book_author": book_author,
+        "stories": stories_for_export,
+        "export_date": datetime.now().isoformat(),
+        "summary": {
+            "total_stories": len(stories_for_export),
+            "total_sessions": total_sessions,
+            "total_words": total_words
+        }
+    }
+    json_data = json.dumps(complete_data, indent=2)
+    st.download_button(
+        label="📥 Download JSON Backup", 
+        data=json_data,
+        file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
+        mime="application/json", 
+        use_container_width=True
+    )
 
 # ============================================================================
 # MAIN CONTENT AREA
