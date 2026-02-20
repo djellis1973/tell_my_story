@@ -4301,29 +4301,30 @@ with col5:
                 )
                 show_celebration()
 
-# Optional: JSON backup
-with st.expander("📦 JSON Backup", expanded=False):
-    complete_data = {
-        "user": st.session_state.user_id,
-        "user_profile": st.session_state.user_account.get('profile', {}),
-        "book_title": book_title,
-        "book_author": book_author,
-        "stories": stories_for_export,
-        "export_date": datetime.now().isoformat(),
-        "summary": {
-            "total_stories": len(stories_for_export),
-            "total_sessions": total_sessions,
-            "total_words": total_words
+# Optional: JSON backup - NOW INSIDE THE IF BLOCK WHERE book_title IS DEFINED
+if stories_for_export:  # Make sure this if statement is properly indented in your actual code
+    with st.expander("📦 JSON Backup", expanded=False):
+        complete_data = {
+            "user": st.session_state.user_id,
+            "user_profile": st.session_state.user_account.get('profile', {}),
+            "book_title": book_title,
+            "book_author": book_author,
+            "stories": stories_for_export,
+            "export_date": datetime.now().isoformat(),
+            "summary": {
+                "total_stories": len(stories_for_export),
+                "total_sessions": total_sessions,
+                "total_words": total_words
+            }
         }
-    }
-    json_data = json.dumps(complete_data, indent=2)
-    st.download_button(
-        label="📥 Download JSON Backup", 
-        data=json_data,
-        file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
-        mime="application/json", 
-        use_container_width=True
-    )
+        json_data = json.dumps(complete_data, indent=2)
+        st.download_button(
+            label="📥 Download JSON Backup", 
+            data=json_data,
+            file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
+            mime="application/json", 
+            use_container_width=True
+        )
 
 # ============================================================================
 # MAIN CONTENT AREA
