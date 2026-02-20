@@ -3303,41 +3303,38 @@ def clean_text_for_export(text):
     return text.strip()
 
 def generate_docx_book(title, author, stories, format_style="interview", include_toc=True, include_images=True, cover_image=None, cover_choice="simple"):
-    """Generate a Word document from stories with proper formatting"""
+    """Generate a Word document - just like typing it manually"""
     from docx import Document
     from docx.shared import Inches, Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
     
     doc = Document()
     
-    # Set document margins
+    # ===== SIMPLE PAGE SETUP =====
     sections = doc.sections
     for section in sections:
         section.top_margin = Inches(1)
         section.bottom_margin = Inches(1)
-        section.left_margin = Inches(1)
-        section.right_margin = Inches(1)
+        section.left_margin = Inches(1.25)  # This centers the text block
+        section.right_margin = Inches(1.25)  # Equal margins = centered text block
     
-    # Set default font
+    # Default font
     style = doc.styles['Normal']
     style.font.name = 'Times New Roman'
     style.font.size = Pt(12)
     
-    # ========== COVER PAGE ==========
+    # ===== COVER PAGE =====
     if cover_choice == "uploaded" and cover_image:
         try:
+            # Just the image - centered
             image_stream = io.BytesIO(cover_image)
-            
-            # Create a centered paragraph for the image
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             r = p.add_run()
             r.add_picture(image_stream, width=Inches(5))
-            
-            # NO TITLE OR AUTHOR TEXT HERE - they're already on the cover image!
-            
-        except Exception as e:
-            # Fallback to text cover if image fails
+            # NO TEXT - it's on your cover image
+        except:
+            # Fallback to text cover
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             run = p.add_run(title)
@@ -3350,7 +3347,7 @@ def generate_docx_book(title, author, stories, format_style="interview", include
             run.font.size = Pt(24)
             run.font.italic = True
     else:
-        # Simple text cover
+        # Text cover
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = p.add_run(title)
@@ -3365,15 +3362,14 @@ def generate_docx_book(title, author, stories, format_style="interview", include
     
     doc.add_page_break()
     
-    # ========== COPYRIGHT PAGE (CENTERED) ==========
+    # ===== COPYRIGHT PAGE =====
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
     p.add_run(f"© {datetime.now().year} {author}. All rights reserved.")
     doc.add_page_break()
     
-    # ========== TABLE OF CONTENTS ==========
+    # ===== TABLE OF CONTENTS =====
     if include_toc:
-        # TOC title - centered
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
         run = p.add_run("Table of Contents")
@@ -3381,42 +3377,26 @@ def generate_docx_book(title, author, stories, format_style="interview", include
         run.font.bold = True
         p.paragraph_format.space_after = Pt(12)
         
-        # Group by session for TOC
+        # Group by session
         sessions = {}
         for story in stories:
             session_title = story.get('session_title', 'Untitled Session')
             if session_title not in sessions:
                 sessions[session_title] = []
-            sessions[session_title].append(story)
         
-        # Create a table for the TOC to ensure proper centering of the container
-        if sessions:
-            table = doc.add_table(rows=len(sessions), cols=1)
-            table.autofit = False
-            table.width = Inches(5)  # Fixed width for the TOC block
-            
-            # Center the table on the page
-            for row in table.rows:
-                row.cells[0].paragraphs[0].alignment = WD_ALIGN_PARAGRAPH.LEFT
-            
-            # Add session titles to table
-            for i, session_title in enumerate(sessions.keys()):
-                cell = table.cell(i, 0)
-                cell.text = f"  {session_title}"
-                cell.paragraphs[0].style = 'List Bullet'
-                cell.paragraphs[0].paragraph_format.left_indent = Inches(0.5)
+        # Add TOC entries - just plain text
+        for session_title in sessions.keys():
+            p = doc.add_paragraph(f"• {session_title}")
+            p.paragraph_format.left_indent = Inches(0.5)
         
         doc.add_page_break()
     
-    # ========== STORIES ==========
-    # Create a table for the main content to act as a centered container
-    # This is the key fix - a table with fixed width centered on the page
-    
+    # ===== STORIES =====
     current_session = None
     for story in stories:
         session_title = story.get('session_title', 'Untitled Session')
         
-        # Add session header if new session - centered
+        # Session header
         if session_title != current_session:
             current_session = session_title
             p = doc.add_paragraph()
@@ -3427,43 +3407,25 @@ def generate_docx_book(title, author, stories, format_style="interview", include
             p.paragraph_format.space_before = Pt(12)
             p.paragraph_format.space_after = Pt(6)
         
-        # Create a table for each story to act as a centered container
-        table = doc.add_table(rows=1, cols=1)
-        table.autofit = False
-        table.width = Inches(5.5)  # Fixed width for the text block
-        
-        # Center the table on the page
-        table.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        
-        # Get the cell where we'll put our content
-        cell = table.cell(0, 0)
-        
+        # Question (if interview style)
         if format_style == "interview":
-            # Add question (bold, italic, left-aligned)
-            question_text = story.get('question', '')
-            clean_question = clean_text_for_export(question_text)
-            p = cell.add_paragraph(clean_question)
+            question_text = clean_text_for_export(story.get('question', ''))
+            p = doc.add_paragraph(question_text)
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
             p.runs[0].bold = True
             p.runs[0].italic = True
-            p.paragraph_format.space_before = Pt(6)
-            p.paragraph_format.space_after = Pt(3)
         
-        # Add answer (with proper paragraph formatting)
-        answer_text = story.get('answer_text', '')
+        # Answer
+        answer_text = clean_text_for_export(story.get('answer_text', ''))
         if answer_text:
-            clean_answer = clean_text_for_export(answer_text)
-            
-            # Split into paragraphs and add
-            paragraphs = clean_answer.split('\n')
+            paragraphs = answer_text.split('\n')
             for para in paragraphs:
                 if para.strip():
-                    p = cell.add_paragraph(para.strip())
+                    p = doc.add_paragraph(para.strip())
                     p.alignment = WD_ALIGN_PARAGRAPH.LEFT
                     p.paragraph_format.first_line_indent = Inches(0.25)
-                    p.paragraph_format.space_after = Pt(6)
         
-        # Add images
+        # Images
         if include_images and story.get('images'):
             for img in story.get('images', []):
                 if img.get('base64'):
@@ -3471,35 +3433,29 @@ def generate_docx_book(title, author, stories, format_style="interview", include
                         img_data = base64.b64decode(img['base64'])
                         img_stream = io.BytesIO(img_data)
                         
-                        # Add image centered within the cell
-                        p = cell.add_paragraph()
+                        # Image centered
+                        p = doc.add_paragraph()
                         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
                         run = p.add_run()
                         run.add_picture(img_stream, width=Inches(4))
                         
-                        # Add caption
+                        # Caption
                         if img.get('caption'):
-                            clean_caption = clean_text_for_export(img['caption'])
-                            p = cell.add_paragraph(clean_caption)
+                            caption = clean_text_for_export(img['caption'])
+                            p = doc.add_paragraph(caption)
                             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                            if p.runs:
-                                p.runs[0].font.size = Pt(10)
-                                p.runs[0].font.italic = True
-                            p.paragraph_format.space_before = Pt(3)
-                            p.paragraph_format.space_after = Pt(6)
-                    except Exception as e:
-                        print(f"Error adding image: {e}")
+                            p.runs[0].font.size = Pt(10)
+                            p.runs[0].font.italic = True
+                    except:
                         continue
         
-        # Add spacing between stories
+        # Space between stories
         doc.add_paragraph()
     
-    # Save to bytes
+    # Save
     docx_bytes = io.BytesIO()
     doc.save(docx_bytes)
     docx_bytes.seek(0)
-    
-    return docx_bytes.getvalue()
     
     return docx_bytes.getvalue()
 
