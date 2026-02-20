@@ -5,5 +5,3 @@ streamlit-quill>=0.0.2
 fpdf2>=2.7.0
 Pillow>=10.0.0
 EbookLib>=0.18
-xhtml2pdf>=0.2.12
-pypandoc>=1.12
