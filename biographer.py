@@ -17,14 +17,6 @@ import base64
 from PIL import Image
 import io
 import zipfile
-# Add this right after your imports to verify everything loaded
-print("Starting app - checking imports...")
-print(f"TopicBank: {TopicBank is not None}")
-print(f"SessionManager: {SessionManager is not None}")
-print(f"VignetteManager: {VignetteManager is not None}")
-print(f"SessionLoader: {SessionLoader is not None}")
-print(f"BetaReader: {BetaReader is not None}")
-print(f"QuestionBankManager: {QuestionBankManager is not None}")
 
 # ============================================================================
 # PAGE CONFIG - MUST BE FIRST
