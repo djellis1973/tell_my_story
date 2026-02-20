@@ -1,5 +1,4 @@
 # biographer.py – Tell My Story App (COMPLETE WORKING VERSION)
-import html
 import streamlit as st
 import json
 from datetime import datetime, date
@@ -18,6 +17,7 @@ import base64
 from PIL import Image
 import io
 import zipfile
+import html
 
 # ============================================================================
 # PAGE CONFIG - MUST BE FIRST
