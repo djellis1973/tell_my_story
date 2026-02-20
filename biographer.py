@@ -32,10 +32,9 @@ print(f"QuestionBankManager: {QuestionBankManager is not None}")
 st.set_page_config(page_title="Tell My Story - Your Life Timeline", page_icon="📖", layout="wide", initial_sidebar_state="expanded")
 
 # ============================================================================
-# PUBLISHER AVAILABILITY (will be defined later)
+# PUBLISHER AVAILABILITY (functions defined later)
 # ============================================================================
-PUBLISHER_AVAILABLE = True  # We'll define all functions in this file❌ Please ensure biography_publisher.py is in the same directory")
-st.stop()
+PUBLISHER_AVAILABLE = True
 
 # ============================================================================
 # IMPORT QUILL RICH TEXT EDITOR
