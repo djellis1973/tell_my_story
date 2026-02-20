@@ -3743,328 +3743,6 @@ def show_celebration():
     st.balloons()
     st.success("🎉 Your book has been generated successfully!")
 
-def generate_pdf_book(title, author, stories, format_style="interview", include_toc=True, include_images=True, cover_image=None, cover_choice="simple"):
-    """Generate a PDF file using fpdf2 (pure Python)"""
-    try:
-        from fpdf import FPDF
-        
-        class PDF(FPDF):
-            def header(self):
-                pass
-            
-            def footer(self):
-                pass
-        
-        pdf = PDF()
-        pdf.add_page()
-        
-        # Set margins for centered text block
-        pdf.set_left_margin(30)
-        pdf.set_right_margin(30)
-        
-        # ===== COVER PAGE =====
-        if cover_choice == "uploaded" and cover_image:
-            try:
-                # Save cover image temporarily
-                import tempfile
-                with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-                    tmp.write(cover_image)
-                    tmp_path = tmp.name
-                
-                # Add image centered
-                pdf.image(tmp_path, x=30, y=40, w=150)
-                os.unlink(tmp_path)  # Delete temp file
-            except Exception as e:
-                # Fallback to text cover if image fails
-                pdf.set_font('Times', 'B', 42)
-                pdf.cell(0, 40, title, ln=True, align='C')
-                pdf.ln(20)
-                pdf.set_font('Times', 'I', 24)
-                pdf.cell(0, 20, f"by {author}", ln=True, align='C')
-        else:
-            # Text cover
-            pdf.set_font('Times', 'B', 42)
-            pdf.cell(0, 40, title, ln=True, align='C')
-            pdf.ln(20)
-            pdf.set_font('Times', 'I', 24)
-            pdf.cell(0, 20, f"by {author}", ln=True, align='C')
-        
-        pdf.add_page()
-        
-        # ===== COPYRIGHT PAGE =====
-        pdf.set_font('Times', '', 12)
-        pdf.cell(0, 10, f"© {datetime.now().year} {author}. All rights reserved.", ln=True, align='C')
-        
-        pdf.add_page()
-        
-        # ===== TABLE OF CONTENTS =====
-        if include_toc:
-            pdf.set_font('Times', 'B', 18)
-            pdf.cell(0, 20, "Table of Contents", ln=True, align='C')
-            pdf.ln(10)
-            
-            sessions = {}
-            for story in stories:
-                session_title = story.get('session_title', 'Untitled Session')
-                if session_title not in sessions:
-                    sessions[session_title] = []
-            
-            pdf.set_font('Times', '', 12)
-            for session_title in sessions.keys():
-                pdf.cell(0, 8, f"  • {session_title}", ln=True)
-            
-            pdf.add_page()
-        
-        # ===== STORIES =====
-        current_session = None
-        for story in stories:
-            session_title = story.get('session_title', 'Untitled Session')
-            
-            if session_title != current_session:
-                current_session = session_title
-                pdf.set_font('Times', 'B', 16)
-                pdf.cell(0, 20, session_title, ln=True, align='C')
-                pdf.ln(5)
-            
-            if format_style == "interview":
-                question = clean_text_for_export(story.get('question', ''))
-                pdf.set_font('Times', 'BI', 12)
-                pdf.multi_cell(0, 8, question)
-                pdf.ln(2)
-            
-            answer = clean_text_for_export(story.get('answer_text', ''))
-            if answer:
-                pdf.set_font('Times', '', 12)
-                paragraphs = answer.split('\n')
-                for para in paragraphs:
-                    if para.strip():
-                        pdf.multi_cell(0, 8, para.strip())
-                pdf.ln(5)
-            
-            # Images
-            if include_images and story.get('images'):
-                for img in story.get('images', []):
-                    if img.get('base64'):
-                        try:
-                            img_data = base64.b64decode(img['base64'])
-                            import tempfile
-                            with tempfile.NamedTemporaryFile(suffix='.jpg', delete=False) as tmp:
-                                tmp.write(img_data)
-                                tmp_path = tmp.name
-                            
-                            pdf.image(tmp_path, x=50, y=pdf.get_y(), w=110)
-                            os.unlink(tmp_path)
-                            pdf.ln(40)
-                            
-                            if img.get('caption'):
-                                caption = clean_text_for_export(img['caption'])
-                                pdf.set_font('Times', 'I', 10)
-                                pdf.cell(0, 6, caption, ln=True, align='C')
-                                pdf.ln(5)
-                        except Exception as e:
-                            print(f"Image error: {e}")
-                            continue
-        
-        # Generate PDF
-        return pdf.output(dest='S').encode('latin1')
-        
-    except Exception as e:
-        st.error(f"Error generating PDF: {e}")
-        return None
-
-def generate_epub_book(title, author, stories, format_style="interview", include_toc=True, include_images=True, cover_image=None, cover_choice="simple"):
-    """Generate an EPUB file (reflowable for e-readers)"""
-    try:
-        from ebooklib import epub
-        
-        # Create EPUB book
-        book = epub.EpubBook()
-        
-        # Set metadata
-        book.set_identifier(hashlib.md5(f"{title}{author}{datetime.now()}".encode()).hexdigest()[:16])
-        book.set_title(title)
-        book.set_language('en')
-        book.add_author(author)
-        
-        # Add cover
-        if cover_choice == "uploaded" and cover_image:
-            book.set_cover("cover.jpg", cover_image)
-        else:
-            # Create a simple HTML cover
-            cover_content = f"""
-            <html>
-            <body style="text-align: center; margin-top: 20%;">
-                <h1>{html.escape(title)}</h1>
-                <h2>by {html.escape(author)}</h2>
-            </body>
-            </html>
-            """
-            cover_page = epub.EpubHtml(title='Cover', file_name='cover.xhtml', lang='en')
-            cover_page.content = cover_content
-            book.add_item(cover_page)
-        
-        # Add CSS
-        style = '''
-        body { font-family: Georgia, serif; line-height: 1.6; margin: 5%; }
-        h1 { text-align: center; }
-        h2 { text-align: center; }
-        .question { font-weight: bold; font-style: italic; margin-top: 1em; }
-        .answer p { text-indent: 0.5in; margin-bottom: 0.5em; }
-        .session-header { text-align: center; font-size: 1.5em; margin: 1em 0; }
-        .image-caption { text-align: center; font-style: italic; font-size: 0.9em; }
-        '''
-        nav_css = epub.EpubItem(uid="style_nav", file_name="style/nav.css", media_type="text/css", content=style)
-        book.add_item(nav_css)
-        
-        chapters = []
-        current_session = None
-        chapter_index = 1
-        
-        for story in stories:
-            session_title = story.get('session_title', 'Untitled Session')
-            
-            # New session = new chapter
-            if session_title != current_session:
-                current_session = session_title
-                
-                # Create chapter for this session
-                chapter = epub.EpubHtml(
-                    title=session_title,
-                    file_name=f'chap_{chapter_index:02d}.xhtml',
-                    lang='en'
-                )
-                chapter.add_item(nav_css)
-                
-                # Start chapter content
-                content = [f'<h1 class="session-header">{html.escape(session_title)}</h1>']
-                
-                # Find all stories in this session
-                session_stories = [s for s in stories if s.get('session_title') == session_title]
-                
-                for s in session_stories:
-                    if format_style == "interview":
-                        question = clean_text_for_export(s.get('question', ''))
-                        content.append(f'<p class="question">{html.escape(question)}</p>')
-                    
-                    answer = clean_text_for_export(s.get('answer_text', ''))
-                    if answer:
-                        content.append('<div class="answer">')
-                        paragraphs = answer.split('\n')
-                        for para in paragraphs:
-                            if para.strip():
-                                content.append(f'<p>{html.escape(para.strip())}</p>')
-                        content.append('</div>')
-                    
-                    # Add images
-                    if include_images and s.get('images'):
-                        for img in s.get('images', []):
-                            if img.get('base64'):
-                                img_data = base64.b64decode(img['base64'])
-                                img_file = f"img_{chapter_index}_{img.get('id', 'unknown')}.jpg"
-                                img_item = epub.EpubImage()
-                                img_item.file_name = f"images/{img_file}"
-                                img_item.media_type = "image/jpeg"
-                                img_item.content = img_data
-                                book.add_item(img_item)
-                                
-                                content.append(f'<img src="images/{img_file}" style="max-width:100%; display:block; margin:20px auto;"/>')
-                                
-                                if img.get('caption'):
-                                    caption = clean_text_for_export(img['caption'])
-                                    content.append(f'<p class="image-caption">{html.escape(caption)}</p>')
-                
-                chapter.content = '\n'.join(content)
-                book.add_item(chapter)
-                chapters.append(chapter)
-                chapter_index += 1
-        
-        # Add table of contents
-        book.toc = chapters
-        
-        # Add navigation
-        book.add_item(epub.EpubNcx())
-        book.add_item(epub.EpubNav())
-        
-        # Define spine (reading order)
-        book.spine = ['nav'] + chapters
-        
-        # Generate EPUB
-        epub_bytes = io.BytesIO()
-        epub.write_epub(epub_bytes, book)
-        epub_bytes.seek(0)
-        
-        return epub_bytes.getvalue()
-        
-    except ImportError:
-        st.error("Please install ebooklib: pip install ebooklib")
-        return None
-    except Exception as e:
-        st.error(f"Error generating EPUB: {e}")
-        return None
-
-def generate_rtf_book(title, author, stories, format_style="interview", include_toc=True, include_images=False, cover_image=None, cover_choice="simple"):
-    """Generate an RTF file (images not supported in RTF)"""
-    try:
-        # RTF header
-        rtf = r"""{\rtf1\ansi\deff0{\fonttbl{\f0 Times New Roman;}}
-\paperw12240\paperh15840\margl1440\margr1440\margt1440\margb1440
-"""
-        lines = [rtf]
-        
-        # Cover
-        if cover_choice == "uploaded" and cover_image:
-            lines.append(r"\pard\qc\fs72\b COVER IMAGE NOT SUPPORTED IN RTF\par\par")
-        else:
-            lines.append(r"\pard\qc\fs72\b " + title + r"\par\par")
-            lines.append(r"\pard\qc\fs48\i by " + author + r"\par\par")
-        
-        lines.append(r"\pard\qc\fs24\i Copyright " + str(datetime.now().year) + r" " + author + r". All rights reserved.\par\par")
-        lines.append(r"\page")
-        
-        # Table of Contents
-        if include_toc:
-            lines.append(r"\pard\qc\fs36\b Table of Contents\par\par")
-            
-            sessions = {}
-            for story in stories:
-                session_title = story.get('session_title', 'Untitled Session')
-                if session_title not in sessions:
-                    sessions[session_title] = []
-            
-            for session_title in sessions.keys():
-                lines.append(r"\pard\ql\fs28\b " + session_title + r"\par")
-            lines.append(r"\page")
-        
-        # Stories
-        current_session = None
-        for story in stories:
-            session_title = story.get('session_title', 'Untitled Session')
-            
-            if session_title != current_session:
-                current_session = session_title
-                lines.append(r"\pard\qc\fs36\b " + session_title + r"\par\par")
-            
-            if format_style == "interview":
-                question = clean_text_for_export(story.get('question', ''))
-                lines.append(r"\pard\ql\fs28\b\i " + question + r"\par")
-            
-            answer = clean_text_for_export(story.get('answer_text', ''))
-            if answer:
-                paragraphs = answer.split('\n')
-                for para in paragraphs:
-                    if para.strip():
-                        lines.append(r"\pard\ql\fs24\fi360 " + para.strip() + r"\par")
-            
-            lines.append(r"\par")
-        
-        lines.append(r"}")
-        
-        return '\n'.join(lines).encode('utf-8')
-        
-    except Exception as e:
-        st.error(f"Error generating RTF: {e}")
-        return None
-
 # ============================================================================
 # PUBLISHER PAGE - SHOW ON MAIN SCREEN WHEN ACTIVATED
 # ============================================================================
@@ -4213,94 +3891,65 @@ if st.session_state.get('show_publisher', False):
             # Generate buttons
             st.markdown("---")
             st.markdown("### 🖨️ Generate Your Book")
-
-            # First row - 3 formats
-            col1, col2, col3 = st.columns(3)
-
+            
+            col1, col2 = st.columns(2)
+            
             with col1:
-                if st.button("📊 DOCX", type="primary", use_container_width=True):
+                if st.button("📊 Generate DOCX", type="primary", use_container_width=True):
                     with st.spinner("Creating Word document..."):
                         cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
+                        
                         docx_bytes = generate_docx_book(
-                            book_title, book_author, stories_for_export,
-                            format_style, include_toc, True, cover_image_data, cover_choice
+                            book_title,
+                            book_author,
+                            stories_for_export,
+                            format_style,
+                            include_toc,
+                            True,  # include_images
+                            cover_image_data,
+                            cover_choice
                         )
-                        if docx_bytes:
-                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
-                            st.download_button(
-                                "📥 Download DOCX", data=docx_bytes, file_name=filename,
-                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                                use_container_width=True, key="docx_download"
-                            )
-                            show_celebration()
-
+                        
+                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
+                        
+                        st.download_button(
+                            "📥 Download DOCX", 
+                            data=docx_bytes, 
+                            file_name=filename, 
+                            mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document", 
+                            use_container_width=True,
+                            key="docx_download"
+                        )
+                        show_celebration()
+            
             with col2:
-                if st.button("🌐 HTML", type="primary", use_container_width=True):
+                if st.button("🌐 Generate HTML", type="primary", use_container_width=True):
                     with st.spinner("Creating HTML page..."):
                         cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
+                        
                         html_content = generate_html_book(
-                            book_title, book_author, stories_for_export,
-                            format_style, include_toc, True, cover_image_data, cover_choice
+                            book_title,
+                            book_author,
+                            stories_for_export,
+                            format_style,
+                            include_toc,
+                            True,  # include_images
+                            cover_image_data,
+                            cover_choice
                         )
-                        if html_content:
-                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
-                            st.download_button(
-                                "📥 Download HTML", data=html_content, file_name=filename,
-                                mime="text/html", use_container_width=True, key="html_download"
-                            )
-                            show_celebration()
-
-            with col3:
-                if st.button("📱 EPUB", type="primary", use_container_width=True):
-                    with st.spinner("Creating EPUB for e-readers..."):
-                        cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
-                        epub_bytes = generate_epub_book(
-                            book_title, book_author, stories_for_export,
-                            format_style, include_toc, True, cover_image_data, cover_choice
+                        
+                        filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
+                        
+                        st.download_button(
+                            "📥 Download HTML", 
+                            data=html_content, 
+                            file_name=filename, 
+                            mime="text/html", 
+                            use_container_width=True,
+                            key="html_download"
                         )
-                        if epub_bytes:
-                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.epub"
-                            st.download_button(
-                                "📥 Download EPUB", data=epub_bytes, file_name=filename,
-                                mime="application/epub+zip", use_container_width=True, key="epub_download"
-                            )
-                            show_celebration()
-
-            # Second row - 2 formats
-            col4, col5 = st.columns(2)
-
-            with col4:
-                if st.button("📄 PDF", type="primary", use_container_width=True):
-                    with st.spinner("Creating PDF..."):
-                        cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
-                        pdf_bytes = generate_pdf_book(
-                            book_title, book_author, stories_for_export,
-                            format_style, include_toc, True, cover_image_data, cover_choice
-                        )
-                        if pdf_bytes:
-                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
-                            st.download_button(
-                                "📥 Download PDF", data=pdf_bytes, file_name=filename,
-                                mime="application/pdf", use_container_width=True, key="pdf_download"
-                            )
-                            show_celebration()
-
-            with col5:
-                if st.button("📝 RTF", type="secondary", use_container_width=True):
-                    with st.spinner("Creating RTF..."):
-                        cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
-                        rtf_bytes = generate_rtf_book(
-                            book_title, book_author, stories_for_export,
-                            format_style, include_toc, False, cover_image_data, cover_choice
-                        )
-                        if rtf_bytes:
-                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.rtf"
-                            st.download_button(
-                                "📥 Download RTF", data=rtf_bytes, file_name=filename,
-                                mime="application/rtf", use_container_width=True, key="rtf_download"
-                            )
-                            show_celebration()
-
+                        show_celebration()
+            
             # Optional: JSON backup
             with st.expander("📦 JSON Backup", expanded=False):
                 complete_data = {
@@ -4338,7 +3987,6 @@ if st.session_state.get('show_publisher', False):
     
     # Stop here - don't show main content
     st.stop()
-
 # ============================================================================
 # MAIN CONTENT AREA
 # ============================================================================
@@ -4358,6 +4006,7 @@ if (st.session_state.show_vignette_modal or
     
     st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
     st.stop()
+
 if st.session_state.current_session >= len(SESSIONS): 
     st.session_state.current_session = 0
 
