@@ -3303,20 +3303,22 @@ def clean_text_for_export(text):
     return text.strip()
 
 def generate_docx_book(title, author, stories, format_style="interview", include_toc=True, include_images=True, cover_image=None, cover_choice="simple"):
-    """Generate a Word document - just like typing it manually"""
+    """Generate a Word document by simulating typing (fixes left alignment)"""
     from docx import Document
     from docx.shared import Inches, Pt
     from docx.enum.text import WD_ALIGN_PARAGRAPH
+    from docx.oxml.ns import qn
+    from docx.oxml import OxmlElement
     
     doc = Document()
     
-    # ===== SIMPLE PAGE SETUP =====
+    # Page setup
     sections = doc.sections
     for section in sections:
         section.top_margin = Inches(1)
         section.bottom_margin = Inches(1)
-        section.left_margin = Inches(1.25)  # This centers the text block
-        section.right_margin = Inches(1.25)  # Equal margins = centered text block
+        section.left_margin = Inches(1.25)
+        section.right_margin = Inches(1.25)
     
     # Default font
     style = doc.styles['Normal']
@@ -3326,55 +3328,88 @@ def generate_docx_book(title, author, stories, format_style="interview", include
     # ===== COVER PAGE =====
     if cover_choice == "uploaded" and cover_image:
         try:
-            # Just the image - centered
             image_stream = io.BytesIO(cover_image)
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
             r = p.add_run()
             r.add_picture(image_stream, width=Inches(5))
-            # NO TEXT - it's on your cover image
         except:
-            # Fallback to text cover
+            # Fallback to text cover - ADD TEXT IN CHUNKS TO SIMULATE TYPING
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = p.add_run(title)
-            run.font.size = Pt(42)
-            run.font.bold = True
             
+            # Add title word by word to simulate typing
+            title_words = title.split()
+            for i, word in enumerate(title_words):
+                r = p.add_run(word)
+                r.font.size = Pt(42)
+                r.font.bold = True
+                if i < len(title_words) - 1:
+                    p.add_run(" ")
+            
+            # Add author line - separate paragraph
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = p.add_run(f"by {author}")
-            run.font.size = Pt(24)
-            run.font.italic = True
+            author_text = f"by {author}"
+            author_words = author_text.split()
+            for i, word in enumerate(author_words):
+                r = p.add_run(word)
+                r.font.size = Pt(24)
+                r.font.italic = True
+                if i < len(author_words) - 1:
+                    p.add_run(" ")
     else:
-        # Text cover
+        # Text cover - ADD TEXT IN CHUNKS
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run(title)
-        run.font.size = Pt(42)
-        run.font.bold = True
         
+        # Title word by word
+        title_words = title.split()
+        for i, word in enumerate(title_words):
+            r = p.add_run(word)
+            r.font.size = Pt(42)
+            r.font.bold = True
+            if i < len(title_words) - 1:
+                p.add_run(" ")
+        
+        # Author line
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run(f"by {author}")
-        run.font.size = Pt(24)
-        run.font.italic = True
+        author_text = f"by {author}"
+        author_words = author_text.split()
+        for i, word in enumerate(author_words):
+            r = p.add_run(word)
+            r.font.size = Pt(24)
+            r.font.italic = True
+            if i < len(author_words) - 1:
+                p.add_run(" ")
     
     doc.add_page_break()
     
     # ===== COPYRIGHT PAGE =====
     p = doc.add_paragraph()
     p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-    p.add_run(f"© {datetime.now().year} {author}. All rights reserved.")
+    copyright_text = f"© {datetime.now().year} {author}. All rights reserved."
+    # Add word by word to simulate typing
+    copyright_words = copyright_text.split()
+    for i, word in enumerate(copyright_words):
+        p.add_run(word)
+        if i < len(copyright_words) - 1:
+            p.add_run(" ")
     doc.add_page_break()
     
     # ===== TABLE OF CONTENTS =====
     if include_toc:
         p = doc.add_paragraph()
         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-        run = p.add_run("Table of Contents")
-        run.font.size = Pt(18)
-        run.font.bold = True
+        # Add TOC title word by word
+        toc_words = "Table of Contents".split()
+        for i, word in enumerate(toc_words):
+            r = p.add_run(word)
+            r.font.size = Pt(18)
+            r.font.bold = True
+            if i < len(toc_words) - 1:
+                p.add_run(" ")
         p.paragraph_format.space_after = Pt(12)
         
         # Group by session
@@ -3384,10 +3419,17 @@ def generate_docx_book(title, author, stories, format_style="interview", include
             if session_title not in sessions:
                 sessions[session_title] = []
         
-        # Add TOC entries - just plain text
+        # Add TOC entries - each as its own paragraph with proper left alignment
         for session_title in sessions.keys():
-            p = doc.add_paragraph(f"• {session_title}")
+            p = doc.add_paragraph()
+            p.alignment = WD_ALIGN_PARAGRAPH.LEFT
             p.paragraph_format.left_indent = Inches(0.5)
+            # Add session title word by word
+            title_words = session_title.split()
+            for i, word in enumerate(title_words):
+                p.add_run(word)
+                if i < len(title_words) - 1:
+                    p.add_run(" ")
         
         doc.add_page_break()
     
@@ -3401,19 +3443,33 @@ def generate_docx_book(title, author, stories, format_style="interview", include
             current_session = session_title
             p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-            run = p.add_run(session_title)
-            run.font.size = Pt(16)
-            run.font.bold = True
+            
+            # Add session title word by word
+            session_words = session_title.split()
+            for i, word in enumerate(session_words):
+                r = p.add_run(word)
+                r.font.size = Pt(16)
+                r.font.bold = True
+                if i < len(session_words) - 1:
+                    p.add_run(" ")
+            
             p.paragraph_format.space_before = Pt(12)
             p.paragraph_format.space_after = Pt(6)
         
         # Question (if interview style)
         if format_style == "interview":
             question_text = clean_text_for_export(story.get('question', ''))
-            p = doc.add_paragraph(question_text)
+            p = doc.add_paragraph()
             p.alignment = WD_ALIGN_PARAGRAPH.LEFT
-            p.runs[0].bold = True
-            p.runs[0].italic = True
+            
+            # Add question word by word
+            question_words = question_text.split()
+            for i, word in enumerate(question_words):
+                r = p.add_run(word)
+                r.bold = True
+                r.italic = True
+                if i < len(question_words) - 1:
+                    p.add_run(" ")
         
         # Answer
         answer_text = clean_text_for_export(story.get('answer_text', ''))
@@ -3421,9 +3477,16 @@ def generate_docx_book(title, author, stories, format_style="interview", include
             paragraphs = answer_text.split('\n')
             for para in paragraphs:
                 if para.strip():
-                    p = doc.add_paragraph(para.strip())
+                    p = doc.add_paragraph()
                     p.alignment = WD_ALIGN_PARAGRAPH.LEFT
                     p.paragraph_format.first_line_indent = Inches(0.25)
+                    
+                    # Add paragraph word by word to simulate typing
+                    para_words = para.strip().split()
+                    for i, word in enumerate(para_words):
+                        p.add_run(word)
+                        if i < len(para_words) - 1:
+                            p.add_run(" ")
         
         # Images
         if include_images and story.get('images'):
@@ -3436,16 +3499,22 @@ def generate_docx_book(title, author, stories, format_style="interview", include
                         # Image centered
                         p = doc.add_paragraph()
                         p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                        run = p.add_run()
-                        run.add_picture(img_stream, width=Inches(4))
+                        r = p.add_run()
+                        r.add_picture(img_stream, width=Inches(4))
                         
-                        # Caption
+                        # Caption - word by word
                         if img.get('caption'):
                             caption = clean_text_for_export(img['caption'])
-                            p = doc.add_paragraph(caption)
+                            p = doc.add_paragraph()
                             p.alignment = WD_ALIGN_PARAGRAPH.CENTER
-                            p.runs[0].font.size = Pt(10)
-                            p.runs[0].font.italic = True
+                            
+                            caption_words = caption.split()
+                            for i, word in enumerate(caption_words):
+                                r = p.add_run(word)
+                                r.font.size = Pt(10)
+                                r.font.italic = True
+                                if i < len(caption_words) - 1:
+                                    p.add_run(" ")
                     except:
                         continue
         
