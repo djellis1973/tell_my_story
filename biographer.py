@@ -26,7 +26,7 @@ st.set_page_config(page_title="Tell My Story - Your Life Timeline", page_icon="
 # PUBLISHER AVAILABILITY (will be defined later)
 # ============================================================================
 PUBLISHER_AVAILABLE = True  # We'll define all functions in this file‚ùå Please ensure biography_publisher.py is in the same directory")
-    st.stop()
+st.stop()
 
 # ============================================================================
 # IMPORT QUILL RICH TEXT EDITOR
