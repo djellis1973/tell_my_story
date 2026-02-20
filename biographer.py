@@ -4211,120 +4211,133 @@ if st.session_state.get('show_publisher', False):
                         st.divider()
             
             # Generate buttons
-st.markdown("---")
-st.markdown("### 🖨️ Generate Your Book")
+            st.markdown("---")
+            st.markdown("### 🖨️ Generate Your Book")
 
-# First row - 3 formats
-col1, col2, col3 = st.columns(3)
+            # First row - 3 formats
+            col1, col2, col3 = st.columns(3)
 
-with col1:
-    if st.button("📊 DOCX", type="primary", use_container_width=True):
-        with st.spinner("Creating Word document..."):
-            cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
-            docx_bytes = generate_docx_book(
-                book_title, book_author, stories_for_export,
-                format_style, include_toc, True, cover_image_data, cover_choice
-            )
-            if docx_bytes:
-                filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
+            with col1:
+                if st.button("📊 DOCX", type="primary", use_container_width=True):
+                    with st.spinner("Creating Word document..."):
+                        cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
+                        docx_bytes = generate_docx_book(
+                            book_title, book_author, stories_for_export,
+                            format_style, include_toc, True, cover_image_data, cover_choice
+                        )
+                        if docx_bytes:
+                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.docx"
+                            st.download_button(
+                                "📥 Download DOCX", data=docx_bytes, file_name=filename,
+                                mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+                                use_container_width=True, key="docx_download"
+                            )
+                            show_celebration()
+
+            with col2:
+                if st.button("🌐 HTML", type="primary", use_container_width=True):
+                    with st.spinner("Creating HTML page..."):
+                        cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
+                        html_content = generate_html_book(
+                            book_title, book_author, stories_for_export,
+                            format_style, include_toc, True, cover_image_data, cover_choice
+                        )
+                        if html_content:
+                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
+                            st.download_button(
+                                "📥 Download HTML", data=html_content, file_name=filename,
+                                mime="text/html", use_container_width=True, key="html_download"
+                            )
+                            show_celebration()
+
+            with col3:
+                if st.button("📱 EPUB", type="primary", use_container_width=True):
+                    with st.spinner("Creating EPUB for e-readers..."):
+                        cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
+                        epub_bytes = generate_epub_book(
+                            book_title, book_author, stories_for_export,
+                            format_style, include_toc, True, cover_image_data, cover_choice
+                        )
+                        if epub_bytes:
+                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.epub"
+                            st.download_button(
+                                "📥 Download EPUB", data=epub_bytes, file_name=filename,
+                                mime="application/epub+zip", use_container_width=True, key="epub_download"
+                            )
+                            show_celebration()
+
+            # Second row - 2 formats
+            col4, col5 = st.columns(2)
+
+            with col4:
+                if st.button("📄 PDF", type="primary", use_container_width=True):
+                    with st.spinner("Creating PDF..."):
+                        cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
+                        pdf_bytes = generate_pdf_book(
+                            book_title, book_author, stories_for_export,
+                            format_style, include_toc, True, cover_image_data, cover_choice
+                        )
+                        if pdf_bytes:
+                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
+                            st.download_button(
+                                "📥 Download PDF", data=pdf_bytes, file_name=filename,
+                                mime="application/pdf", use_container_width=True, key="pdf_download"
+                            )
+                            show_celebration()
+
+            with col5:
+                if st.button("📝 RTF", type="secondary", use_container_width=True):
+                    with st.spinner("Creating RTF..."):
+                        cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
+                        rtf_bytes = generate_rtf_book(
+                            book_title, book_author, stories_for_export,
+                            format_style, include_toc, False, cover_image_data, cover_choice
+                        )
+                        if rtf_bytes:
+                            filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.rtf"
+                            st.download_button(
+                                "📥 Download RTF", data=rtf_bytes, file_name=filename,
+                                mime="application/rtf", use_container_width=True, key="rtf_download"
+                            )
+                            show_celebration()
+
+            # Optional: JSON backup
+            with st.expander("📦 JSON Backup", expanded=False):
+                complete_data = {
+                    "user": st.session_state.user_id,
+                    "user_profile": st.session_state.user_account.get('profile', {}),
+                    "book_title": book_title,
+                    "book_author": book_author,
+                    "stories": stories_for_export,
+                    "export_date": datetime.now().isoformat(),
+                    "summary": {
+                        "total_stories": len(stories_for_export),
+                        "total_sessions": total_sessions,
+                        "total_words": total_words
+                    }
+                }
+                json_data = json.dumps(complete_data, indent=2)
                 st.download_button(
-                    "📥 Download DOCX", data=docx_bytes, file_name=filename,
-                    mime="application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-                    use_container_width=True, key="docx_download"
+                    label="📥 Download JSON Backup", 
+                    data=json_data,
+                    file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
+                    mime="application/json", 
+                    use_container_width=True
                 )
-                show_celebration()
-
-with col2:
-    if st.button("🌐 HTML", type="primary", use_container_width=True):
-        with st.spinner("Creating HTML page..."):
-            cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
-            html_content = generate_html_book(
-                book_title, book_author, stories_for_export,
-                format_style, include_toc, True, cover_image_data, cover_choice
-            )
-            if html_content:
-                filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.html"
-                st.download_button(
-                    "📥 Download HTML", data=html_content, file_name=filename,
-                    mime="text/html", use_container_width=True, key="html_download"
-                )
-                show_celebration()
-
-with col3:
-    if st.button("📱 EPUB", type="primary", use_container_width=True):
-        with st.spinner("Creating EPUB for e-readers..."):
-            cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
-            epub_bytes = generate_epub_book(
-                book_title, book_author, stories_for_export,
-                format_style, include_toc, True, cover_image_data, cover_choice
-            )
-            if epub_bytes:
-                filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.epub"
-                st.download_button(
-                    "📥 Download EPUB", data=epub_bytes, file_name=filename,
-                    mime="application/epub+zip", use_container_width=True, key="epub_download"
-                )
-                show_celebration()
-
-# Second row - 2 formats
-col4, col5 = st.columns(2)
-
-with col4:
-    if st.button("📄 PDF", type="primary", use_container_width=True):
-        with st.spinner("Creating PDF..."):
-            cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
-            pdf_bytes = generate_pdf_book(
-                book_title, book_author, stories_for_export,
-                format_style, include_toc, True, cover_image_data, cover_choice
-            )
-            if pdf_bytes:
-                filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.pdf"
-                st.download_button(
-                    "📥 Download PDF", data=pdf_bytes, file_name=filename,
-                    mime="application/pdf", use_container_width=True, key="pdf_download"
-                )
-                show_celebration()
-
-with col5:
-    if st.button("📝 RTF", type="secondary", use_container_width=True):
-        with st.spinner("Creating RTF..."):
-            cover_image_data = uploaded_cover.getvalue() if uploaded_cover else None
-            rtf_bytes = generate_rtf_book(
-                book_title, book_author, stories_for_export,
-                format_style, include_toc, False, cover_image_data, cover_choice
-            )
-            if rtf_bytes:
-                filename = f"{book_title.replace(' ', '_')}_{datetime.now().strftime('%Y%m%d')}.rtf"
-                st.download_button(
-                    "📥 Download RTF", data=rtf_bytes, file_name=filename,
-                    mime="application/rtf", use_container_width=True, key="rtf_download"
-                )
-                show_celebration()
-
-# Optional: JSON backup - NOW INSIDE THE IF BLOCK WHERE book_title IS DEFINED
-if stories_for_export:  # Make sure this if statement is properly indented in your actual code
-    with st.expander("📦 JSON Backup", expanded=False):
-        complete_data = {
-            "user": st.session_state.user_id,
-            "user_profile": st.session_state.user_account.get('profile', {}),
-            "book_title": book_title,
-            "book_author": book_author,
-            "stories": stories_for_export,
-            "export_date": datetime.now().isoformat(),
-            "summary": {
-                "total_stories": len(stories_for_export),
-                "total_sessions": total_sessions,
-                "total_words": total_words
-            }
-        }
-        json_data = json.dumps(complete_data, indent=2)
-        st.download_button(
-            label="📥 Download JSON Backup", 
-            data=json_data,
-            file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
-            mime="application/json", 
-            use_container_width=True
-        )
+        
+        else:
+            st.warning("No stories found! Start writing to publish your book.")
+            if st.button("← Return to Main App"):
+                st.session_state.show_publisher = False
+                st.rerun()
+    else:
+        st.warning("Please log in to publish your book.")
+        if st.button("← Return to Main App"):
+            st.session_state.show_publisher = False
+            st.rerun()
+    
+    # Stop here - don't show main content
+    st.stop()
 
 # ============================================================================
 # MAIN CONTENT AREA
