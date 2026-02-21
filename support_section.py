@@ -1,13 +1,17 @@
 import streamlit as st
 import random
 from datetime import datetime
+import smtplib
+from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+import traceback
 
 class SupportSection:
     def __init__(self):
         self.faqs = self.load_faqs()
         self.guides = self.load_guides()
         self.tips = self.load_tips()
-        self.whatsapp_number = "+34604400373"  # Your WhatsApp number
+        self.whatsapp_number = "+34694400373"  # Your WhatsApp number
     
     def load_faqs(self):
         """Load FAQ data - you can easily add/edit FAQs here"""
@@ -146,6 +150,83 @@ class SupportSection:
                 results.append(faq)
         
         return results
+    
+    def send_support_email(self, name, email, issue_type, message):
+        """Send support email using the app's email config"""
+        try:
+            # Get email config from session state or st.secrets
+            email_config = {
+                "smtp_server": st.secrets.get("SMTP_SERVER", "smtp.gmail.com"),
+                "smtp_port": int(st.secrets.get("SMTP_PORT", 587)),
+                "sender_email": st.secrets.get("SENDER_EMAIL", ""),
+                "sender_password": st.secrets.get("SENDER_PASSWORD", ""),
+                "use_tls": True
+            }
+            
+            if not email_config['sender_email'] or not email_config['sender_password']:
+                st.error("Email configuration missing. Please contact support directly via WhatsApp.")
+                return False
+            
+            # Create message
+            msg = MIMEMultipart()
+            msg['From'] = email_config['sender_email']
+            msg['To'] = email_config['sender_email']  # Send to yourself
+            msg['Subject'] = f"Tell My Story Support: {issue_type} from {name}"
+            
+            # Email body
+            body = f"""
+            <html>
+            <body style="font-family: Arial, sans-serif;">
+                <h2>📚 Tell My Story - Support Request</h2>
+                
+                <table style="border-collapse: collapse; width: 100%;">
+                    <tr>
+                        <td style="padding: 10px; background: #f0f0f0; font-weight: bold;">Name:</td>
+                        <td style="padding: 10px;">{name}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; background: #f0f0f0; font-weight: bold;">Email:</td>
+                        <td style="padding: 10px;">{email}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; background: #f0f0f0; font-weight: bold;">Issue Type:</td>
+                        <td style="padding: 10px;">{issue_type}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; background: #f0f0f0; font-weight: bold;">User ID:</td>
+                        <td style="padding: 10px;">{st.session_state.get('user_id', 'Not logged in')}</td>
+                    </tr>
+                    <tr>
+                        <td style="padding: 10px; background: #f0f0f0; font-weight: bold;">Time:</td>
+                        <td style="padding: 10px;">{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</td>
+                    </tr>
+                </table>
+                
+                <h3>Message:</h3>
+                <div style="background: #f9f9f9; padding: 15px; border-left: 4px solid #667eea;">
+                    {message.replace(chr(10), '<br>')}
+                </div>
+                
+                <hr>
+                <p style="color: #666; font-size: 12px;">Sent from Tell My Story Support</p>
+            </body>
+            </html>
+            """
+            
+            msg.attach(MIMEText(body, 'html'))
+            
+            # Send email
+            with smtplib.SMTP(email_config['smtp_server'], email_config['smtp_port']) as server:
+                if email_config['use_tls']:
+                    server.starttls()
+                server.login(email_config['sender_email'], email_config['sender_password'])
+                server.send_message(msg)
+            
+            return True
+            
+        except Exception as e:
+            print(f"Email error: {traceback.format_exc()}")
+            return False
     
     def render(self):
         """Render the complete support section"""
@@ -474,7 +555,7 @@ class SupportSection:
             """)
     
     def render_contact_support(self):
-        """Render contact/support form with WhatsApp only - NO PHONE REFERENCES"""
+        """Render contact/support form with WhatsApp only - sends emails to you"""
         
         st.markdown("### 📧 Get in Touch")
         
@@ -483,17 +564,23 @@ class SupportSection:
         with col1:
             with st.form("support_form"):
                 name = st.text_input("Your Name")
-                email = st.text_input("Email Address")
+                email = st.text_input("Your Email Address")
                 issue_type = st.selectbox(
                     "Issue Type",
                     ["Bug Report", "Feature Request", "Question", "Other"]
                 )
                 message = st.text_area("Message", height=150)
                 
-                if st.form_submit_button("📤 Send Message", use_container_width=True):
+                submitted = st.form_submit_button("📤 Send Message", use_container_width=True)
+                
+                if submitted:
                     if name and email and message:
-                        st.success("✅ Message sent! We'll respond within 24-48 hours.")
-                        # Here you would typically send an email or log to database
+                        with st.spinner("Sending message..."):
+                            success = self.send_support_email(name, email, issue_type, message)
+                            if success:
+                                st.success("✅ Message sent! We'll respond within 24-48 hours.")
+                            else:
+                                st.error("Failed to send email. Please try WhatsApp instead.")
                     else:
                         st.error("Please fill in all fields")
         
@@ -533,22 +620,6 @@ class SupportSection:
             st.markdown(f"**WhatsApp Number:** {self.whatsapp_number}")
             
             st.markdown("---")
-            
-            st.markdown("""
-            ### Other Ways to Reach Us
-            
-            **Response Time:** Within 24-48 hours
-            
-            **Common Issues:**
-            - ⚡ Bug reports: Usually fixed within 1-2 days
-            - 💡 Feature requests: Reviewed monthly
-            - ❓ Questions: Answered within 24 hours
-            
-            **Before Contacting:**
-            1. Check the FAQ section
-            2. Try clearing your session
-            3. Refresh the page
-            """)
             
             # Feedback buttons
             st.markdown("### Was this helpful?")
