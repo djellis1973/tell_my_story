@@ -346,15 +346,16 @@ class QuestionBankManager:
                                             "word_target": session.get("word_target", 500)
                                         }
                                 st.rerun()
-                
-                with col2:
+
+                with col2:with col2:
                     if st.button("✏️ Edit", key=f"edit_user_{bank['id']}", 
                                use_container_width=True):
+                        st.write(f"DEBUG: Edit clicked for bank {bank['id']}")  # ← ADD THIS LINE
                         st.session_state.editing_bank_id = bank['id']
                         st.session_state.editing_bank_name = bank['name']
                         st.session_state.show_bank_editor = True
                         st.rerun()
-                
+                                    
                 with col3:
                     # EXPORT TO CSV - MAKE IT PERMANENT
                     csv_data = self.export_user_bank_to_csv(bank['id'])
@@ -411,9 +412,10 @@ class QuestionBankManager:
                     st.rerun()
                 else:
                     st.error("❌ Please enter a bank name")
-    
+
     def display_bank_editor(self, bank_id):
         """Display the bank editor interface"""
+        st.write(f"DEBUG: display_bank_editor called with bank_id: {bank_id}")  # ← ADD THIS LINE
         st.title(f"✏️ Edit Bank")
         
         sessions = self.load_user_bank(bank_id)
