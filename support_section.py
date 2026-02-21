@@ -1,13 +1,13 @@
 import streamlit as st
-import pandas as pd
+import random
 from datetime import datetime
-import json
 
 class SupportSection:
     def __init__(self):
         self.faqs = self.load_faqs()
         self.guides = self.load_guides()
         self.tips = self.load_tips()
+        self.whatsapp_number = "+34694400373"  # Your WhatsApp number
     
     def load_faqs(self):
         """Load FAQ data - you can easily add/edit FAQs here"""
@@ -15,7 +15,7 @@ class SupportSection:
             {
                 "category": "Getting Started",
                 "question": "How do I create my first vignette?",
-                "answer": "Click on '📝 New Vignette' in the sidebar. Choose a session, add your memories, and save. Your vignettes will appear in the timeline."
+                "answer": "Click '📝 New Vignette' in the sidebar. Choose a session, add your memories, and save. Your vignettes will appear in the timeline."
             },
             {
                 "category": "Getting Started",
@@ -45,7 +45,7 @@ class SupportSection:
             {
                 "category": "Privacy & Data",
                 "question": "Where is my data stored?",
-                "answer": "All data is stored locally in your browser's session. Nothing is sent to external servers."
+                "answer": "All data is stored locally in your browser's session. Nothing is sent to external servers except the AI prompts you explicitly send."
             },
             {
                 "category": "Privacy & Data",
@@ -55,7 +55,7 @@ class SupportSection:
             {
                 "category": "Publishing",
                 "question": "How do I export my stories?",
-                "answer": "Go to 'Publish Your Book' and choose your format (PDF, Word, or text). You can compile all vignettes into a book."
+                "answer": "Go to 'Publish Your Book' and choose your format (PDF, Word, EPUB, or text). You can compile all vignettes into a book."
             },
             {
                 "category": "Publishing",
@@ -183,6 +183,36 @@ class SupportSection:
             border-left: 4px solid #ffc107;
             margin: 0.5rem 0;
         }
+        .privacy-card {
+            background: #e8f4fd;
+            padding: 1.5rem;
+            border-radius: 10px;
+            border-left: 4px solid #0366d6;
+            margin: 1rem 0;
+        }
+        .ai-card {
+            background: #f0e7ff;
+            padding: 1.5rem;
+            border-radius: 10px;
+            border-left: 4px solid #764ba2;
+            margin: 1rem 0;
+        }
+        .whatsapp-button {
+            display: inline-block;
+            background: #25D366;
+            color: white;
+            padding: 12px 24px;
+            border-radius: 50px;
+            text-decoration: none;
+            font-weight: bold;
+            margin: 10px 0;
+            border: none;
+            cursor: pointer;
+            font-size: 18px;
+        }
+        .whatsapp-button:hover {
+            background: #128C7E;
+        }
         </style>
         """, unsafe_allow_html=True)
         
@@ -190,15 +220,17 @@ class SupportSection:
         st.markdown("""
         <div class="support-header">
             <h1>📚 Help & Support</h1>
-            <p>Find answers, guides, and tips for your storytelling journey</p>
+            <p>Find answers, guides, and information about how your stories are protected</p>
         </div>
         """, unsafe_allow_html=True)
         
-        # Create tabs for different support sections
-        tab1, tab2, tab3, tab4 = st.tabs([
+        # Create tabs for different support sections - WITH YOUR EXACT TITLES
+        tab1, tab2, tab3, tab4, tab5, tab6 = st.tabs([
             "🔍 Search FAQs", 
             "📖 Quick Guides", 
             "💡 Tips & Tricks",
+            "⚖️ Why It's OK to Use AI to Write Your Life Story",      # EXACT TITLE
+            "🔒 Why our AI won't steal your Story",                    # EXACT TITLE
             "📞 Contact Support"
         ])
         
@@ -212,7 +244,13 @@ class SupportSection:
             self.render_tips()
         
         with tab4:
-            self.render_contact_support()
+            self.render_ai_ethics()    # Tab 4 - AI & Copyright
+        
+        with tab5:
+            self.render_privacy_api()   # Tab 5 - Privacy
+        
+        with tab6:
+            self.render_contact_support()  # Tab 6 - Contact with WhatsApp
     
     def render_searchable_faqs(self):
         """Render searchable FAQ section"""
@@ -260,16 +298,6 @@ class SupportSection:
                         """, unsafe_allow_html=True)
         else:
             st.info("No FAQs found matching your search. Try different keywords or contact support.")
-            
-            # Suggest popular topics
-            st.markdown("**Popular topics:**")
-            popular_topics = ["vignette", "data", "export", "session", "photos"]
-            cols = st.columns(len(popular_topics))
-            for i, topic in enumerate(popular_topics):
-                with cols[i]:
-                    if st.button(f"🔍 {topic}", key=f"topic_{topic}"):
-                        # This would trigger a new search (requires session state management)
-                        pass
     
     def render_guides(self):
         """Render quick guides section"""
@@ -316,8 +344,137 @@ class SupportSection:
                 if st.form_submit_button("Submit Tip"):
                     st.success("Thanks for sharing! We'll review your tip.")
     
+    def render_ai_ethics(self):
+        """Render AI & Copyright section with your exact title"""
+        
+        st.markdown("""
+        <div class="ai-card">
+            <h2>⚖️ Why It's OK to Use AI to Write Your Life Story</h2>
+            <p><strong>The short answer:</strong> US courts have ruled that AI training is protected as "fair use" - the AI learns from published works the same way humans do, by reading widely and finding patterns, not by copying or storing anyone's content.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("""
+            ### What Actually Happens
+            
+            - **AI reads** millions of books and articles - like a person in a library
+            - **It learns patterns** - how sentences flow, how stories are structured
+            - **It does NOT store** copies of the original works. The model is too small to hold millions of books
+            
+            ### What the Courts Said
+            
+            In June 2025, two federal court decisions (Bartz v. Anthropic and Kadrey v. Meta) ruled that:
+            
+            > *"Training AI on published works is 'spectacularly transformative' - it extracts uncopyrightable facts and patterns, not protected expression. This is fair use."*
+            
+            Importantly, in both cases, **plaintiffs could not show a single instance** where the AI reproduced protected content from their books. The models have filters preventing regurgitation.
+            """)
+        
+        with col2:
+            st.markdown("""
+            ### The Human Analogy
+            
+            A chef who's eaten thousands of meals doesn't carry those meals in their pocket - they've just learned what works. AI learns the same way.
+            
+            ### What About Pirated Copies?
+            
+            The courts drew a clear line: **lawfully obtained content = fair use**. The only legal problems arise when companies download **pirated copies** from illegal torrent sites. 
+            
+            **You're using a licensed API** - not downloading pirated books. That's the key distinction.
+            
+            ### Bottom Line
+            
+            ✅ **Courts say AI training = transformative fair use**  
+            ✅ **AI models don't store or copy your content**  
+            ✅ **You're using a licensed API - not pirated materials**  
+            ✅ **The AI helps you write YOUR story, in YOUR voice**
+            """)
+        
+        st.markdown("---")
+        st.markdown("📚 **Source:** Bartz v. Anthropic (N.D. Cal. June 2025); Kadrey v. Meta (N.D. Cal. June 2025)")
+    
+    def render_privacy_api(self):
+        """Render Privacy & API section with your exact title"""
+        
+        st.markdown("""
+        <div class="privacy-card">
+            <h2>🔒 Why our AI won't steal your Story</h2>
+            <p><strong>The short answer:</strong> We use the OpenAI API (not ChatGPT), which has fundamentally different privacy rules. Your data stays yours - we don't train on it, and OpenAI can't use it to improve their models.</p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Comparison table
+        st.markdown("### The Critical Difference: API vs. Consumer Chat")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("""
+            <div style="background: #e8f4fd; padding: 1rem; border-radius: 10px;">
+                <h4 style="color: #0366d6; text-align: center;">✅ API (What We Use)</h4>
+                <ul>
+                    <li>❌ <strong>NO training</strong> on your data by default</li>
+                    <li>Your prompts and stories stay completely private</li>
+                    <li>Governed by customer agreements, not privacy policy</li>
+                    <li>Data retained 30 days for abuse monitoring, then deleted</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        with col2:
+            st.markdown("""
+            <div style="background: #fee; padding: 1rem; border-radius: 10px;">
+                <h4 style="color: #c00; text-align: center;">⚠️ Consumer ChatGPT</h4>
+                <ul>
+                    <li>✅ <strong>DOES train</strong> on your conversations by default</li>
+                    <li>Your chats help improve OpenAI's models</li>
+                    <li>Governed by consumer privacy policy</li>
+                    <li>Conversations stored indefinitely</li>
+                </ul>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("---")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("""
+            ### What "No Training" Actually Means
+            
+            When you use this app:
+            
+            1. **Your stories are not used to train future AI models** - OpenAI's business customers get this guarantee in their contracts 
+            
+            2. **OpenAI cannot see your data** - It's encrypted in transit and at rest 
+            
+            3. **Your prompts are ephemeral** - They're processed to generate responses, then retained for only 30 days for safety monitoring before permanent deletion 
+            
+            4. **You own everything** - Your inputs and the AI's outputs belong to you 
+            """)
+        
+        with col2:
+            st.markdown("""
+            ### The Court Case That Proves This Matters
+            
+            In January 2026, a federal court ordered OpenAI to produce **20 million ChatGPT conversation logs** as evidence in a copyright lawsuit . 
+            
+            **Key fact:** Those were **consumer ChatGPT logs**. API customer data was never part of this order because different rules apply.
+            
+            ### Bottom Line
+            
+            ✅ **We use the API, not consumer ChatGPT** - This is the fundamental difference  
+            ✅ **No training on your data** - Guaranteed in OpenAI's business terms   
+            ✅ **30-day retention, then deletion** - Only for safety monitoring   
+            ✅ **Encryption everywhere** - AES-256 at rest, TLS 1.2+ in transit   
+            ✅ **You own your stories** - Not us, not OpenAI
+            """)
+    
     def render_contact_support(self):
-        """Render contact/support form"""
+        """Render contact/support form with WhatsApp (no phone)"""
         
         st.markdown("### 📧 Get in Touch")
         
@@ -333,7 +490,7 @@ class SupportSection:
                 )
                 message = st.text_area("Message", height=150)
                 
-                if st.form_submit_button("Send Message"):
+                if st.form_submit_button("📤 Send Message", use_container_width=True):
                     if name and email and message:
                         st.success("✅ Message sent! We'll respond within 24-48 hours.")
                         # Here you would typically send an email or log to database
@@ -341,6 +498,42 @@ class SupportSection:
                         st.error("Please fill in all fields")
         
         with col2:
+            st.markdown("""
+            ### 💬 WhatsApp Support
+            
+            Get quick help via WhatsApp. Response time: Usually within a few hours.
+            """)
+            
+            # Format WhatsApp number for link
+            whatsapp_link = f"https://wa.me/{self.whatsapp_number.replace('+', '').replace(' ', '').replace('(', '').replace(')', '').replace('-', '')}"
+            
+            # WhatsApp button
+            st.markdown(f'''
+            <a href="{whatsapp_link}" target="_blank">
+                <button style="
+                    background: #25D366;
+                    color: white;
+                    padding: 15px 32px;
+                    text-align: center;
+                    text-decoration: none;
+                    display: inline-block;
+                    font-size: 18px;
+                    font-weight: bold;
+                    margin: 4px 2px;
+                    cursor: pointer;
+                    border: none;
+                    border-radius: 50px;
+                    width: 100%;
+                ">
+                    💬 Chat on WhatsApp
+                </button>
+            </a>
+            ''', unsafe_allow_html=True)
+            
+            st.markdown(f"**WhatsApp Number:** {self.whatsapp_number}")
+            
+            st.markdown("---")
+            
             st.markdown("""
             ### 📞 Other Ways to Reach Us
             
@@ -361,14 +554,14 @@ class SupportSection:
             st.markdown("### Was this helpful?")
             col_a, col_b, col_c = st.columns(3)
             with col_a:
-                if st.button("👍 Yes"):
+                if st.button("👍 Yes", use_container_width=True):
                     st.toast("Thanks for your feedback!")
             with col_b:
-                if st.button("👎 No"):
+                if st.button("👎 No", use_container_width=True):
                     st.toast("Sorry to hear that. Please contact support!")
             with col_c:
-                if st.button("📋 Report Issue"):
-                    st.info("Please use the contact form.")
+                if st.button("📋 Report Issue", use_container_width=True):
+                    st.info("Please use the contact form or WhatsApp.")
 
 # Usage example
 if __name__ == "__main__":
