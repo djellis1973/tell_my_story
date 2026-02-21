@@ -99,10 +99,10 @@ default_state = {
     "current_rewrite_data": None, "show_ai_rewrite": False, "show_ai_rewrite_menu": False,
     "editor_content": {}, "show_privacy_settings": False, "show_cover_designer": False,
     "beta_feedback_display": None, "beta_feedback_storage": {},
-    "auth_tab": 'login',  # Added for authentication
-    "show_publisher": False,  # <-- ADD THIS LINE
-    "cover_image_data": None  # <-- ADD THIS LINE
-    "show_support": False,  # Add this line
+    "auth_tab": 'login',
+    "show_publisher": False,
+    "cover_image_data": None,  # <-- COMMA ADDED HERE
+    "show_support": False  # <-- ADD THIS LINE (no comma needed at the end)
 }
 
 for key, value in default_state.items():
