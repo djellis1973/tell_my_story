@@ -1,4 +1,4 @@
-# question_bank_manager.py - PRODUCTION VERSION WITH VISUAL DEBUGGING
+# question_bank_manager.py - PRODUCTION VERSION WITH WORKING CUSTOM BANKS
 import streamlit as st
 import pandas as pd
 import json
@@ -6,7 +6,6 @@ import os
 import shutil
 from datetime import datetime
 import uuid
-
 
 # TEST MESSAGE - DELETE AFTER TESTING
 st.error("🔴🔴🔴 QUESTION BANK MANAGER FILE IS BEING LOADED! 🔴🔴🔴")
@@ -309,9 +308,6 @@ class QuestionBankManager:
             st.info("✨ You haven't created any custom question banks yet. Go to the 'Create New' tab to get started!")
             return
         
-        # Add a status area at the top
-        status_container = st.empty()
-        
         for bank in banks:
             with st.expander(f"📚 {bank['name']}", expanded=False):
                 st.write(f"**Description:** {bank.get('description', 'No description')}")
@@ -332,7 +328,6 @@ class QuestionBankManager:
                     
                     if st.button(button_label, key=f"load_user_{bank['id']}", 
                                use_container_width=True, type=button_type):
-                        status_container.info(f"Loading bank {bank['id']}...")
                         if not is_loaded:
                             sessions = self.load_user_bank(bank['id'])
                             if sessions:
@@ -341,7 +336,7 @@ class QuestionBankManager:
                                 st.session_state.current_bank_type = "custom"
                                 st.session_state.current_bank_id = bank['id']
                                 
-                                status_container.success(f"✅ Question Bank Loaded: '{bank['name']}'")
+                                st.success(f"✅ Question Bank Loaded: '{bank['name']}'")
                                 
                                 for session in sessions:
                                     session_id = session["id"]
@@ -354,17 +349,24 @@ class QuestionBankManager:
                                             "word_target": session.get("word_target", 500)
                                         }
                                 st.rerun()
-                        else:
-                            status_container.warning("Bank already loaded")
                 
                 with col2:
+                    # EDIT BUTTON WITH VISUAL DEBUGGING
+                    st.markdown(f"**Bank ID:** {bank['id']}")
+                    st.markdown(f"**Session State:**")
+                    st.json({
+                        "editing_bank_id": st.session_state.get('editing_bank_id'),
+                        "show_bank_editor": st.session_state.get('show_bank_editor', False)
+                    })
+                    
                     if st.button("✏️ Edit", key=f"edit_user_{bank['id']}", 
                                use_container_width=True):
-                        status_container.info(f"Edit clicked for bank {bank['id']}")
+                        st.success(f"✅ EDIT CLICKED for bank {bank['id']}")
                         st.session_state.editing_bank_id = bank['id']
                         st.session_state.editing_bank_name = bank['name']
                         st.session_state.show_bank_editor = True
-                        status_container.success(f"State set: show_bank_editor=True, bank_id={bank['id']}")
+                        st.warning(f"State set - show_bank_editor: {st.session_state.show_bank_editor}")
+                        st.info("Click the 🔁 Rerun button below if nothing happens")
                         st.rerun()
                 
                 with col3:
@@ -391,7 +393,7 @@ class QuestionBankManager:
                     if st.button("🗑️ Delete", key=f"delete_user_{bank['id']}", 
                                use_container_width=True):
                         if self.delete_user_bank(bank['id']):
-                            status_container.success(f"✅ Deleted '{bank['name']}'")
+                            st.success(f"✅ Deleted '{bank['name']}'")
                             st.rerun()
     
     def _display_create_bank_form(self):
@@ -425,14 +427,8 @@ class QuestionBankManager:
     
     def display_bank_editor(self, bank_id):
         """Display the bank editor interface"""
-        # Add visible banner at the top
-        st.markdown("""
-        <div style="background-color: #4CAF50; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
-            <h3 style="color: white; margin: 0;">✏️ BANK EDITOR MODE - EDITING BANK: {}</h3>
-        </div>
-        """.format(bank_id), unsafe_allow_html=True)
-        
-        st.title(f"Edit Bank")
+        st.error(f"🔵🔵🔵 DISPLAY BANK EDITOR CALLED with bank_id: {bank_id} 🔵🔵🔵")
+        st.title(f"✏️ Edit Bank")
         
         sessions = self.load_user_bank(bank_id)
         
