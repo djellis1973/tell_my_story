@@ -1,4 +1,4 @@
-# question_bank_manager.py - PRODUCTION VERSION WITH WORKING CUSTOM BANKS
+# question_bank_manager.py - PRODUCTION VERSION WITH VISUAL DEBUGGING
 import streamlit as st
 import pandas as pd
 import json
@@ -305,6 +305,9 @@ class QuestionBankManager:
             st.info("✨ You haven't created any custom question banks yet. Go to the 'Create New' tab to get started!")
             return
         
+        # Add a status area at the top
+        status_container = st.empty()
+        
         for bank in banks:
             with st.expander(f"📚 {bank['name']}", expanded=False):
                 st.write(f"**Description:** {bank.get('description', 'No description')}")
@@ -325,6 +328,7 @@ class QuestionBankManager:
                     
                     if st.button(button_label, key=f"load_user_{bank['id']}", 
                                use_container_width=True, type=button_type):
+                        status_container.info(f"Loading bank {bank['id']}...")
                         if not is_loaded:
                             sessions = self.load_user_bank(bank['id'])
                             if sessions:
@@ -333,7 +337,7 @@ class QuestionBankManager:
                                 st.session_state.current_bank_type = "custom"
                                 st.session_state.current_bank_id = bank['id']
                                 
-                                st.success(f"✅ Question Bank Loaded: '{bank['name']}'")
+                                status_container.success(f"✅ Question Bank Loaded: '{bank['name']}'")
                                 
                                 for session in sessions:
                                     session_id = session["id"]
@@ -346,13 +350,17 @@ class QuestionBankManager:
                                             "word_target": session.get("word_target", 500)
                                         }
                                 st.rerun()
+                        else:
+                            status_container.warning("Bank already loaded")
                 
                 with col2:
                     if st.button("✏️ Edit", key=f"edit_user_{bank['id']}", 
                                use_container_width=True):
+                        status_container.info(f"Edit clicked for bank {bank['id']}")
                         st.session_state.editing_bank_id = bank['id']
                         st.session_state.editing_bank_name = bank['name']
                         st.session_state.show_bank_editor = True
+                        status_container.success(f"State set: show_bank_editor=True, bank_id={bank['id']}")
                         st.rerun()
                 
                 with col3:
@@ -368,19 +376,18 @@ class QuestionBankManager:
                             use_container_width=True
                         )
                     else:
-                        # FIXED: Added unique key for disabled button
                         st.button(
                             "📥 No Data", 
                             disabled=True, 
                             use_container_width=True,
-                            key=f"no_data_{bank['id']}"  # Unique key for each bank
+                            key=f"no_data_{bank['id']}"
                         )
                 
                 with col4:
                     if st.button("🗑️ Delete", key=f"delete_user_{bank['id']}", 
                                use_container_width=True):
                         if self.delete_user_bank(bank['id']):
-                            st.success(f"✅ Deleted '{bank['name']}'")
+                            status_container.success(f"✅ Deleted '{bank['name']}'")
                             st.rerun()
     
     def _display_create_bank_form(self):
@@ -414,7 +421,14 @@ class QuestionBankManager:
     
     def display_bank_editor(self, bank_id):
         """Display the bank editor interface"""
-        st.title(f"✏️ Edit Bank")
+        # Add visible banner at the top
+        st.markdown("""
+        <div style="background-color: #4CAF50; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
+            <h3 style="color: white; margin: 0;">✏️ BANK EDITOR MODE - EDITING BANK: {}</h3>
+        </div>
+        """.format(bank_id), unsafe_allow_html=True)
+        
+        st.title(f"Edit Bank")
         
         sessions = self.load_user_bank(bank_id)
         
