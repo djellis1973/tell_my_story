@@ -7,7 +7,7 @@ class SupportSection:
         self.faqs = self.load_faqs()
         self.guides = self.load_guides()
         self.tips = self.load_tips()
-        self.whatsapp_number = "+34694400373"  # Your WhatsApp number
+        self.whatsapp_number = "+34604400373"  # Your WhatsApp number
     
     def load_faqs(self):
         """Load FAQ data - you can easily add/edit FAQs here"""
