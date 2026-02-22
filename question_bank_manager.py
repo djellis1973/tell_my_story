@@ -69,7 +69,8 @@ class QuestionBankManager:
                             "description": f"{sessions} sessions • {topics} topics",
                             "sessions": sessions,
                             "topics": topics,
-                            "filename": filename
+                            "filename": filename,
+                            "type": "default"
                         })
                     except Exception as e:
                         st.error(f"Error reading {filename}: {e}")
@@ -106,8 +107,10 @@ class QuestionBankManager:
         with open(catalog_file, 'w') as f:
             json.dump(banks, f, indent=2)
     
-    def create_custom_bank(self, name, description="", copy_from=None):
-        """Create a new custom bank"""
+    def create_custom_bank(self, name, description="", copy_from=None, bank_type="standard"):
+        """Create a new custom bank
+        bank_type: "standard" (with topics) or "chapters" (chapters only, no topics)
+        """
         if not self.user_id:
             st.error("You must be logged in")
             return None
@@ -124,6 +127,13 @@ class QuestionBankManager:
         
         # Save bank file
         bank_file = f"{user_dir}/{bank_id}.json"
+        
+        # For chapters-only banks, ensure all sessions have empty questions lists
+        if bank_type == "chapters":
+            # If copying from a standard bank, clear all questions
+            for session in sessions:
+                session['questions'] = []
+        
         with open(bank_file, 'w') as f:
             json.dump({
                 'id': bank_id,
@@ -131,6 +141,7 @@ class QuestionBankManager:
                 'description': description,
                 'created_at': now,
                 'updated_at': now,
+                'bank_type': bank_type,  # Store the bank type
                 'sessions': sessions
             }, f, indent=2)
         
@@ -143,11 +154,12 @@ class QuestionBankManager:
             'created_at': now,
             'updated_at': now,
             'session_count': len(sessions),
-            'topic_count': sum(len(s.get('questions', [])) for s in sessions)
+            'topic_count': sum(len(s.get('questions', [])) for s in sessions),
+            'bank_type': bank_type
         })
         self._save_user_banks(banks)
         
-        st.success(f"✅ Bank '{name}' created successfully!")
+        st.success(f"✅ {bank_type.title()} Bank '{name}' created successfully!")
         return bank_id
     
     def load_user_bank(self, bank_id):
@@ -183,14 +195,26 @@ class QuestionBankManager:
         
         rows = []
         for session in sessions:
-            for i, q in enumerate(session.get('questions', [])):
+            # For chapters-only banks with no questions, still export the session structure
+            questions = session.get('questions', [])
+            if not questions:
+                # Add a placeholder for chapters-only banks
                 rows.append({
                     'session_id': session['id'],
                     'title': session['title'],
-                    'guidance': session.get('guidance', '') if i == 0 else '',
-                    'question': q,
+                    'guidance': session.get('guidance', ''),
+                    'question': '',  # Empty question for chapters
                     'word_target': session.get('word_target', 500)
                 })
+            else:
+                for i, q in enumerate(questions):
+                    rows.append({
+                        'session_id': session['id'],
+                        'title': session['title'],
+                        'guidance': session.get('guidance', '') if i == 0 else '',
+                        'question': q,
+                        'word_target': session.get('word_target', 500)
+                    })
         
         if rows:
             df = pd.DataFrame(rows)
@@ -309,21 +333,28 @@ class QuestionBankManager:
         status_container = st.empty()
         
         for bank in banks:
-            with st.expander(f"📚 {bank['name']}", expanded=False):
+            # Add emoji based on bank type
+            bank_type_emoji = "📚" if bank.get('bank_type', 'standard') == 'standard' else "📖"
+            bank_type_label = "Standard Bank" if bank.get('bank_type', 'standard') == 'standard' else "Chapters-Only Bank"
+            
+            with st.expander(f"{bank_type_emoji} {bank['name']} - {bank_type_label}", expanded=False):
                 st.write(f"**Description:** {bank.get('description', 'No description')}")
                 
                 col1, col2 = st.columns(2)
                 with col1:
-                    st.metric("Sessions", bank.get('session_count', 0))
+                    st.metric("Chapters/Sessions", bank.get('session_count', 0))
                 with col2:
-                    st.metric("Topics", bank.get('topic_count', 0))
+                    if bank.get('bank_type', 'standard') == 'standard':
+                        st.metric("Topics", bank.get('topic_count', 0))
+                    else:
+                        st.metric("Type", "Chapters Only")
                 
                 st.caption(f"Created: {bank['created_at'][:10]}")
                 
                 col1, col2, col3, col4 = st.columns(4)
                 with col1:
                     is_loaded = st.session_state.get('current_bank_id') == bank['id']
-                    button_label = "✅ Loaded" if is_loaded else "📂 Load Question Bank"
+                    button_label = "✅ Loaded" if is_loaded else "📂 Load"
                     button_type = "secondary" if is_loaded else "primary"
                     
                     if st.button(button_label, key=f"load_user_{bank['id']}", 
@@ -337,7 +368,7 @@ class QuestionBankManager:
                                 st.session_state.current_bank_type = "custom"
                                 st.session_state.current_bank_id = bank['id']
                                 
-                                status_container.success(f"✅ Question Bank Loaded: '{bank['name']}'")
+                                status_container.success(f"✅ Bank Loaded: '{bank['name']}'")
                                 
                                 for session in sessions:
                                     session_id = session["id"]
@@ -394,8 +425,17 @@ class QuestionBankManager:
         """Display form to create new bank"""
         st.markdown("### Create New Question Bank")
         
+        # Add bank type selector
+        bank_type = st.radio(
+            "Select Bank Type:",
+            options=["standard", "chapters"],
+            format_func=lambda x: "📚 Standard Bank (with topics/questions)" if x == "standard" else "📖 Chapters-Only Bank (just chapter titles, no topics)",
+            horizontal=True,
+            help="Chapters-Only banks are perfect for organizing your life into chapters without specific questions"
+        )
+        
         with st.form("create_bank_form"):
-            name = st.text_input("Bank Name *", placeholder="e.g., 'My Family Stories'")
+            name = st.text_input("Bank Name *", placeholder="e.g., 'My Life Chapters' or 'Family History'")
             description = st.text_area("Description", placeholder="What kind of stories will this bank contain?")
             
             st.markdown("#### Start from template (optional)")
@@ -414,26 +454,31 @@ class QuestionBankManager:
                                 copy_from = bank['id']
                                 break
                     
-                    self.create_custom_bank(name, description, copy_from)
+                    self.create_custom_bank(name, description, copy_from, bank_type)
                     st.rerun()
                 else:
                     st.error("❌ Please enter a bank name")
     
     def display_bank_editor(self, bank_id):
         """Display the bank editor interface"""
+        # Get bank info to determine type
+        banks = self.get_user_banks()
+        bank_info = next((b for b in banks if b['id'] == bank_id), {})
+        bank_type = bank_info.get('bank_type', 'standard')
+        
         # Add visible banner at the top
-        st.markdown("""
-        <div style="background-color: #4CAF50; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
-            <h3 style="color: white; margin: 0;">✏️ BANK EDITOR MODE - EDITING BANK: {}</h3>
+        bank_type_label = "📖 CHAPTERS-ONLY BANK" if bank_type == "chapters" else "📚 STANDARD BANK"
+        banner_color = "#2196F3" if bank_type == "chapters" else "#4CAF50"
+        
+        st.markdown(f"""
+        <div style="background-color: {banner_color}; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
+            <h3 style="color: white; margin: 0;">✏️ EDITOR MODE - {bank_type_label}: {bank_info.get('name', '')}</h3>
         </div>
-        """.format(bank_id), unsafe_allow_html=True)
+        """, unsafe_allow_html=True)
         
         st.title(f"Edit Bank")
         
         sessions = self.load_user_bank(bank_id)
-        
-        banks = self.get_user_banks()
-        bank_info = next((b for b in banks if b['id'] == bank_id), {})
         
         with st.expander("Bank Settings", expanded=True):
             col1, col2 = st.columns([3, 1])
@@ -453,13 +498,19 @@ class QuestionBankManager:
         
         st.divider()
         
-        st.subheader("📋 Sessions")
+        # Different header based on bank type
+        if bank_type == "chapters":
+            st.subheader("📖 Chapters")
+            st.info("This is a Chapters-Only bank. Each chapter has a title and guidance, but no topic questions.")
+        else:
+            st.subheader("📋 Sessions")
         
-        if st.button("➕ Add New Session", use_container_width=True, type="primary"):
+        if st.button("➕ Add New " + ("Chapter" if bank_type == "chapters" else "Session"), 
+                    use_container_width=True, type="primary"):
             max_id = max([s['id'] for s in sessions], default=0)
             sessions.append({
                 'id': max_id + 1,
-                'title': 'New Session',
+                'title': 'New ' + ("Chapter" if bank_type == "chapters" else "Session"),
                 'guidance': '',
                 'questions': [],
                 'word_target': 500
@@ -468,7 +519,10 @@ class QuestionBankManager:
             st.rerun()
         
         for i, session in enumerate(sessions):
-            with st.expander(f"📁 Session {session['id']}: {session['title']}", expanded=False):
+            # Different expander title based on bank type
+            expander_title = f"📁 Chapter {session['id']}: {session['title']}" if bank_type == "chapters" else f"📁 Session {session['id']}: {session['title']}"
+            
+            with st.expander(expander_title, expanded=False):
                 col1, col2 = st.columns([3, 1])
                 
                 with col1:
@@ -513,47 +567,52 @@ class QuestionBankManager:
                         self.save_user_bank(bank_id, sessions)
                         st.rerun()
                 
-                st.divider()
-                st.write("**Topics/Questions:**")
-                
-                new_topic = st.text_input("Add new topic", key=f"new_topic_{session['id']}")
-                if new_topic:
-                    if st.button("➕ Add", key=f"add_topic_{session['id']}", use_container_width=True):
-                        session['questions'].append(new_topic)
-                        self.save_user_bank(bank_id, sessions)
-                        st.rerun()
-                
-                for j, topic in enumerate(session.get('questions', [])):
-                    col1, col2, col3 = st.columns([3, 1, 1])
-                    
-                    with col1:
-                        edited = st.text_area(f"Topic {j+1}", topic, 
-                                            key=f"topic_{session['id']}_{j}", height=60)
-                    
-                    with col2:
-                        if j > 0:
-                            if st.button("⬆️", key=f"topic_up_{session['id']}_{j}"):
-                                session['questions'][j], session['questions'][j-1] = session['questions'][j-1], session['questions'][j]
-                                self.save_user_bank(bank_id, sessions)
-                                st.rerun()
-                        if j < len(session['questions']) - 1:
-                            if st.button("⬇️", key=f"topic_down_{session['id']}_{j}"):
-                                session['questions'][j], session['questions'][j+1] = session['questions'][j+1], session['questions'][j]
-                                self.save_user_bank(bank_id, sessions)
-                                st.rerun()
-                    
-                    with col3:
-                        if st.button("💾", key=f"topic_save_{session['id']}_{j}"):
-                            session['questions'][j] = edited
-                            self.save_user_bank(bank_id, sessions)
-                            st.rerun()
-                        
-                        if st.button("🗑️", key=f"topic_del_{session['id']}_{j}"):
-                            session['questions'].pop(j)
-                            self.save_user_bank(bank_id, sessions)
-                            st.rerun()
-                    
+                # Only show topics/questions section for standard banks
+                if bank_type == "standard":
                     st.divider()
+                    st.write("**Topics/Questions:**")
+                    
+                    new_topic = st.text_input("Add new topic", key=f"new_topic_{session['id']}")
+                    if new_topic:
+                        if st.button("➕ Add", key=f"add_topic_{session['id']}", use_container_width=True):
+                            session['questions'].append(new_topic)
+                            self.save_user_bank(bank_id, sessions)
+                            st.rerun()
+                    
+                    for j, topic in enumerate(session.get('questions', [])):
+                        col1, col2, col3 = st.columns([3, 1, 1])
+                        
+                        with col1:
+                            edited = st.text_area(f"Topic {j+1}", topic, 
+                                                key=f"topic_{session['id']}_{j}", height=60)
+                        
+                        with col2:
+                            if j > 0:
+                                if st.button("⬆️", key=f"topic_up_{session['id']}_{j}"):
+                                    session['questions'][j], session['questions'][j-1] = session['questions'][j-1], session['questions'][j]
+                                    self.save_user_bank(bank_id, sessions)
+                                    st.rerun()
+                            if j < len(session['questions']) - 1:
+                                if st.button("⬇️", key=f"topic_down_{session['id']}_{j}"):
+                                    session['questions'][j], session['questions'][j+1] = session['questions'][j+1], session['questions'][j]
+                                    self.save_user_bank(bank_id, sessions)
+                                    st.rerun()
+                        
+                        with col3:
+                            if st.button("💾", key=f"topic_save_{session['id']}_{j}"):
+                                session['questions'][j] = edited
+                                self.save_user_bank(bank_id, sessions)
+                                st.rerun()
+                            
+                            if st.button("🗑️", key=f"topic_del_{session['id']}_{j}"):
+                                session['questions'].pop(j)
+                                self.save_user_bank(bank_id, sessions)
+                                st.rerun()
+                        
+                        st.divider()
+                else:
+                    # For chapters-only banks, show a simple message
+                    st.caption("✨ This is a chapters-only bank. No topics/questions needed.")
         
         if st.button("🔙 Back to Bank Manager", use_container_width=True):
             st.session_state.show_bank_editor = False
