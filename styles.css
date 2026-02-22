@@ -436,15 +436,25 @@ section[data-testid="stSidebar"] .stButton > button {
         max-width: 300px;
     }
 }
-/* Grey out everything except editor when typing */
+/* Darken everything when editor is focused */
+.ql-editor:focus {
+    outline: none;
+}
+
+.ql-editor:focus::before {
+    content: '';
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100vw;
+    height: 100vh;
+    background: rgba(0,0,0,0.8);
+    z-index: 9998;
+    pointer-events: none;
+}
+
 .ql-editor:focus {
     position: relative;
     z-index: 9999;
     background: white;
-    box-shadow: 0 0 0 100vmax rgba(0,0,0,0.7);
-}
-
-/* Keep toolbar visible but dimmed */
-.ql-editor:focus ~ .ql-toolbar {
-    opacity: 0.3;
 }
