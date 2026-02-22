@@ -2664,7 +2664,16 @@ def show_bank_editor():
     else: 
         st.session_state.qb_manager.user_id = user_id
     st.markdown('<div class="modal-overlay">', unsafe_allow_html=True)
+    
+    # Call the display_bank_editor method
     st.session_state.qb_manager.display_bank_editor(st.session_state.editing_bank_id)
+    
+    # Check if the editor should close (this happens when the back button is clicked inside display_bank_editor)
+    if not st.session_state.get('show_bank_editor', False):
+        st.markdown('</div>', unsafe_allow_html=True)
+        st.stop()
+        return
+    
     st.markdown('</div>', unsafe_allow_html=True)
 
 # ============================================================================
