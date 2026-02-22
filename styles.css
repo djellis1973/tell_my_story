@@ -435,7 +435,10 @@ section[data-testid="stSidebar"] .stButton > button {
         flex: 0 1 auto;
         max-width: 300px;
     }
-    /* Make all back/return buttons dark blue */
+}
+
+/* ========== DARK BLUE BACK BUTTONS ========== */
+/* Make all back/return buttons dark blue */
 button:has(span:contains("←")),
 button:has(span:contains("Back")),
 button:has(span:contains("Return")),
@@ -464,17 +467,7 @@ button[key*="Close"]:hover,
     border: none !important;
 }
 
-/* Style for close/X buttons in modals */
-button[kind="secondary"] {
-    background-color: #1E3A8A !important;
-    color: white !important;
-}
-
-button[kind="secondary"]:hover {
-    background-color: #0F2656 !important;
-}
-
-/* Make all modal close buttons more visible */
+/* Make all modal close buttons red for visibility */
 .modal-overlay button:has(span:contains("✕")),
 .modal-overlay button:has(span:contains("×")) {
     background-color: #DC2626 !important;
