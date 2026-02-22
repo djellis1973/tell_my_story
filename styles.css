@@ -482,15 +482,3 @@ section[data-testid="stSidebar"] .stButton > button {
     }
 }
 
-/* ULTIMATE OVERRIDE - place at very end of styles.css */
-.ql-container, 
-.ql-editor, 
-div.ql-container, 
-div.ql-editor,
-section[data-testid="stMain"] .ql-container,
-section[data-testid="stMain"] .ql-editor {
-    min-height: 900px !important;
-    height: 900px !important;
-    max-height: 1200px !important;
-    min-width: 100% !important;
-}
