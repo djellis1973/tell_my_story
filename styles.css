@@ -1,29 +1,15 @@
 /* styles.css - Complete version for Tell My Story */
-/* Distraction-free mode styles */
+
+/* ============================================================================
+   DISTRACTION-FREE MODE - ULTRA MINIMAL WITH DEEP WRITING AREA
+   =========================================================================== */
+
+/* Hide everything except the absolute essentials */
 .distraction-free-mode-active section[data-testid="stSidebar"] {
     display: none !important;
 }
 
-.distraction-free-mode-active .main > div {
-    max-width: 900px !important;
-    margin: 0 auto !important;
-}
-
 .distraction-free-mode-active .stApp header {
-    display: none !important;
-}
-
-.distraction-free-mode-active .stAlert, 
-.distraction-free-mode-active .stException,
-.distraction-free-mode-active .element-container:has(.stMarkdown):not(:has(.stQuill)):not(:has(.question-box)) {
-    display: none !important;
-}
-
-.distraction-free-mode-active .stProgress {
-    display: none !important;
-}
-
-.distraction-free-mode-active .topic-counter {
     display: none !important;
 }
 
@@ -31,83 +17,233 @@
     display: none !important;
 }
 
+.distraction-free-mode-active .stAlert, 
+.distraction-free-mode-active .stException,
+.distraction-free-mode-active .stProgress,
+.distraction-free-mode-active .st-emotion-cache-1wmy9hl > div:not(:has(.stQuill)):not(:has(.question-box)):not(:has(button)),
+.distraction-free-mode-active .element-container:has(.stMarkdown):not(:has(.stQuill)):not(:has(.question-box)),
+.distraction-free-mode-active .stSubheader,
+.distraction-free-mode-active .stCaption,
+.distraction-free-mode-active .stInfo,
+.distraction-free-mode-active .stWarning,
+.distraction-free-mode-active .stSuccess,
+.distraction-free-mode-active .stError,
+.distraction-free-mode-active .topic-counter,
+.distraction-free-mode-active [data-testid="stMetric"],
+.distraction-free-mode-active .st-emotion-cache-16idsys,
+.distraction-free-mode-active .st-emotion-cache-1dp5vir,
+.distraction-free-mode-active .st-emotion-cache-1wrcr25,
+.distraction-free-mode-active .st-emotion-cache-18ni7ap {
+    display: none !important;
+}
+
+/* Main container - center and maximize */
+.distraction-free-mode-active .main > div {
+    max-width: 1000px !important;
+    margin: 0 auto !important;
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+/* Make the editor DEEP - 4x larger */
 .distraction-free-mode-active .stQuill {
-    margin-top: 20px !important;
+    margin-top: 10px !important;
+    height: auto !important;
+    min-height: 85vh !important;
+}
+
+.distraction-free-mode-active .stQuill > div {
+    min-height: 85vh !important;
+    height: auto !important;
+}
+
+.distraction-free-mode-active .element-container:has(.stQuill) {
+    min-height: 85vh !important;
+    height: auto !important;
 }
 
 .distraction-free-mode-active .stQuill .ql-container {
-    min-height: 70vh !important;
-    font-size: 18px !important;
+    min-height: 80vh !important;
+    height: auto !important;
+    font-size: 20px !important;
     line-height: 1.8 !important;
     border: none !important;
+    background: transparent !important;
 }
 
 .distraction-free-mode-active .stQuill .ql-editor {
     padding: 40px !important;
+    min-height: 80vh !important;
+    height: auto !important;
 }
 
+/* Toolbar - subtle but accessible */
 .distraction-free-mode-active .stQuill .ql-toolbar {
     position: sticky !important;
     top: 0 !important;
-    background: white !important;
-    z-index: 100 !important;
-    border: 1px solid #f0f0f0 !important;
+    background: rgba(255, 255, 255, 0.98) !important;
+    z-index: 1000 !important;
+    border: 1px solid #eaeaea !important;
     border-radius: 8px !important;
-    opacity: 0.2 !important;
-    transition: opacity 0.3s !important;
+    opacity: 0.15 !important;
+    transition: opacity 0.2s ease !important;
+    margin-bottom: 20px !important;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05) !important;
+    backdrop-filter: blur(5px) !important;
 }
 
 .distraction-free-mode-active .stQuill .ql-toolbar:hover {
     opacity: 1 !important;
 }
 
+/* Question box - prominent but clean */
 .distraction-free-mode-active .question-box {
-    font-size: 24px !important;
-    padding: 30px !important;
-    margin: 20px 0 !important;
+    font-size: 28px !important;
+    font-weight: 300 !important;
+    padding: 20px 20px 20px 30px !important;
+    margin: 10px 0 20px 0 !important;
     background: none !important;
-    border-left: 4px solid #9b59b6 !important;
+    border-left: 3px solid #9b59b6 !important;
     border-radius: 0 !important;
     box-shadow: none !important;
+    line-height: 1.4 !important;
+    color: #2c3e50 !important;
 }
 
-.distraction-free-toggle {
+/* Floating navigation in distraction-free mode */
+.distraction-free-nav {
     position: fixed;
-    bottom: 20px;
+    bottom: 30px;
+    right: 30px;
+    display: flex;
+    gap: 10px;
+    z-index: 10000;
+    background: rgba(255, 255, 255, 0.95);
+    padding: 12px 20px;
+    border-radius: 50px;
+    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.distraction-free-nav button {
+    background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+    color: white;
+    border: none;
+    padding: 10px 20px;
+    border-radius: 30px;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s;
+    min-width: 80px;
+    border: 1px solid rgba(255, 255, 255, 0.2);
+}
+
+.distraction-free-nav button:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 15px rgba(102, 126, 234, 0.4);
+}
+
+.distraction-free-nav button:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+    transform: none;
+    box-shadow: none;
+}
+
+.distraction-free-nav button#save_btn {
+    background: #27ae60;
+}
+
+/* Exit button */
+.distraction-free-exit {
+    position: fixed;
+    top: 20px;
     right: 20px;
-    z-index: 9999;
+    z-index: 10000;
+    background: rgba(0, 0, 0, 0.03);
+    color: #666;
+    border: 1px solid rgba(0, 0, 0, 0.1);
+    border-radius: 40px;
+    padding: 8px 18px;
+    font-size: 14px;
+    font-weight: normal;
+    cursor: pointer;
+    backdrop-filter: blur(10px);
+    transition: all 0.2s;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+}
+
+.distraction-free-exit:hover {
+    background: rgba(0, 0, 0, 0.05);
+    color: #333;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+}
+
+/* Enter focus mode button */
+.distraction-free-enter {
+    position: fixed;
+    bottom: 30px;
+    right: 30px;
+    z-index: 10000;
     background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
     color: white;
     border: none;
     border-radius: 50px;
-    padding: 12px 24px;
+    padding: 14px 28px;
     font-size: 16px;
-    font-weight: bold;
+    font-weight: 600;
     cursor: pointer;
-    box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.4);
     transition: all 0.3s;
+    border: 1px solid rgba(255, 255, 255, 0.2);
 }
 
-.distraction-free-toggle:hover {
+.distraction-free-enter:hover {
     transform: scale(1.05);
-    box-shadow: 0 6px 20px rgba(0,0,0,0.3);
+    box-shadow: 0 8px 30px rgba(102, 126, 234, 0.6);
 }
 
-.distraction-free-toggle-exit {
-    position: fixed;
-    top: 20px;
-    right: 20px;
-    z-index: 9999;
-    background: rgba(255,255,255,0.9);
-    color: #333;
-    border: 1px solid #ddd;
-    border-radius: 50px;
-    padding: 8px 16px;
-    font-size: 14px;
-    cursor: pointer;
-    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-    transition: all 0.3s;
+/* Force hide all Streamlit decorations */
+.distraction-free-mode-active .stApp > header {
+    display: none !important;
 }
+
+.distraction-free-mode-active .st-emotion-cache-18ni7ap {
+    display: none !important;
+}
+
+.distraction-free-mode-active .st-emotion-cache-1dp5vir {
+    display: none !important;
+}
+
+.distraction-free-mode-active .st-emotion-cache-1wrcr25 {
+    display: none !important;
+}
+
+.distraction-free-mode-active .st-emotion-cache-16idsys {
+    display: none !important;
+}
+
+.distraction-free-mode-active .st-emotion-cache-1aehpvj {
+    display: none !important;
+}
+
+/* Make sure the editor container takes full height */
+.distraction-free-mode-active .stVerticalBlock {
+    gap: 0 !important;
+}
+
+.distraction-free-mode-active .block-container {
+    padding-top: 0 !important;
+    padding-bottom: 0 !important;
+}
+
+/* ============================================================================
+   MAIN APP STYLES
+   =========================================================================== */
+
 .main-header {
     text-align: center;
     padding-top: 0.5rem;
