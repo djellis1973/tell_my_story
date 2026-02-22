@@ -4628,6 +4628,21 @@ if st.session_state.get('distraction_free_mode', False):
         // Add class to body for CSS targeting
         document.body.classList.add('distraction-free-mode-active');
     </script>
+    <style>
+        /* MAKE THE EDITOR 4X DEEPER */
+        .stQuill .ql-container {
+            min-height: 80vh !important;
+            height: auto !important;
+        }
+        
+        .stQuill .ql-editor {
+            min-height: 80vh !important;
+        }
+        
+        .element-container:has(.stQuill) {
+            min-height: 80vh !important;
+        }
+    </style>
     """, unsafe_allow_html=True)
     
     # Add exit button
