@@ -104,8 +104,6 @@ default_state = {
     "show_publisher": False,
     "cover_image_data": None,
     "show_support": False,
-    "distraction_free_mode": False,
-    "show_distraction_free_toggle": False,
     # PROMPT ME new variables
     "show_prompt_modal": False,
     "current_prompt_data": None
@@ -124,11 +122,6 @@ except FileNotFoundError:
 
 LOGO_URL = "https://menuhunterai.com/wp-content/uploads/2026/02/tms_logo.png"
 
-def toggle_distraction_free():
-    """Toggle distraction-free mode"""
-    st.session_state.distraction_free_mode = not st.session_state.distraction_free_mode
-    st.rerun()
-    
 # ============================================================================
 # HISTORICAL EVENTS HELPER - SIMPLE VERSION
 # ============================================================================
@@ -4621,44 +4614,6 @@ if st.session_state.logged_in:
 # ============================================================================
 import logging
 
-# Apply distraction-free mode class to body if active
-if st.session_state.get('distraction_free_mode', False):
-    st.markdown("""
-    <script>
-        // Add class to body for CSS targeting
-        document.body.classList.add('distraction-free-mode-active');
-    </script>
-    <style>
-        /* MAKE THE EDITOR 4X DEEPER */
-        .stQuill .ql-container {
-            min-height: 80vh !important;
-            height: auto !important;
-        }
-        
-        .stQuill .ql-editor {
-            min-height: 80vh !important;
-        }
-        
-        .element-container:has(.stQuill) {
-            min-height: 80vh !important;
-        }
-    </style>
-    """, unsafe_allow_html=True)
-    
-    # Add exit button
-    col_exit1, col_exit2, col_exit3 = st.columns([1, 2, 1])
-    with col_exit2:
-        if st.button("✕ Exit Focus Mode", key="exit_distraction_free", use_container_width=True):
-            st.session_state.distraction_free_mode = False
-            st.rerun()
-else:
-    st.markdown("""
-    <script>
-        // Remove class from body
-        document.body.classList.remove('distraction-free-mode-active');
-    </script>
-    """, unsafe_allow_html=True)
-
 editor_base_key = f"quill_{current_session_id}_{current_question_text[:20]}"
 content_key = f"{editor_base_key}_content"
 
@@ -4677,23 +4632,12 @@ if content_key not in st.session_state:
     else:
         st.session_state[content_key] = "<p>Start writing your story here...</p>"
 
-# Only show these UI elements if NOT in distraction-free mode
-if not st.session_state.get('distraction_free_mode', False):
-    st.markdown("### ✍️ Your Story")
-    st.markdown("""
-    <div class="image-drop-info">
-        📸 <strong>Drag & drop images</strong> directly into the editor.
-    </div>
-    """, unsafe_allow_html=True)
-    
-    # Add toggle button in normal mode
-    col_toggle1, col_toggle2, col_toggle3 = st.columns([1, 2, 1])
-    with col_toggle2:
-        if st.button("🎯 Focus Mode (Hide distractions)", key="enter_distraction_free", use_container_width=True):
-            st.session_state.distraction_free_mode = True
-            st.rerun()
-else:
-    st.markdown("### ✍️ Your Story")
+st.markdown("### ✍️ Your Story")
+st.markdown("""
+<div class="image-drop-info">
+    📸 <strong>Drag & drop images</strong> directly into the editor.
+</div>
+""", unsafe_allow_html=True)
 
 question_text_safe = "".join(c for c in current_question_text if c.isalnum() or c.isspace()).replace(" ", "_")[:30]
 editor_component_key = f"quill_editor_{current_session_id}_{question_text_safe}_v{st.session_state[version_key]}"
@@ -4725,319 +4669,295 @@ except Exception as e:
 st.markdown("---")
 
 # ============================================================================
-# BUTTONS ROW - CONDITIONALLY SHOW BASED ON DISTRACTION-FREE MODE
+# BUTTONS ROW - WITH PROMPT ME BUTTON ADDED
 # ============================================================================
-if not st.session_state.get('distraction_free_mode', False):
-    # Show full button row in normal mode
-    col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([1, 1, 1, 1, 1, 1, 1, 2])
-    
-    spellcheck_base = f"spell_{editor_base_key}"
-    spell_result_key = f"{spellcheck_base}_result"
-    current_content = st.session_state.get(content_key, "")
-    has_content = current_content and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>"
-    showing_results = spell_result_key in st.session_state and st.session_state[spell_result_key].get("show", False)
-    
-    import_key = f"import_{editor_base_key}"
-    if import_key not in st.session_state:
-        st.session_state[import_key] = False
-    show_import = st.session_state[import_key]
-    
-    with col1:
-        if st.button("💾 Save", key=f"save_btn_{editor_base_key}", type="primary", use_container_width=True):
-            current_content = st.session_state[content_key]
-            if current_content and current_content.strip() and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>":
-                with st.spinner("Saving your story..."):
-                    if save_response(current_session_id, current_question_text, current_content):
-                        st.success("✅ Saved!")
-                        time.sleep(0.5)
-                        st.rerun()
-                    else: 
-                        st.error("Failed to save")
-            else: 
-                st.warning("Please write something!")
-    
-    with col2:
-        if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
-            if st.button("🗑️ Delete", key=f"del_btn_{editor_base_key}", use_container_width=True):
-                if delete_response(current_session_id, current_question_text):
-                    st.session_state[content_key] = "<p>Start writing your story here...</p>"
-                    st.success("✅ Deleted!")
+col1, col2, col3, col4, col5, col6, col7, col8 = st.columns([1, 1, 1, 1, 1, 1, 1, 2])
+
+spellcheck_base = f"spell_{editor_base_key}"
+spell_result_key = f"{spellcheck_base}_result"
+current_content = st.session_state.get(content_key, "")
+has_content = current_content and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>"
+showing_results = spell_result_key in st.session_state and st.session_state[spell_result_key].get("show", False)
+
+import_key = f"import_{editor_base_key}"
+if import_key not in st.session_state:
+    st.session_state[import_key] = False
+show_import = st.session_state[import_key]
+
+with col1:
+    if st.button("💾 Save", key=f"save_btn_{editor_base_key}", type="primary", use_container_width=True):
+        current_content = st.session_state[content_key]
+        if current_content and current_content.strip() and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>":
+            with st.spinner("Saving your story..."):
+                if save_response(current_session_id, current_question_text, current_content):
+                    st.success("✅ Saved!")
+                    time.sleep(0.5)
                     st.rerun()
+                else: 
+                    st.error("Failed to save")
         else: 
-            st.button("🗑️ Delete", key=f"del_disabled_{editor_base_key}", disabled=True, use_container_width=True)
-    
-    with col3:
-        if has_content and not showing_results:
-            if st.button("🔍 Spell Check", key=f"spell_{editor_base_key}", use_container_width=True):
-                with st.spinner("Checking spelling and grammar..."):
-                    text_only = re.sub(r'<[^>]+>', '', current_content)
-                    if len(text_only.split()) >= 3:
-                        corrected = auto_correct_text(text_only)
-                        if corrected and corrected != text_only:
-                            st.session_state[spell_result_key] = {
-                                "original": text_only,
-                                "corrected": corrected,
-                                "show": True
-                            }
-                        else:
-                            st.session_state[spell_result_key] = {
-                                "message": "✅ No spelling or grammar issues found!",
-                                "show": True
-                            }
-                        st.rerun()
-                    else:
-                        st.warning("Text too short for spell check (minimum 3 words)")
-        else:
-            st.button("🔍 Spell Check", key=f"spell_disabled_{editor_base_key}", disabled=True, use_container_width=True)
-    
-    with col4:
-        if has_content:
-            if st.button("✨ AI Rewrite", key=f"rewrite_btn_{editor_base_key}", use_container_width=True):
-                st.session_state.show_ai_rewrite_menu = True
+            st.warning("Please write something!")
+
+with col2:
+    if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
+        if st.button("🗑️ Delete", key=f"del_btn_{editor_base_key}", use_container_width=True):
+            if delete_response(current_session_id, current_question_text):
+                st.session_state[content_key] = "<p>Start writing your story here...</p>"
+                st.success("✅ Deleted!")
                 st.rerun()
-        else:
-            st.button("✨ AI Rewrite", key=f"rewrite_disabled_{editor_base_key}", disabled=True, use_container_width=True)
-    
-    with col5:
-        if st.button("💭 Prompt Me", key=f"prompt_btn_{editor_base_key}", use_container_width=True):
-            with st.spinner("Generating personalized writing prompts..."):
-                # Get profile context
-                profile_context = get_narrative_gps_for_ai()
-                
-                # Get birth year from profile
-                birth_year = None
-                if st.session_state.user_account and 'profile' in st.session_state.user_account:
-                    birthdate = st.session_state.user_account['profile'].get('birthdate', '')
-                    if birthdate:
-                        import re
-                        year_match = re.search(r'\d{4}', birthdate)
-                        if year_match:
-                            birth_year = int(year_match.group())
-                
-                # Add enhanced profile context
-                if st.session_state.user_account and 'enhanced_profile' in st.session_state.user_account:
-                    ep = st.session_state.user_account['enhanced_profile']
-                    if ep:
-                        profile_context += "\n\nPersonal background:\n"
-                        if ep.get('first_name'): 
-                            profile_context += f"- Name: {ep.get('first_name')}\n"
-                        if ep.get('birth_place'): 
-                            profile_context += f"- Birth place: {ep['birth_place']}\n"
-                        if ep.get('childhood_home'): 
-                            profile_context += f"- Childhood home: {ep['childhood_home'][:150]}\n"
-                        if ep.get('parents'):
-                            profile_context += f"- Parents: {ep['parents'][:150]}\n"
-                
-                # Generate prompts
-                result = generate_writing_prompts(
-                    current_session['title'],
-                    current_question_text,
-                    current_content,
-                    profile_context,
-                    birth_year
+    else: 
+        st.button("🗑️ Delete", key=f"del_disabled_{editor_base_key}", disabled=True, use_container_width=True)
+
+with col3:
+    if has_content and not showing_results:
+        if st.button("🔍 Spell Check", key=f"spell_{editor_base_key}", use_container_width=True):
+            with st.spinner("Checking spelling and grammar..."):
+                text_only = re.sub(r'<[^>]+>', '', current_content)
+                if len(text_only.split()) >= 3:
+                    corrected = auto_correct_text(text_only)
+                    if corrected and corrected != text_only:
+                        st.session_state[spell_result_key] = {
+                            "original": text_only,
+                            "corrected": corrected,
+                            "show": True
+                        }
+                    else:
+                        st.session_state[spell_result_key] = {
+                            "message": "✅ No spelling or grammar issues found!",
+                            "show": True
+                        }
+                    st.rerun()
+                else:
+                    st.warning("Text too short for spell check (minimum 3 words)")
+    else:
+        st.button("🔍 Spell Check", key=f"spell_disabled_{editor_base_key}", disabled=True, use_container_width=True)
+
+with col4:
+    if has_content:
+        if st.button("✨ AI Rewrite", key=f"rewrite_btn_{editor_base_key}", use_container_width=True):
+            st.session_state.show_ai_rewrite_menu = True
+            st.rerun()
+    else:
+        st.button("✨ AI Rewrite", key=f"rewrite_disabled_{editor_base_key}", disabled=True, use_container_width=True)
+
+# PROMPT ME BUTTON
+with col5:
+    if st.button("💭 Prompt Me", key=f"prompt_btn_{editor_base_key}", use_container_width=True):
+        with st.spinner("Generating personalized writing prompts..."):
+            # Get profile context
+            profile_context = get_narrative_gps_for_ai()
+            
+            # Get birth year from profile
+            birth_year = None
+            if st.session_state.user_account and 'profile' in st.session_state.user_account:
+                birthdate = st.session_state.user_account['profile'].get('birthdate', '')
+                if birthdate:
+                    import re
+                    year_match = re.search(r'\d{4}', birthdate)
+                    if year_match:
+                        birth_year = int(year_match.group())
+            
+            # Add enhanced profile context
+            if st.session_state.user_account and 'enhanced_profile' in st.session_state.user_account:
+                ep = st.session_state.user_account['enhanced_profile']
+                if ep:
+                    profile_context += "\n\nPersonal background:\n"
+                    if ep.get('first_name'): 
+                        profile_context += f"- Name: {ep.get('first_name')}\n"
+                    if ep.get('birth_place'): 
+                        profile_context += f"- Birth place: {ep['birth_place']}\n"
+                    if ep.get('childhood_home'): 
+                        profile_context += f"- Childhood home: {ep['childhood_home'][:150]}\n"
+                    if ep.get('parents'):
+                        profile_context += f"- Parents: {ep['parents'][:150]}\n"
+            
+            # Generate prompts
+            result = generate_writing_prompts(
+                current_session['title'],
+                current_question_text,
+                current_content,
+                profile_context,
+                birth_year
+            )
+            
+            if result.get('success'):
+                st.session_state.current_prompt_data = result
+                st.session_state.show_prompt_modal = True
+                st.rerun()
+            else:
+                st.error(result.get('error', 'Could not generate prompts'))
+
+with col6:
+    button_label = "📂 Close Import" if show_import else "📂 Import File"
+    if st.button(button_label, key=f"import_btn_{editor_base_key}", use_container_width=True):
+        st.session_state[import_key] = not show_import
+        st.rerun()
+
+with col7:
+    if st.session_state.get('show_ai_rewrite_menu', False):
+        person_option = st.selectbox(
+            "Voice:",
+            options=["1st", "2nd", "3rd"],
+            format_func=lambda x: {"1st": "👤 First Person", "2nd": "💬 Second Person", "3rd": "📖 Third Person"}[x],
+            key=f"person_select_{editor_base_key}",
+            label_visibility="collapsed"
+        )
+        
+        if st.button("Go", key=f"go_rewrite_{editor_base_key}", type="primary", use_container_width=True):
+            with st.spinner(f"Rewriting in {person_option} person..."):
+                current_content = st.session_state[content_key]
+                result = ai_rewrite_answer(
+                    current_content, 
+                    person_option, 
+                    current_question_text, 
+                    current_session['title']
                 )
                 
                 if result.get('success'):
-                    st.session_state.current_prompt_data = result
-                    st.session_state.show_prompt_modal = True
+                    st.session_state.current_rewrite_data = result
+                    st.session_state.show_ai_rewrite = True
+                    st.session_state.show_ai_rewrite_menu = False
                     st.rerun()
                 else:
-                    st.error(result.get('error', 'Could not generate prompts'))
-    
-    with col6:
-        button_label = "📂 Close Import" if show_import else "📂 Import File"
-        if st.button(button_label, key=f"import_btn_{editor_base_key}", use_container_width=True):
-            st.session_state[import_key] = not show_import
-            st.rerun()
-    
-    with col7:
-        if st.session_state.get('show_ai_rewrite_menu', False):
-            person_option = st.selectbox(
-                "Voice:",
-                options=["1st", "2nd", "3rd"],
-                format_func=lambda x: {"1st": "👤 First Person", "2nd": "💬 Second Person", "3rd": "📖 Third Person"}[x],
-                key=f"person_select_{editor_base_key}",
-                label_visibility="collapsed"
-            )
-            
-            if st.button("Go", key=f"go_rewrite_{editor_base_key}", type="primary", use_container_width=True):
-                with st.spinner(f"Rewriting in {person_option} person..."):
-                    current_content = st.session_state[content_key]
-                    result = ai_rewrite_answer(
-                        current_content, 
-                        person_option, 
-                        current_question_text, 
-                        current_session['title']
-                    )
-                    
-                    if result.get('success'):
-                        st.session_state.current_rewrite_data = result
-                        st.session_state.show_ai_rewrite = True
-                        st.session_state.show_ai_rewrite_menu = False
-                        st.rerun()
-                    else:
-                        st.error(result.get('error', 'Failed to rewrite'))
-        else:
-            st.markdown("")
-    
-    with col8:
-        nav1, nav2 = st.columns(2)
-        with nav1: 
-            prev_disabled = st.session_state.current_question == 0
-            if st.button("← Previous", disabled=prev_disabled, key=f"prev_{editor_base_key}", use_container_width=True):
-                if not prev_disabled:
-                    st.session_state.current_question -= 1
-                    st.session_state.current_question_override = None
-                    st.session_state.show_ai_rewrite_menu = False
-                    st.rerun()
-        with nav2:
-            next_disabled = st.session_state.current_question >= len(current_session["questions"]) - 1
-            if st.button("Next →", disabled=next_disabled, key=f"next_{editor_base_key}", use_container_width=True):
-                if not next_disabled:
-                    st.session_state.current_question += 1
-                    st.session_state.current_question_override = None
-                    st.session_state.show_ai_rewrite_menu = False
-                    st.rerun()
-    
-    if showing_results:
-        result = st.session_state[spell_result_key]
-        if "corrected" in result:
-            st.markdown("---")
-            st.markdown("### ✅ Suggested Corrections:")
-            st.markdown(f'<div style="background-color: #f0f9ff; padding: 15px; border-radius: 8px; border-left: 4px solid #4CAF50;">{result["corrected"]}</div>', unsafe_allow_html=True)
-            
-            col_apply1, col_apply2, col_apply3 = st.columns([1, 1, 1])
-            with col_apply2:
-                if st.button("📋 Apply Corrections", key=f"{spellcheck_base}_apply", type="primary", use_container_width=True):
-                    corrected = result["corrected"]
-                    if not corrected.startswith('<p>'):
-                        corrected = f'<p>{corrected}</p>'
-                    
-                    st.session_state[content_key] = corrected
-                    save_response(current_session_id, current_question_text, corrected)
-                    st.session_state[version_key] += 1
-                    st.session_state[spell_result_key] = {"show": False}
-                    st.success("✅ Corrections applied!")
-                    st.rerun()
-                
-                if st.button("❌ Dismiss", key=f"{spellcheck_base}_dismiss", use_container_width=True):
-                    st.session_state[spell_result_key] = {"show": False}
-                    st.rerun()
-        
-        elif "message" in result:
-            st.success(result["message"])
-            if st.button("Dismiss", key=f"{spellcheck_base}_dismiss_msg"):
-                st.session_state[spell_result_key] = {"show": False}
-                st.rerun()
-    
-    if show_import:
-        st.markdown("---")
-        st.markdown("### 📂 Import Text File")
-        
-        with st.expander("📋 Supported File Formats", expanded=True):
-            st.markdown("""
-            | Format | Description |
-            |--------|-------------|
-            | **.txt** | Plain text |
-            | **.docx** | Microsoft Word |
-            | **.rtf** | Rich Text Format |
-            | **.vtt/.srt** | Subtitle files |
-            | **.json** | Transcription JSON |
-            | **.md** | Markdown |
-            
-            **Maximum file size:** 50MB
-            """)
-        
-        uploaded_file = st.file_uploader(
-            "Choose a file to import",
-            type=['txt', 'docx', 'rtf', 'vtt', 'srt', 'json', 'md'],
-            key=f"file_uploader_{editor_base_key}",
-            help="Select a file from your computer to import into this topic"
-        )
-        
-        if uploaded_file:
-            col_imp1, col_imp2, col_imp3 = st.columns([1, 1, 2])
-            with col_imp1:
-                if st.button("📥 Import", key=f"do_import_{editor_base_key}", type="primary", use_container_width=True):
-                    with st.spinner("Importing file..."):
-                        imported_html = import_text_file_main(uploaded_file)
-                        if imported_html:
-                            current = st.session_state.get(content_key, "")
-                            if current and current != "<p>Start writing your story here...</p>" and current != "<p><br></p>":
-                                st.session_state[f"{import_key}_pending"] = imported_html
-                                st.session_state[f"{import_key}_show_options"] = True
-                                st.rerun()
-                            else:
-                                st.session_state[content_key] = imported_html
-                                st.session_state[version_key] += 1
-                                st.session_state[import_key] = False
-                                st.success("✅ File imported successfully!")
-                                st.rerun()
-            
-            with col_imp2:
-                if st.button("❌ Cancel", key=f"cancel_import_{editor_base_key}", use_container_width=True):
-                    st.session_state[import_key] = False
-                    st.rerun()
-            
-            if st.session_state.get(f"{import_key}_show_options", False):
-                st.markdown("---")
-                st.markdown("**This topic already has content. What would you like to do?**")
-                
-                col_opt1, col_opt2, col_opt3 = st.columns(3)
-                with col_opt1:
-                    if st.button("📝 Replace Current", key=f"import_replace_{editor_base_key}", use_container_width=True):
-                        st.session_state[content_key] = st.session_state[f"{import_key}_pending"]
-                        st.session_state[version_key] += 1
-                        st.session_state[import_key] = False
-                        st.session_state[f"{import_key}_pending"] = None
-                        st.session_state[f"{import_key}_show_options"] = False
-                        st.success("✅ File imported (replaced current content)!")
-                        st.rerun()
-                
-                with col_opt2:
-                    if st.button("➕ Append to Current", key=f"import_append_{editor_base_key}", use_container_width=True):
-                        current = st.session_state.get(content_key, "")
-                        current = current.replace('</p>', '')
-                        new_content = current + st.session_state[f"{import_key}_pending"]
-                        st.session_state[content_key] = new_content
-                        st.session_state[version_key] += 1
-                        st.session_state[import_key] = False
-                        st.session_state[f"{import_key}_pending"] = None
-                        st.session_state[f"{import_key}_show_options"] = False
-                        st.success("✅ File imported (appended to current content)!")
-                        st.rerun()
-                
-                with col_opt3:
-                    if st.button("❌ Cancel Import", key=f"import_cancel_options_{editor_base_key}", use_container_width=True):
-                        st.session_state[f"{import_key}_pending"] = None
-                        st.session_state[f"{import_key}_show_options"] = False
-                        st.rerun()
-else:
-    # In distraction-free mode, show minimal navigation
-    col_nav1, col_nav2, col_nav3 = st.columns([1, 2, 1])
-    with col_nav1:
+                    st.error(result.get('error', 'Failed to rewrite'))
+    else:
+        st.markdown("")
+
+with col8:
+    nav1, nav2 = st.columns(2)
+    with nav1: 
         prev_disabled = st.session_state.current_question == 0
-        if st.button("←", disabled=prev_disabled, key=f"prev_simple_{editor_base_key}", use_container_width=True):
+        if st.button("← Previous", disabled=prev_disabled, key=f"prev_{editor_base_key}", use_container_width=True):
             if not prev_disabled:
                 st.session_state.current_question -= 1
                 st.session_state.current_question_override = None
+                st.session_state.show_ai_rewrite_menu = False
                 st.rerun()
-    with col_nav2:
-        if st.button("💾 Save", key=f"save_simple_{editor_base_key}", type="primary", use_container_width=True):
-            current_content = st.session_state[content_key]
-            if current_content and current_content.strip() and current_content != "<p><br></p>" and current_content != "<p>Start writing your story here...</p>":
-                with st.spinner("Saving..."):
-                    if save_response(current_session_id, current_question_text, current_content):
-                        st.success("✅ Saved!")
-                        time.sleep(0.5)
-                        st.rerun()
-    with col_nav3:
+    with nav2:
         next_disabled = st.session_state.current_question >= len(current_session["questions"]) - 1
-        if st.button("→", disabled=next_disabled, key=f"next_simple_{editor_base_key}", use_container_width=True):
+        if st.button("Next →", disabled=next_disabled, key=f"next_{editor_base_key}", use_container_width=True):
             if not next_disabled:
                 st.session_state.current_question += 1
                 st.session_state.current_question_override = None
+                st.session_state.show_ai_rewrite_menu = False
                 st.rerun()
+
+if showing_results:
+    result = st.session_state[spell_result_key]
+    if "corrected" in result:
+        st.markdown("---")
+        st.markdown("### ✅ Suggested Corrections:")
+        st.markdown(f'<div style="background-color: #f0f9ff; padding: 15px; border-radius: 8px; border-left: 4px solid #4CAF50;">{result["corrected"]}</div>', unsafe_allow_html=True)
+        
+        col_apply1, col_apply2, col_apply3 = st.columns([1, 1, 1])
+        with col_apply2:
+            if st.button("📋 Apply Corrections", key=f"{spellcheck_base}_apply", type="primary", use_container_width=True):
+                corrected = result["corrected"]
+                if not corrected.startswith('<p>'):
+                    corrected = f'<p>{corrected}</p>'
+                
+                st.session_state[content_key] = corrected
+                save_response(current_session_id, current_question_text, corrected)
+                st.session_state[version_key] += 1
+                st.session_state[spell_result_key] = {"show": False}
+                st.success("✅ Corrections applied!")
+                st.rerun()
+            
+            if st.button("❌ Dismiss", key=f"{spellcheck_base}_dismiss", use_container_width=True):
+                st.session_state[spell_result_key] = {"show": False}
+                st.rerun()
+    
+    elif "message" in result:
+        st.success(result["message"])
+        if st.button("Dismiss", key=f"{spellcheck_base}_dismiss_msg"):
+            st.session_state[spell_result_key] = {"show": False}
+            st.rerun()
+
+if show_import:
+    st.markdown("---")
+    st.markdown("### 📂 Import Text File")
+    
+    with st.expander("📋 Supported File Formats", expanded=True):
+        st.markdown("""
+        | Format | Description |
+        |--------|-------------|
+        | **.txt** | Plain text |
+        | **.docx** | Microsoft Word |
+        | **.rtf** | Rich Text Format |
+        | **.vtt/.srt** | Subtitle files |
+        | **.json** | Transcription JSON |
+        | **.md** | Markdown |
+        
+        **Maximum file size:** 50MB
+        """)
+    
+    uploaded_file = st.file_uploader(
+        "Choose a file to import",
+        type=['txt', 'docx', 'rtf', 'vtt', 'srt', 'json', 'md'],
+        key=f"file_uploader_{editor_base_key}",
+        help="Select a file from your computer to import into this topic"
+    )
+    
+    if uploaded_file:
+        col_imp1, col_imp2, col_imp3 = st.columns([1, 1, 2])
+        with col_imp1:
+            if st.button("📥 Import", key=f"do_import_{editor_base_key}", type="primary", use_container_width=True):
+                with st.spinner("Importing file..."):
+                    imported_html = import_text_file_main(uploaded_file)
+                    if imported_html:
+                        current = st.session_state.get(content_key, "")
+                        if current and current != "<p>Start writing your story here...</p>" and current != "<p><br></p>":
+                            st.session_state[f"{import_key}_pending"] = imported_html
+                            st.session_state[f"{import_key}_show_options"] = True
+                            st.rerun()
+                        else:
+                            st.session_state[content_key] = imported_html
+                            st.session_state[version_key] += 1
+                            st.session_state[import_key] = False
+                            st.success("✅ File imported successfully!")
+                            st.rerun()
+        
+        with col_imp2:
+            if st.button("❌ Cancel", key=f"cancel_import_{editor_base_key}", use_container_width=True):
+                st.session_state[import_key] = False
+                st.rerun()
+        
+        if st.session_state.get(f"{import_key}_show_options", False):
+            st.markdown("---")
+            st.markdown("**This topic already has content. What would you like to do?**")
+            
+            col_opt1, col_opt2, col_opt3 = st.columns(3)
+            with col_opt1:
+                if st.button("📝 Replace Current", key=f"import_replace_{editor_base_key}", use_container_width=True):
+                    st.session_state[content_key] = st.session_state[f"{import_key}_pending"]
+                    st.session_state[version_key] += 1
+                    st.session_state[import_key] = False
+                    st.session_state[f"{import_key}_pending"] = None
+                    st.session_state[f"{import_key}_show_options"] = False
+                    st.success("✅ File imported (replaced current content)!")
+                    st.rerun()
+            
+            with col_opt2:
+                if st.button("➕ Append to Current", key=f"import_append_{editor_base_key}", use_container_width=True):
+                    current = st.session_state.get(content_key, "")
+                    current = current.replace('</p>', '')
+                    new_content = current + st.session_state[f"{import_key}_pending"]
+                    st.session_state[content_key] = new_content
+                    st.session_state[version_key] += 1
+                    st.session_state[import_key] = False
+                    st.session_state[f"{import_key}_pending"] = None
+                    st.session_state[f"{import_key}_show_options"] = False
+                    st.success("✅ File imported (appended to current content)!")
+                    st.rerun()
+            
+            with col_opt3:
+                if st.button("❌ Cancel Import", key=f"import_cancel_options_{editor_base_key}", use_container_width=True):
+                    st.session_state[f"{import_key}_pending"] = None
+                    st.session_state[f"{import_key}_show_options"] = False
+                    st.rerun()
+
+st.markdown("---")
+
 # ============================================================================
 # IMAGE UPLOAD SECTION
 # ============================================================================
