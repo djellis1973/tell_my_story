@@ -4846,20 +4846,40 @@ if (st.session_state.show_vignette_modal or
     st.markdown(f'<div class="main-header"><img src="{LOGO_URL}" class="logo-img"></div>', unsafe_allow_html=True)
     st.stop()
 
-if st.session_state.current_session >= len(SESSIONS): 
+# SAFETY CHECK - Make sure current session is valid
+if not SESSIONS:
+    st.error("❌ No question bank loaded. Please load a bank first.")
+    if st.button("📋 Open Bank Manager", type="primary", use_container_width=True):
+        st.session_state.show_bank_manager = True
+        st.rerun()
+    st.stop()
+
+# Ensure current session index is valid
+if st.session_state.current_session >= len(SESSIONS):
     st.session_state.current_session = 0
 
 current_session = SESSIONS[st.session_state.current_session]
 current_session_id = current_session["id"]
 
-if st.session_state.current_question_override:
+# Ensure current question index is valid
+if not st.session_state.current_question_override:
+    if st.session_state.current_question >= len(current_session["questions"]):
+        st.session_state.current_question = 0
+    # Extra safety - if still invalid, create a default question
+    if len(current_session["questions"]) == 0:
+        st.warning("⚠️ This session has no questions. Please select another session or add questions.")
+        current_question_text = "No questions available"
+        question_source = "empty"
+    else:
+        current_question_text = current_session["questions"][st.session_state.current_question]
+        question_source = "regular"
+else:
     current_question_text = st.session_state.current_question_override
     question_source = "custom"
-else:
-    if st.session_state.current_question >= len(current_session["questions"]): 
-        st.session_state.current_question = 0
-    current_question_text = current_session["questions"][st.session_state.current_question]
-    question_source = "regular"
+
+# Stop if we have no valid question
+if question_source == "empty":
+    st.stop()
 
 st.markdown("---")
 
