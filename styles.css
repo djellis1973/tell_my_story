@@ -486,4 +486,3 @@ button[kind="secondary"]:hover {
 .modal-overlay button:has(span:contains("×")):hover {
     background-color: #B91C1C !important;
 }
-}
