@@ -4608,11 +4608,27 @@ if current_session_id in st.session_state.responses:
 if st.session_state.logged_in:
     init_image_handler()
     existing_images = st.session_state.image_handler.get_images_for_answer(current_session_id, current_question_text) if st.session_state.image_handler else []
-# Add this right before your st_quill editor
+# Add this right before your st_quill editor (around line 3400-3500 in your file)
+# Replace your existing Quill editor section with this:
 
-if st.button("📺 Open in Distraction-Free Window", key="popup_editor"):
+# Define the editor key FIRST
+editor_base_key = f"quill_{current_session_id}_{current_question_text[:20]}"
+content_key = f"{editor_base_key}_content"
+
+# Initialize if needed
+if content_key not in st.session_state:
+    if existing_answer and existing_answer != "<p>Start writing your story here...</p>":
+        st.session_state[content_key] = existing_answer
+    else:
+        st.session_state[content_key] = "<p>Start writing your story here...</p>"
+
+# Add distraction-free button HERE (before the editor)
+if st.button("📺 Open in Distraction-Free Window", key=f"popup_{editor_base_key}"):
     # Get current content
-    current_content = st.session_state.get(content_key, "")
+    current_text = st.session_state.get(content_key, "")
+    # Remove HTML tags for plain text
+    import re
+    plain_text = re.sub(r'<[^>]+>', '', current_text)
     
     # Create popup HTML
     popup_html = f"""
@@ -4634,32 +4650,53 @@ if st.button("📺 Open in Distraction-Free Window", key="popup_editor"):
                 box-shadow: 0 0 20px rgba(0,0,0,0.1);
                 font-family: Georgia, serif;
             }}
+            .instructions {{
+                text-align: center;
+                color: #666;
+                margin-top: 10px;
+                font-family: Arial, sans-serif;
+            }}
         </style>
     </head>
     <body>
-        <textarea id="story" placeholder="Write your story here...">{current_content.replace('<p>', '').replace('</p>', chr(10) + chr(10))}</textarea>
+        <textarea id="story" placeholder="Write your story here...">{plain_text}</textarea>
+        <div class="instructions">Write here, then copy and paste back to the main window</div>
         <script>
             const textarea = document.getElementById('story');
             textarea.focus();
-            
-            // Auto-save to localStorage
             textarea.addEventListener('input', function() {{
                 localStorage.setItem('story_draft', this.value);
             }});
-            
-            // Load saved draft
-            const saved = localStorage.getItem('story_draft');
-            if (saved) {{
-                textarea.value = saved;
-            }}
         </script>
     </body>
     </html>
     """
     
-    # Open in new window
     st.components.v1.html(popup_html, height=0, width=0)
-    st.markdown("✅ Popup opened! Write there, then copy/paste back here.")
+    st.success("✅ Popup opened! Write there, then copy/paste back here.")
+
+# THEN your regular Quill editor
+try:
+    content = st_quill(
+        value=st.session_state[content_key],
+        key=f"quill_editor_{editor_base_key}",
+        placeholder="Start writing your story here...",
+        html=True
+    )
+    
+    if content is not None and content != st.session_state[content_key]:
+        st.session_state[content_key] = content
+        
+except Exception as e:
+    st.error(f"Error loading editor: {str(e)}")
+    content = st.text_area(
+        "Your story (fallback editor):",
+        value=re.sub(r'<[^>]+>', '', st.session_state[content_key]),
+        height=300,
+        key=f"fallback_{editor_base_key}"
+    )
+    if content:
+        st.session_state[content_key] = f"<p>{content}</p>"
 # ============================================================================
 # QUILL EDITOR
 # ============================================================================
