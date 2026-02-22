@@ -438,41 +438,53 @@ section[data-testid="stSidebar"] .stButton > button {
 }
 
 /* ========== DARK BLUE BACK BUTTONS ========== */
-/* Make all back/return buttons dark blue */
-button:has(span:contains("←")),
-button:has(span:contains("Back")),
-button:has(span:contains("Return")),
-button[key*="back"],
-button[key*="Back"],
-button[key*="close"],
-button[key*="Close"],
-.stButton button[kind="secondary"] {
+/* Target all buttons that might be back/return buttons */
+.stButton button {
+    transition: all 0.2s ease !important;
+}
+
+/* Style for any button with ← symbol */
+button:has(span:contains("←")) {
     background-color: #1E3A8A !important;
     color: white !important;
     border: none !important;
     font-weight: bold !important;
 }
 
-/* Make them even darker on hover */
+/* Style for any button with Back or Return text */
+button:has(span:contains("Back")),
+button:has(span:contains("Return")) {
+    background-color: #1E3A8A !important;
+    color: white !important;
+    border: none !important;
+    font-weight: bold !important;
+}
+
+/* Style for secondary buttons (often used for back) */
+.stButton > button[kind="secondary"] {
+    background-color: #1E3A8A !important;
+    color: white !important;
+    border: none !important;
+    font-weight: bold !important;
+}
+
+/* Hover states */
 button:has(span:contains("←")):hover,
 button:has(span:contains("Back")):hover,
 button:has(span:contains("Return")):hover,
-button[key*="back"]:hover,
-button[key*="Back"]:hover,
-button[key*="close"]:hover,
-button[key*="Close"]:hover,
-.stButton button[kind="secondary"]:hover {
+.stButton > button[kind="secondary"]:hover {
     background-color: #0F2656 !important;
     color: white !important;
     border: none !important;
 }
 
-/* Make all modal close buttons red for visibility */
+/* Style for modal close buttons (X) */
 .modal-overlay button:has(span:contains("✕")),
 .modal-overlay button:has(span:contains("×")) {
     background-color: #DC2626 !important;
     color: white !important;
     font-weight: bold !important;
+    border: none !important;
 }
 
 .modal-overlay button:has(span:contains("✕")):hover,
