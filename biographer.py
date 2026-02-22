@@ -29,6 +29,11 @@ except ImportError:
     EPUB_AVAILABLE = False
     st.warning("For EPUB export: pip install ebooklib")
 
+import sys
+print("="*50)
+print("APP STARTING - DEBUG MODE")
+print("="*50)
+
 # ============================================================================
 # PAGE CONFIG - MUST BE FIRST
 # ============================================================================
@@ -3021,58 +3026,46 @@ if st.session_state.get('show_profile_setup', False):
 # ============================================================================
 # MODAL HANDLING
 # ============================================================================
+print(f"CHECKING MODALS: show_bank_editor={st.session_state.get('show_bank_editor', False)}")
+
 if st.session_state.show_ai_rewrite and st.session_state.current_rewrite_data:
+    print("→ Showing AI rewrite modal")
     show_ai_rewrite_modal()
     st.stop()
 
 if st.session_state.show_privacy_settings:
+    print("→ Showing privacy settings")
     show_privacy_settings()
     st.stop()
 
 if st.session_state.show_cover_designer:
+    print("→ Showing cover designer")
     show_cover_designer()
     st.stop()
 
 if st.session_state.show_bank_manager:
+    print("→ Showing bank manager")
     show_bank_manager()
     if st.session_state.show_bank_manager:
+        print("→ Bank manager stopping")
         st.stop()
 
 if st.session_state.show_bank_editor:
+    print("✅ BANK EDITOR CONDITION MET - calling show_bank_editor()")
     show_bank_editor()
+    print(f"→ After show_bank_editor, show_bank_editor flag = {st.session_state.get('show_bank_editor', False)}")
     if st.session_state.show_bank_editor:
+        print("→ Bank editor stopping")
         st.stop()
+    else:
+        print("→ Bank editor flag cleared, continuing")
 
 if st.session_state.show_vignette_detail:
+    print("→ Showing vignette detail")
     show_vignette_detail()
     if st.session_state.show_vignette_detail:
+        print("→ Vignette detail stopping")
         st.stop()
-
-if st.session_state.show_vignette_manager:
-    show_vignette_manager()
-    if st.session_state.show_vignette_manager:
-        st.stop()
-
-if st.session_state.show_vignette_modal:
-    show_vignette_modal()
-    if st.session_state.show_vignette_modal:
-        st.stop()
-
-if st.session_state.show_topic_browser:
-    show_topic_browser()
-    if st.session_state.show_topic_browser:
-        st.stop()
-
-if st.session_state.show_session_manager:
-    show_session_manager()
-    if st.session_state.show_session_manager:
-        st.stop()
-
-if st.session_state.show_session_creator:
-    show_session_creator()
-    if st.session_state.show_session_creator:
-        st.stop()
-
 # ============================================================================
 # MAIN HEADER WITH PROMINENT SUPPORT BUTTON
 # ============================================================================
