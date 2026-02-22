@@ -3648,6 +3648,21 @@ if st.session_state.get('show_support', False):
 # SIDEBAR
 # ============================================================================
 with st.sidebar:
+    # ADD THIS AT THE VERY TOP
+    col1, col2 = st.columns([3, 1])
+    with col1:
+        st.markdown("### 📖 Menu")
+    with col2:
+        if st.button("◀◀ Hide", help="Click to hide sidebar for distraction-free writing"):
+            st.markdown("""
+            <style>
+                section[data-testid="stSidebar"] { display: none !important; }
+            </style>
+            """, unsafe_allow_html=True)
+            st.rerun()
+    
+    # THEN the rest of your sidebar code follows...
+    st.markdown('<div class="sidebar-header"><h2>Tell My Story</h2><p>Your Life Timeline</p></div>', unsafe_allow_html=True)with st.sidebar:
     st.markdown('<div class="sidebar-header"><h2>Tell My Story</h2><p>Your Life Timeline</p></div>', unsafe_allow_html=True)
     
     # Gamification Dashboard at the top
