@@ -3653,7 +3653,7 @@ with st.sidebar:
     with col1:
         st.markdown("### 📖 Menu")
     with col2:
-        if st.button("◀◀ Hide", help="Click to hide sidebar for distraction-free writing"):
+        if st.button("◀◀ Hide", key="hide_sidebar_button", help="Click to hide sidebar for distraction-free writing"):
             st.markdown("""
             <style>
                 section[data-testid="stSidebar"] { display: none !important; }
@@ -3672,27 +3672,27 @@ with st.sidebar:
     if st.session_state.user_account:
         profile = st.session_state.user_account['profile']
         st.success(f"✓ **{profile['first_name']} {profile['last_name']}**")
-    if st.button("📝 Complete Profile", use_container_width=True): 
+    if st.button("📝 Complete Profile", key="complete_profile_sidebar", use_container_width=True): 
         st.session_state.show_profile_setup = True
         st.rerun()
-    if st.button("🚪 Log Out", use_container_width=True): 
+    if st.button("🚪 Log Out", key="logout_sidebar", use_container_width=True): 
         logout_user()
     
     st.divider()
     st.header("🔧 Tools")
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔒 Privacy", use_container_width=True):
+        if st.button("🔒 Privacy", key="privacy_sidebar", use_container_width=True):
             st.session_state.show_privacy_settings = True
             st.rerun()
     with col2:
-        if st.button("🎨 Cover", use_container_width=True):
+        if st.button("🎨 Cover", key="cover_sidebar", use_container_width=True):
             st.session_state.show_cover_designer = True
             st.rerun()
     
     st.divider()
     st.header("📚 Question Banks")
-    if st.button("📋 Bank Manager", use_container_width=True, type="primary"): 
+    if st.button("📋 Bank Manager", key="bank_manager_sidebar", use_container_width=True, type="primary"): 
         st.session_state.show_bank_manager = True
         st.rerun()
     if st.session_state.get('current_bank_name'): 
@@ -3709,13 +3709,13 @@ with st.sidebar:
             status = "🟢" if resp_cnt == total_q and total_q > 0 else "🟡" if resp_cnt > 0 else "🔴"
             if i == st.session_state.current_session: 
                 status = "▶️"
-            if st.button(f"{status} Session {sid}: {s['title']}", key=f"sel_sesh_{i}", use_container_width=True):
+            if st.button(f"{status} Session {sid}: {s['title']}", key=f"sel_sesh_{i}_{sid}", use_container_width=True):
                 st.session_state.update(current_session=i, current_question=0, editing=False, current_question_override=None, show_ai_rewrite_menu=False)
                 st.rerun()
     
     st.divider()
     st.header("✨ Vignettes")
-    if st.button("📝 New Vignette", use_container_width=True): 
+    if st.button("📝 New Vignette", key="new_vignette_sidebar", use_container_width=True): 
         import uuid
         new_id = str(uuid.uuid4())[:8]
         
@@ -3736,16 +3736,16 @@ with st.sidebar:
         st.session_state.show_vignette_modal = True
         st.rerun()
     
-    if st.button("📖 View All Vignettes", use_container_width=True): 
+    if st.button("📖 View All Vignettes", key="view_vignettes_sidebar", use_container_width=True): 
         st.session_state.show_vignette_manager = True
         st.rerun()
     
     st.divider()
     st.header("📖 Session Management")
-    if st.button("📋 All Sessions", use_container_width=True): 
+    if st.button("📋 All Sessions", key="all_sessions_sidebar", use_container_width=True): 
         st.session_state.show_session_manager = True
         st.rerun()
-    if st.button("➕ Custom Session", use_container_width=True): 
+    if st.button("➕ Custom Session", key="custom_session_sidebar", use_container_width=True): 
         st.session_state.show_session_creator = True
         st.rerun()
     
@@ -3810,8 +3810,8 @@ with st.sidebar:
             st.session_state.publisher_data = complete_data
             st.session_state.publisher_data_path = temp_file
             
-            # Button to open publisher in main screen
-            if st.button("📚 Open Book Publisher", type="primary", use_container_width=True):
+            # Button to open publisher in main screen - WITH UNIQUE KEY
+            if st.button("📚 Open Book Publisher", key="open_publisher_sidebar", type="primary", use_container_width=True):
                 st.session_state.show_publisher = True
                 st.rerun()
             
@@ -3823,6 +3823,7 @@ with st.sidebar:
                     data=json_data,
                     file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
                     mime="application/json", 
+                    key="download_json_backup_sidebar",
                     use_container_width=True
                 )
         else: 
@@ -3837,31 +3838,31 @@ with st.sidebar:
     st.subheader("⚠️ Clear Data")
     if st.session_state.confirming_clear == "session":
         st.warning("**Delete ALL answers in current session?**")
-        if st.button("✅ Confirm", type="primary", key="conf_sesh", use_container_width=True): 
+        if st.button("✅ Confirm", type="primary", key="confirm_clear_session_sidebar", use_container_width=True): 
             sid = SESSIONS[st.session_state.current_session]["id"]
             st.session_state.responses[sid]["questions"] = {}
             save_user_data(st.session_state.user_id, st.session_state.responses)
             st.session_state.confirming_clear = None
             st.rerun()
-        if st.button("❌ Cancel", key="can_sesh", use_container_width=True): 
+        if st.button("❌ Cancel", key="cancel_clear_session_sidebar", use_container_width=True): 
             st.session_state.confirming_clear = None
             st.rerun()
     elif st.session_state.confirming_clear == "all":
         st.warning("**Delete ALL answers for ALL sessions?**")
-        if st.button("✅ Confirm All", type="primary", key="conf_all", use_container_width=True): 
+        if st.button("✅ Confirm All", type="primary", key="confirm_clear_all_sidebar", use_container_width=True): 
             for s in SESSIONS:
                 st.session_state.responses[s["id"]]["questions"] = {}
             save_user_data(st.session_state.user_id, st.session_state.responses)
             st.session_state.confirming_clear = None
             st.rerun()
-        if st.button("❌ Cancel", key="can_all", use_container_width=True): 
+        if st.button("❌ Cancel", key="cancel_clear_all_sidebar", use_container_width=True): 
             st.session_state.confirming_clear = None
             st.rerun()
     else:
-        if st.button("🗑️ Clear Session", use_container_width=True): 
+        if st.button("🗑️ Clear Session", key="clear_session_sidebar", use_container_width=True): 
             st.session_state.confirming_clear = "session"
             st.rerun()
-        if st.button("🔥 Clear All", use_container_width=True): 
+        if st.button("🔥 Clear All", key="clear_all_sidebar", use_container_width=True): 
             st.session_state.confirming_clear = "all"
             st.rerun()
     
@@ -3870,7 +3871,7 @@ with st.sidebar:
     # ============================================================================
     st.divider()
     st.subheader("🔍 Search Your Stories")
-    search_query = st.text_input("Search answers & captions...", placeholder="e.g., childhood, wedding, photo", key="global_search")
+    search_query = st.text_input("Search answers & captions...", placeholder="e.g., childhood, wedding, photo", key="global_search_sidebar")
     if search_query and len(search_query) >= 2:
         results = search_all_answers(search_query)
         if results:
@@ -3881,150 +3882,7 @@ with st.sidebar:
                     if r.get('has_images'):
                         st.caption(f"📸 Contains {r.get('image_count', 1)} photo(s)")
                     st.markdown(f"{r['answer'][:150]}...")
-                    if st.button(f"Go to Session", key=f"srch_go_{i}_{r['session_id']}", use_container_width=True):
-                        for idx, s in enumerate(SESSIONS):
-                            if s["id"] == r['session_id']:
-                                st.session_state.update(current_session=idx, current_question_override=r['question'], show_ai_rewrite_menu=False)
-                                st.rerun()
-                    st.divider()
-                if len(results) > 10: 
-                    st.info(f"... and {len(results)-10} more matches")
-        else: 
-            st.info("No matches found")
-    
-    # ============================================================================
-    # PUBLISH YOUR BOOK SECTION
-    # ============================================================================
-    st.divider()
-    st.subheader("📤 Publish Your Book")
-
-    if st.session_state.logged_in and st.session_state.user_id:
-        # Prepare export data for the publisher
-        export_data = []
-        for session in SESSIONS:
-            sid = session["id"]
-            sdata = st.session_state.responses.get(sid, {})
-            for q, a in sdata.get("questions", {}).items():
-                images_with_data = []
-                if a.get("images"):
-                    for img_ref in a.get("images", []):
-                        img_id = img_ref.get("id")
-                        b64 = st.session_state.image_handler.get_image_base64(img_id) if st.session_state.image_handler else None
-                        caption = img_ref.get("caption", "")
-                        if b64:
-                            images_with_data.append({
-                                "id": img_id, "base64": b64, "caption": caption
-                            })
-                
-                export_item = {
-                    "question": q, 
-                    "answer_text": re.sub(r'<[^>]+>', '', a.get("answer", "")),
-                    "timestamp": a.get("timestamp", ""), 
-                    "session_id": sid, 
-                    "session_title": session["title"],
-                    "has_images": a.get("has_images", False), 
-                    "image_count": a.get("image_count", 0),
-                    "images": images_with_data
-                }
-                export_data.append(export_item)
-        
-        if export_data:
-            # Save export data to session state for the publisher
-            complete_data = {
-                "user": st.session_state.user_id, 
-                "user_profile": st.session_state.user_account.get('profile', {}),
-                "narrative_gps": st.session_state.user_account.get('narrative_gps', {}),
-                "enhanced_profile": st.session_state.user_account.get('enhanced_profile', {}),
-                "cover_design": st.session_state.user_account.get('cover_design', {}),
-                "stories": export_data, 
-                "export_date": datetime.now().isoformat(),
-                "summary": {
-                    "total_stories": len(export_data), 
-                    "total_sessions": len(set(s['session_id'] for s in export_data))
-                }
-            }
-            
-            # Save to a temp file and store path in session state
-            temp_file = f"temp_export_{st.session_state.user_id}.json"
-            with open(temp_file, 'w') as f:
-                json.dump(complete_data, f)
-            
-            # Store in session state for the publisher
-            st.session_state.publisher_data = complete_data
-            st.session_state.publisher_data_path = temp_file
-            
-            # Button to open publisher in main screen
-            if st.button("📚 Open Book Publisher", type="primary", use_container_width=True):
-                st.session_state.show_publisher = True
-                st.rerun()
-            
-            # Optional: Keep JSON backup
-            with st.expander("📦 JSON Backup", expanded=False):
-                json_data = json.dumps(complete_data, indent=2)
-                st.download_button(
-                    label="📥 Download JSON Backup", 
-                    data=json_data,
-                    file_name=f"Tell_My_Story_Backup_{st.session_state.user_id}.json",
-                    mime="application/json", 
-                    use_container_width=True
-                )
-        else: 
-            st.warning("No stories yet! Start writing to publish.")
-    else: 
-        st.warning("Please log in to export your data.")
-    
-    # ============================================================================
-    # CLEAR DATA SECTION
-    # ============================================================================
-    st.divider()
-    st.subheader("⚠️ Clear Data")
-    if st.session_state.confirming_clear == "session":
-        st.warning("**Delete ALL answers in current session?**")
-        if st.button("✅ Confirm", type="primary", key="conf_sesh", use_container_width=True): 
-            sid = SESSIONS[st.session_state.current_session]["id"]
-            st.session_state.responses[sid]["questions"] = {}
-            save_user_data(st.session_state.user_id, st.session_state.responses)
-            st.session_state.confirming_clear = None
-            st.rerun()
-        if st.button("❌ Cancel", key="can_sesh", use_container_width=True): 
-            st.session_state.confirming_clear = None
-            st.rerun()
-    elif st.session_state.confirming_clear == "all":
-        st.warning("**Delete ALL answers for ALL sessions?**")
-        if st.button("✅ Confirm All", type="primary", key="conf_all", use_container_width=True): 
-            for s in SESSIONS:
-                st.session_state.responses[s["id"]]["questions"] = {}
-            save_user_data(st.session_state.user_id, st.session_state.responses)
-            st.session_state.confirming_clear = None
-            st.rerun()
-        if st.button("❌ Cancel", key="can_all", use_container_width=True): 
-            st.session_state.confirming_clear = None
-            st.rerun()
-    else:
-        if st.button("🗑️ Clear Session", use_container_width=True): 
-            st.session_state.confirming_clear = "session"
-            st.rerun()
-        if st.button("🔥 Clear All", use_container_width=True): 
-            st.session_state.confirming_clear = "all"
-            st.rerun()
-    
-    # ============================================================================
-    # SEARCH SECTION
-    # ============================================================================
-    st.divider()
-    st.subheader("🔍 Search Your Stories")
-    search_query = st.text_input("Search answers & captions...", placeholder="e.g., childhood, wedding, photo", key="global_search")
-    if search_query and len(search_query) >= 2:
-        results = search_all_answers(search_query)
-        if results:
-            st.success(f"Found {len(results)} matches")
-            with st.expander(f"📖 {len(results)} Results", expanded=True):
-                for i, r in enumerate(results[:10]):
-                    st.markdown(f"**Session {r['session_id']}: {r['session_title']}**  \n*{r['question']}*")
-                    if r.get('has_images'):
-                        st.caption(f"📸 Contains {r.get('image_count', 1)} photo(s)")
-                    st.markdown(f"{r['answer'][:150]}...")
-                    if st.button(f"Go to Session", key=f"srch_go_{i}_{r['session_id']}", use_container_width=True):
+                    if st.button(f"Go to Session", key=f"srch_go_{i}_{r['session_id']}_sidebar", use_container_width=True):
                         for idx, s in enumerate(SESSIONS):
                             if s["id"] == r['session_id']:
                                 st.session_state.update(current_session=idx, current_question_override=r['question'], show_ai_rewrite_menu=False)
