@@ -13,15 +13,12 @@ class QuestionBankManager:
         self.base_path = "question_banks"
         self.default_banks_path = f"{self.base_path}/default"
         self.user_banks_path = f"{self.base_path}/users"
-        self.editable_banks_path = f"{self.base_path}/editable"  # New path for editable banks
         
         # Create directories
         os.makedirs(self.default_banks_path, exist_ok=True)
         os.makedirs(self.user_banks_path, exist_ok=True)
-        os.makedirs(self.editable_banks_path, exist_ok=True)  # Create editable banks directory
         if self.user_id:
             os.makedirs(f"{self.user_banks_path}/{self.user_id}", exist_ok=True)
-            os.makedirs(f"{self.editable_banks_path}/{self.user_id}", exist_ok=True)  # User-specific editable banks
     
     def load_sessions_from_csv(self, csv_path):
         """Load sessions from a CSV file"""
@@ -87,126 +84,6 @@ class QuestionBankManager:
         if os.path.exists(filename):
             return self.load_sessions_from_csv(filename)
         return []
-    
-    # ============ NEW EDITABLE DEFAULT BANKS ============
-    
-    def create_editable_bank_from_default(self, bank_id):
-        """Create an editable copy of a default bank"""
-        if not self.user_id:
-            st.error("You must be logged in")
-            return None
-        
-        # Load the default bank
-        sessions = self.load_default_bank(bank_id)
-        if not sessions:
-            st.error("Could not load default bank")
-            return None
-        
-        # Get bank info
-        default_banks = self.get_default_banks()
-        bank_info = next((b for b in default_banks if b['id'] == bank_id), {})
-        
-        # Create editable copy
-        user_editable_dir = f"{self.editable_banks_path}/{self.user_id}"
-        os.makedirs(user_editable_dir, exist_ok=True)
-        
-        now = datetime.now().isoformat()
-        
-        # Create chapters-only version (remove all questions)
-        chapters_sessions = []
-        for session in sessions:
-            chapters_sessions.append({
-                'id': session['id'],
-                'title': session['title'],
-                'guidance': session.get('guidance', ''),
-                'questions': [],  # Empty questions list for chapters-only
-                'word_target': session.get('word_target', 500)
-            })
-        
-        # Save the editable chapters bank
-        bank_file = f"{user_editable_dir}/{bank_id}_chapters.json"
-        with open(bank_file, 'w') as f:
-            json.dump({
-                'id': f"{bank_id}_chapters",
-                'original_bank': bank_id,
-                'name': f"{bank_info.get('name', '')} (Chapters)",
-                'description': f"Chapters-only version of {bank_info.get('name', '')}",
-                'created_at': now,
-                'updated_at': now,
-                'bank_type': 'chapters',
-                'sessions': chapters_sessions
-            }, f, indent=2)
-        
-        return f"{bank_id}_chapters"
-    
-    def get_editable_banks(self):
-        """Get all editable banks for the current user"""
-        if not self.user_id:
-            return []
-        
-        user_editable_dir = f"{self.editable_banks_path}/{self.user_id}"
-        banks = []
-        
-        if os.path.exists(user_editable_dir):
-            for filename in os.listdir(user_editable_dir):
-                if filename.endswith('.json'):
-                    try:
-                        with open(f"{user_editable_dir}/{filename}", 'r') as f:
-                            data = json.load(f)
-                            banks.append({
-                                'id': data.get('id'),
-                                'name': data.get('name'),
-                                'description': data.get('description'),
-                                'created_at': data.get('created_at'),
-                                'updated_at': data.get('updated_at'),
-                                'bank_type': data.get('bank_type', 'chapters'),
-                                'session_count': len(data.get('sessions', [])),
-                                'filename': filename
-                            })
-                    except Exception as e:
-                        st.error(f"Error reading editable bank: {e}")
-        
-        return banks
-    
-    def load_editable_bank(self, bank_id):
-        """Load an editable bank"""
-        if not self.user_id:
-            return []
-        
-        bank_file = f"{self.editable_banks_path}/{self.user_id}/{bank_id}.json"
-        if os.path.exists(bank_file):
-            with open(bank_file, 'r') as f:
-                data = json.load(f)
-                return data.get('sessions', [])
-        return []
-    
-    def save_editable_bank(self, bank_id, sessions):
-        """Save changes to an editable bank"""
-        if not self.user_id:
-            return False
-        
-        bank_file = f"{self.editable_banks_path}/{self.user_id}/{bank_id}.json"
-        
-        if os.path.exists(bank_file):
-            with open(bank_file, 'r') as f:
-                data = json.load(f)
-            data['sessions'] = sessions
-            data['updated_at'] = datetime.now().isoformat()
-            with open(bank_file, 'w') as f:
-                json.dump(data, f, indent=2)
-            return True
-        return False
-    
-    def delete_editable_bank(self, bank_id):
-        """Delete an editable bank"""
-        if not self.user_id:
-            return False
-        
-        bank_file = f"{self.editable_banks_path}/{self.user_id}/{bank_id}.json"
-        if os.path.exists(bank_file):
-            os.remove(bank_file)
-            return True
-        return False
     
     # ============ CUSTOM BANK METHODS - FULLY WORKING ============
     
@@ -313,19 +190,31 @@ class QuestionBankManager:
         return True
     
     def export_user_bank_to_csv(self, bank_id):
-        """Export custom bank to CSV for download"""
+        """Export custom bank to CSV for download - MAKE IT PERMANENT"""
         sessions = self.load_user_bank(bank_id)
         
         rows = []
         for session in sessions:
-            for i, q in enumerate(session.get('questions', [])):
+            # For chapters-only banks with no questions, still export the session structure
+            questions = session.get('questions', [])
+            if not questions:
+                # Add a placeholder for chapters-only banks
                 rows.append({
                     'session_id': session['id'],
                     'title': session['title'],
-                    'guidance': session.get('guidance', '') if i == 0 else '',
-                    'question': q,
+                    'guidance': session.get('guidance', ''),
+                    'question': '',  # Empty question for chapters
                     'word_target': session.get('word_target', 500)
                 })
+            else:
+                for i, q in enumerate(questions):
+                    rows.append({
+                        'session_id': session['id'],
+                        'title': session['title'],
+                        'guidance': session.get('guidance', '') if i == 0 else '',
+                        'question': q,
+                        'word_target': session.get('word_target', 500)
+                    })
         
         if rows:
             df = pd.DataFrame(rows)
@@ -366,40 +255,31 @@ class QuestionBankManager:
         """Main UI for bank selection"""
         st.title("📚 Question Bank Manager")
         
-        tab1, tab2, tab3, tab4 = st.tabs(["📖 Default Banks", "📝 My Editable Banks", "✨ My Custom Banks", "➕ Create New"])
+        tab1, tab2, tab3 = st.tabs(["📖 Default Banks", "✨ My Custom Banks", "➕ Create New"])
         
         with tab1:
             self._display_default_banks()
         
         with tab2:
             if self.user_id:
-                self._display_editable_banks()
-            else:
-                st.info("🔐 Please log in to manage editable banks")
-        
-        with tab3:
-            if self.user_id:
                 self._display_my_banks()
             else:
                 st.info("🔐 Please log in to manage custom question banks")
         
-        with tab4:
+        with tab3:
             if self.user_id:
                 self._display_create_bank_form()
             else:
                 st.info("🔐 Please log in to create custom question banks")
     
     def _display_default_banks(self):
-        """Display default banks with load and edit options"""
+        """Display default banks with load buttons"""
         
         banks = self.get_default_banks()
         
         if not banks:
             st.info("📁 No question banks found. Please add CSV files to the question_banks/default/ folder.")
             return
-        
-        st.markdown("### Default Banks")
-        st.info("💡 You can load these banks as-is, or create an editable chapters-only version to customize.")
         
         # 2-COLUMN GRID
         cols = st.columns(2)
@@ -413,97 +293,21 @@ class QuestionBankManager:
                     </div>
                     """, unsafe_allow_html=True)
                     
-                    col1, col2 = st.columns(2)
-                    
-                    with col1:
-                        is_loaded = st.session_state.get('current_bank_id') == bank['id']
-                        button_label = "✅ Loaded" if is_loaded else "📂 Load"
-                        button_type = "secondary" if is_loaded else "primary"
-                        
-                        if st.button(button_label, key=f"load_default_{bank['id']}", 
-                                   use_container_width=True, type=button_type):
-                            if not is_loaded:
-                                sessions = self.load_default_bank(bank['id'])
-                                if sessions:
-                                    st.session_state.current_question_bank = sessions
-                                    st.session_state.current_bank_name = bank['name']
-                                    st.session_state.current_bank_type = "default"
-                                    st.session_state.current_bank_id = bank['id']
-                                    
-                                    st.success(f"✅ Question Bank Loaded: '{bank['name']}'")
-                                    
-                                    for session in sessions:
-                                        session_id = session["id"]
-                                        if session_id not in st.session_state.responses:
-                                            st.session_state.responses[session_id] = {
-                                                "title": session["title"],
-                                                "questions": {},
-                                                "summary": "",
-                                                "completed": False,
-                                                "word_target": session.get("word_target", 500)
-                                            }
-                                    st.rerun()
-                    
-                    with col2:
-                        if self.user_id:
-                            # Check if already have editable version
-                            editable_banks = self.get_editable_banks()
-                            has_editable = any(f"{bank['id']}_chapters" == b['id'] for b in editable_banks)
-                            
-                            if has_editable:
-                                st.button("✅ Has Editable", disabled=True, use_container_width=True, key=f"has_editable_{bank['id']}")
-                            else:
-                                if st.button("✏️ Create Editable", key=f"create_editable_{bank['id']}", 
-                                           use_container_width=True, type="secondary"):
-                                    editable_id = self.create_editable_bank_from_default(bank['id'])
-                                    if editable_id:
-                                        st.success(f"✅ Created editable chapters version of '{bank['name']}'")
-                                        st.rerun()
-                        else:
-                            st.button("🔒 Login to Edit", disabled=True, use_container_width=True, key=f"login_edit_{bank['id']}")
-    
-    def _display_editable_banks(self):
-        """Display user's editable banks"""
-        banks = self.get_editable_banks()
-        
-        if not banks:
-            st.info("📝 You haven't created any editable banks yet. Go to the 'Default Banks' tab and click 'Create Editable' on any bank to get started!")
-            return
-        
-        st.markdown("### My Editable Chapters Banks")
-        st.info("✏️ These are chapters-only versions of default banks that you can edit and customize.")
-        
-        # Add a status area at the top
-        status_container = st.empty()
-        
-        for bank in banks:
-            with st.expander(f"📖 {bank['name']}", expanded=False):
-                st.write(f"**Description:** {bank.get('description', 'No description')}")
-                
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.metric("Chapters", bank.get('session_count', 0))
-                with col2:
-                    st.caption(f"Last updated: {bank.get('updated_at', '')[:10]}")
-                
-                col1, col2, col3 = st.columns(3)
-                
-                with col1:
                     is_loaded = st.session_state.get('current_bank_id') == bank['id']
-                    button_label = "✅ Loaded" if is_loaded else "📂 Load"
+                    button_label = "✅ Loaded" if is_loaded else "📂 Load Question Bank"
                     button_type = "secondary" if is_loaded else "primary"
                     
-                    if st.button(button_label, key=f"load_editable_{bank['id']}", 
+                    if st.button(button_label, key=f"load_default_{bank['id']}", 
                                use_container_width=True, type=button_type):
                         if not is_loaded:
-                            sessions = self.load_editable_bank(bank['id'])
+                            sessions = self.load_default_bank(bank['id'])
                             if sessions:
                                 st.session_state.current_question_bank = sessions
                                 st.session_state.current_bank_name = bank['name']
-                                st.session_state.current_bank_type = "editable"
+                                st.session_state.current_bank_type = "default"
                                 st.session_state.current_bank_id = bank['id']
                                 
-                                status_container.success(f"✅ Bank Loaded: '{bank['name']}'")
+                                st.success(f"✅ Question Bank Loaded: '{bank['name']}'")
                                 
                                 for session in sessions:
                                     session_id = session["id"]
@@ -516,25 +320,9 @@ class QuestionBankManager:
                                             "word_target": session.get("word_target", 500)
                                         }
                                 st.rerun()
-                
-                with col2:
-                    if st.button("✏️ Edit Chapters", key=f"edit_editable_{bank['id']}", 
-                               use_container_width=True):
-                        st.session_state.editing_bank_id = bank['id']
-                        st.session_state.editing_bank_name = bank['name']
-                        st.session_state.editing_bank_type = "editable"
-                        st.session_state.show_bank_editor = True
-                        st.rerun()
-                
-                with col3:
-                    if st.button("🗑️ Delete", key=f"delete_editable_{bank['id']}", 
-                               use_container_width=True):
-                        if self.delete_editable_bank(bank['id']):
-                            status_container.success(f"✅ Deleted '{bank['name']}'")
-                            st.rerun()
     
     def _display_my_banks(self):
-        """Display user's custom banks"""
+        """Display user's custom banks - FULLY WORKING"""
         banks = self.get_user_banks()
         
         if not banks:
@@ -599,14 +387,15 @@ class QuestionBankManager:
                 with col2:
                     if st.button("✏️ Edit", key=f"edit_user_{bank['id']}", 
                                use_container_width=True):
+                        status_container.info(f"Edit clicked for bank {bank['id']}")
                         st.session_state.editing_bank_id = bank['id']
                         st.session_state.editing_bank_name = bank['name']
-                        st.session_state.editing_bank_type = "custom"
                         st.session_state.show_bank_editor = True
+                        status_container.success(f"State set: show_bank_editor=True, bank_id={bank['id']}")
                         st.rerun()
                 
                 with col3:
-                    # EXPORT TO CSV
+                    # EXPORT TO CSV - MAKE IT PERMANENT
                     csv_data = self.export_user_bank_to_csv(bank['id'])
                     if csv_data:
                         st.download_button(
@@ -634,7 +423,7 @@ class QuestionBankManager:
     
     def _display_create_bank_form(self):
         """Display form to create new bank"""
-        st.markdown("### Create New Custom Question Bank")
+        st.markdown("### Create New Question Bank")
         
         # Add bank type selector
         bank_type = st.radio(
@@ -672,18 +461,10 @@ class QuestionBankManager:
     
     def display_bank_editor(self, bank_id):
         """Display the bank editor interface"""
-        # Determine bank type and load sessions
-        if st.session_state.get('editing_bank_type') == 'editable':
-            sessions = self.load_editable_bank(bank_id)
-            bank_type = 'chapters'  # Editable banks are always chapters-only
-            bank_name = st.session_state.get('editing_bank_name', '')
-        else:
-            # Get bank info to determine type
-            banks = self.get_user_banks()
-            bank_info = next((b for b in banks if b['id'] == bank_id), {})
-            bank_type = bank_info.get('bank_type', 'standard')
-            bank_name = bank_info.get('name', '')
-            sessions = self.load_user_bank(bank_id)
+        # Get bank info to determine type
+        banks = self.get_user_banks()
+        bank_info = next((b for b in banks if b['id'] == bank_id), {})
+        bank_type = bank_info.get('bank_type', 'standard')
         
         # Add visible banner at the top
         bank_type_label = "📖 CHAPTERS-ONLY BANK" if bank_type == "chapters" else "📚 STANDARD BANK"
@@ -691,11 +472,29 @@ class QuestionBankManager:
         
         st.markdown(f"""
         <div style="background-color: {banner_color}; padding: 10px; border-radius: 5px; margin-bottom: 20px;">
-            <h3 style="color: white; margin: 0;">✏️ EDITOR MODE - {bank_type_label}: {bank_name}</h3>
+            <h3 style="color: white; margin: 0;">✏️ EDITOR MODE - {bank_type_label}: {bank_info.get('name', '')}</h3>
         </div>
         """, unsafe_allow_html=True)
         
         st.title(f"Edit Bank")
+        
+        sessions = self.load_user_bank(bank_id)
+        
+        with st.expander("Bank Settings", expanded=True):
+            col1, col2 = st.columns([3, 1])
+            with col1:
+                new_name = st.text_input("Bank Name", value=bank_info.get('name', ''))
+                new_desc = st.text_area("Description", value=bank_info.get('description', ''))
+            with col2:
+                if st.button("💾 Save Settings", use_container_width=True, type="primary"):
+                    for bank in banks:
+                        if bank['id'] == bank_id:
+                            bank['name'] = new_name
+                            bank['description'] = new_desc
+                            bank['updated_at'] = datetime.now().isoformat()
+                    self._save_user_banks(banks)
+                    st.success("✅ Settings saved")
+                    st.rerun()
         
         st.divider()
         
@@ -716,10 +515,7 @@ class QuestionBankManager:
                 'questions': [],
                 'word_target': 500
             })
-            if st.session_state.get('editing_bank_type') == 'editable':
-                self.save_editable_bank(bank_id, sessions)
-            else:
-                self.save_user_bank(bank_id, sessions)
+            self.save_user_bank(bank_id, sessions)
             st.rerun()
         
         for i, session in enumerate(sessions):
@@ -745,10 +541,7 @@ class QuestionBankManager:
                             sessions[i], sessions[i-1] = sessions[i-1], sessions[i]
                             for idx, s in enumerate(sessions):
                                 s['id'] = idx + 1
-                            if st.session_state.get('editing_bank_type') == 'editable':
-                                self.save_editable_bank(bank_id, sessions)
-                            else:
-                                self.save_user_bank(bank_id, sessions)
+                            self.save_user_bank(bank_id, sessions)
                             st.rerun()
                     
                     if i < len(sessions) - 1:
@@ -756,20 +549,14 @@ class QuestionBankManager:
                             sessions[i], sessions[i+1] = sessions[i+1], sessions[i]
                             for idx, s in enumerate(sessions):
                                 s['id'] = idx + 1
-                            if st.session_state.get('editing_bank_type') == 'editable':
-                                self.save_editable_bank(bank_id, sessions)
-                            else:
-                                self.save_user_bank(bank_id, sessions)
+                            self.save_user_bank(bank_id, sessions)
                             st.rerun()
                     
                     if st.button("💾 Save", key=f"save_{session['id']}", use_container_width=True, type="primary"):
                         session['title'] = new_title
                         session['guidance'] = new_guidance
                         session['word_target'] = new_target
-                        if st.session_state.get('editing_bank_type') == 'editable':
-                            self.save_editable_bank(bank_id, sessions)
-                        else:
-                            self.save_user_bank(bank_id, sessions)
+                        self.save_user_bank(bank_id, sessions)
                         st.success("✅ Saved")
                         st.rerun()
                     
@@ -777,10 +564,7 @@ class QuestionBankManager:
                         sessions.pop(i)
                         for idx, s in enumerate(sessions):
                             s['id'] = idx + 1
-                        if st.session_state.get('editing_bank_type') == 'editable':
-                            self.save_editable_bank(bank_id, sessions)
-                        else:
-                            self.save_user_bank(bank_id, sessions)
+                        self.save_user_bank(bank_id, sessions)
                         st.rerun()
                 
                 # Only show topics/questions section for standard banks
