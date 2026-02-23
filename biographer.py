@@ -3372,23 +3372,7 @@ if st.session_state.logged_in:
     
     # Get user's subscription status - handle missing data
     subscription = st.session_state.user_account.get('subscription', {})
-    
-    # Debug - shows what's in the subscription
-    st.write("Debug - Full user_account keys:", list(st.session_state.user_account.keys()))
-    st.write("Debug - Subscription data:", subscription)
-    
-    # If subscription is empty, create a default one
-    if not subscription:
-        st.write("Debug - No subscription found, creating default")
-        subscription = {
-            "status": "active",  # Force active for testing
-            "tier": "premium",
-            "activated_at": datetime.now().isoformat(),
-            "expires_at": None
-        }
-        # Save it back to the account
-        st.session_state.user_account['subscription'] = subscription
-    
+      
     # Get status with safe default
     status = subscription.get('status', 'active')  # Default to active
     
