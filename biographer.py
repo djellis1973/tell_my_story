@@ -3373,7 +3373,7 @@ if st.session_state.logged_in:
     # Get user's subscription status - with better error handling
     subscription = st.session_state.user_account.get('subscription', {})
     
-    # Debug - remove this after testing
+    # Debug - shows what's in the subscription
     st.write("Debug - Subscription data:", subscription)
     
     # Check if status exists and equals 'active'
@@ -3383,10 +3383,6 @@ if st.session_state.logged_in:
     # Allow both 'active' and 'premium' as valid
     if status not in ['active', 'premium']:
         
-        # FOR TESTING: Comment out this entire block to bypass subscription check
-        # Just remove or comment out everything from here to the st.stop()
-        
-        """
         # Hide sidebar and main content
         st.markdown("""
         <style>
@@ -3398,7 +3394,7 @@ if st.session_state.logged_in:
         # Show subscription required message
         st.title("📖 Subscription Required")
         
-        st.markdown("""
+        st.markdown('''
         <div style="text-align: center; padding: 2rem; max-width: 600px; margin: 0 auto;">
             <h2 style="color: #667eea;">Your free trial has ended</h2>
             <p style="font-size: 18px; margin: 2rem 0;">
@@ -3423,7 +3419,7 @@ if st.session_state.logged_in:
                 <a href="mailto:support@tellmystory.com" style="color: #667eea;">Contact Support</a>
             </p>
         </div>
-        """, unsafe_allow_html=True)
+        ''', unsafe_allow_html=True)
         
         # Logout button
         if st.button("🚪 Logout", type="primary"):
@@ -3432,7 +3428,6 @@ if st.session_state.logged_in:
         
         # Stop the app from loading main content
         st.stop()
-        """
 
 # ============================================================================
 # AUTHENTICATION UI
