@@ -3365,6 +3365,62 @@ if st.session_state.logged_in and st.session_state.user_id and not st.session_st
                 st.session_state.responses[sid]["questions"] = sdata["questions"]
     st.session_state.data_loaded = True
     init_image_handler()
+# ============================================================================
+# SUBSCRIPTION CHECK - ADD THIS EXACT CODE HERE
+# ============================================================================
+if st.session_state.logged_in:
+    
+    # Get user's subscription status
+    subscription = st.session_state.user_account.get('subscription', {'status': 'free'})
+    
+    # If user is not active, show subscription required page
+    if subscription.get('status') != 'active':
+        
+        # Hide sidebar and main content
+        st.markdown("""
+        <style>
+            section[data-testid="stSidebar"] { display: none !important; }
+            .main-header, .stApp header { display: none !important; }
+        </style>
+        """, unsafe_allow_html=True)
+        
+        # Show subscription required message
+        st.title("📖 Subscription Required")
+        
+        st.markdown("""
+        <div style="text-align: center; padding: 2rem; max-width: 600px; margin: 0 auto;">
+            <h2 style="color: #667eea;">Your free trial has ended</h2>
+            <p style="font-size: 18px; margin: 2rem 0;">
+                To continue writing your life story, please purchase a subscription.
+            </p>
+            <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); 
+                      padding: 2rem; border-radius: 10px; color: white; margin: 2rem 0;">
+                <h3>Premium Access</h3>
+                <div style="font-size: 48px; font-weight: bold;">$9.99</div>
+                <p>per month</p>
+                <ul style="list-style: none; padding: 0; text-align: left;">
+                    <li>✓ Full access to all features</li>
+                    <li>✓ Unlimited story writing</li>
+                    <li>✓ AI writing assistance</li>
+                    <li>✓ Export your book</li>
+                </ul>
+            </div>
+            <p style="color: #666;">
+                To activate your subscription, please visit our website or contact support.
+            </p>
+            <p style="margin-top: 2rem;">
+                <a href="mailto:support@tellmystory.com" style="color: #667eea;">Contact Support</a>
+            </p>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Logout button
+        if st.button("🚪 Logout", type="primary"):
+            logout_user()
+            st.rerun()
+        
+        # Stop the app from loading main content
+        st.stop()
 
 if not SESSIONS:
     st.error("❌ No question bank loaded. Use Bank Manager.")
