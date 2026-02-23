@@ -1,138 +1,16 @@
-import streamlit as st
-import json
-from datetime import datetime
-import pandas as pd
-from pathlib import Path
-import re
-import hashlib
-
-# ============================================================================
-# PAGE CONFIG
-# ============================================================================
-st.set_page_config(
-    page_title="Tell My Story - Admin Dashboard",
-    page_icon="👑",
-    layout="wide",
-    initial_sidebar_state="expanded"
-)
-
-# ============================================================================
-# SIMPLE ADMIN AUTH - Use secrets in Streamlit Cloud
-# ============================================================================
-# Add these to your Streamlit Community Cloud secrets:
-# ADMIN_USERNAME = admin
-# ADMIN_PASSWORD = your-secure-password
-# ADMIN_SECRET_KEY = your-secret-key
-
-def check_admin_password():
-    """Simple password check for admin access"""
-    if 'admin_authenticated' not in st.session_state:
-        st.session_state.admin_authenticated = False
-    
-    if not st.session_state.admin_authenticated:
-        st.title("👑 Admin Login")
-        
-        col1, col2, col3 = st.columns([1, 2, 1])
-        with col2:
-            username = st.text_input("Username")
-            password = st.text_input("Password", type="password")
-            
-            if st.button("Login", type="primary", use_container_width=True):
-                # Check against secrets
-                if (username == st.secrets.get("ADMIN_USERNAME") and 
-                    password == st.secrets.get("ADMIN_PASSWORD")):
+      secret_password = st.secrets.get("ADMIN_PASSWORD")
+                
+                if not secret_username or not secret_password:
+                    st.error("❌ Admin credentials not configured in secrets!")
+                    st.info("Please add ADMIN_USERNAME and ADMIN_PASSWORD to your Streamlit secrets.")
+                elif username == secret_username and password == secret_password:
                     st.session_state.admin_authenticated = True
+                    st.success("✅ Login successful!")
                     st.rerun()
                 else:
-                    st.error("Invalid credentials")
+                    st.error("❌ Invalid credentials")
         return False
     return True
-
-# ============================================================================
-# DATA LOADING FUNCTIONS
-# ============================================================================
-def load_all_users():
-    """Load all user accounts from the accounts folder"""
-    accounts_dir = Path("accounts")
-    if not accounts_dir.exists():
-        return []
-    
-    users = []
-    for account_file in accounts_dir.glob("*_account.json"):
-        try:
-            with open(account_file, 'r') as f:
-                account = json.load(f)
-            
-            # Load user data file for stats
-            user_id = account['user_id']
-            data_file = Path(f"user_data_{hashlib.md5(user_id.encode()).hexdigest()[:8]}.json")
-            
-            stats = {
-                'total_words': 0,
-                'total_answers': 0,
-                'total_sessions': 0,
-                'last_active': None
-            }
-            
-            if data_file.exists():
-                with open(data_file, 'r') as f:
-                    user_data = json.load(f)
-                    
-                # Calculate stats
-                for session_id, session_data in user_data.get('responses', {}).items():
-                    answers = session_data.get('questions', {})
-                    stats['total_answers'] += len(answers)
-                    for q_data in answers.values():
-                        if q_data.get('answer'):
-                            text_only = re.sub(r'<[^>]+>', '', q_data['answer'])
-                            stats['total_words'] += len(re.findall(r'\w+', text_only))
-                    
-                    # Get last active
-                    timestamps = [q.get('timestamp') for q in answers.values() if q.get('timestamp')]
-                    if timestamps:
-                        latest = max(timestamps)
-                        if not stats['last_active'] or latest > stats['last_active']:
-                            stats['last_active'] = latest
-            
-            # Combine account and stats
-            users.append({
-                'user_id': user_id,
-                'email': account.get('email', ''),
-                'first_name': account.get('profile', {}).get('first_name', ''),
-                'last_name': account.get('profile', {}).get('last_name', ''),
-                'created_at': account.get('created_at', ''),
-                'last_login': account.get('last_login', ''),
-                'subscription': account.get('subscription', {'status': 'free'}),
-                'total_words': stats['total_words'],
-                'total_answers': stats['total_answers'],
-                'last_active': stats['last_active'],
-                'account_data': account
-            })
-        except Exception as e:
-            st.error(f"Error loading {account_file}: {e}")
-    
-    # Sort by creation date
-    users.sort(key=lambda x: x['created_at'], reverse=True)
-    return users
-
-def save_user_subscription(user_id, subscription_data):
-    """Update a user's subscription status"""
-    try:
-        account_file = Path(f"accounts/{user_id}_account.json")
-        if account_file.exists():
-            with open(account_file, 'r') as f:
-                account = json.load(f)
-            
-            account['subscription'] = subscription_data
-            account['subscription']['last_updated'] = datetime.now().isoformat()
-            
-            with open(account_file, 'w') as f:
-                json.dump(account, f, indent=2)
-            
-            return True
-    except Exception as e:
-        st.error(f"Error saving: {e}")
-    return False
 
 # ============================================================================
 # MAIN ADMIN INTERFACE
